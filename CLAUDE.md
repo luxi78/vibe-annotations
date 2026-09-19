@@ -33,3 +33,17 @@ The extension has no build step — load `packages/extension/` as an unpacked ex
 ## Package-specific context
 
 Each package has its own CLAUDE.md with detailed architecture, file layout, and dev commands. Start there when working on a specific package.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues via `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default 5-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context. See `docs/agents/domain.md`.
