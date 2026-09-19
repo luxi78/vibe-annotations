@@ -90,8 +90,8 @@ import { isRecordableHotkey } from './hotkey.js';
     VibeEvents.on('inspection:stopped', () => { isAnnotating = false; updateUI(); });
     VibeEvents.on('badges:rendered', ({ count, total, styleCount }) => { annotationCount = total; styleAnnotationCount = 0; updateUI(); });
     VibeEvents.on('annotations:cleared', () => { annotationCount = 0; styleAnnotationCount = 0; updateUI(); });
-    VibeEvents.on('overlay:closed', () => { resetPosition(); stopPolling(); });
-    VibeEvents.on('overlay:shown', () => { startPolling(); animateToolbarIn(); });
+    VibeEvents.on('overlay:closed', stopPolling);
+    VibeEvents.on('overlay:shown', async () => { startPolling(); await restorePosition(); animateToolbarIn(); });
 
     // Start periodic checks
     startPolling();
@@ -1042,14 +1042,6 @@ import { isRecordableHotkey } from './hotkey.js';
       toolbarEl.style.right = Math.max(8, Math.min(rightPx, maxRight)) + 'px';
       toolbarEl.style.top = Math.max(8, Math.min(topPx, maxTop)) + 'px';
     }
-  }
-
-  function resetPosition() {
-    if (toolbarEl) {
-      toolbarEl.style.right = '';
-      toolbarEl.style.top = '';
-    }
-    VibeAPI.saveToolbarPosition(null);
   }
 
   // --- Delete confirm ---
