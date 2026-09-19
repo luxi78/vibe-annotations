@@ -66,6 +66,16 @@ import VibeShadowHost from './shadow-host.js';
     show(element, context, annotation);
   }
 
+  export function bindPopoverKeyListeners(anchor, handler) {
+    if (anchor) anchor.addEventListener('keydown', handler);
+    document.addEventListener('keydown', handler);
+  }
+
+  export function unbindPopoverKeyListeners(anchor, handler) {
+    if (anchor) anchor.removeEventListener('keydown', handler);
+    document.removeEventListener('keydown', handler);
+  }
+
   // --- Show popover ---
 
   async function show(targetElement, context, existingAnnotation, clickX, clickY) {
@@ -745,11 +755,15 @@ import VibeShadowHost from './shadow-host.js';
       if (e.key === 'Escape') {
         close();
       } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !saveBtn.disabled) {
-        e.preventDefault();
-        saveBtn.click();
+        const isInside = (typeof anchor.contains === 'function' && anchor.contains(e.target))
+          || (typeof e.composedPath === 'function' && e.composedPath().includes(anchor));
+        if (isInside) {
+          e.preventDefault();
+          saveBtn.click();
+        }
       }
     };
-    document.addEventListener('keydown', escHandler);
+    bindPopoverKeyListeners(anchor, escHandler);
 
     // Delete
     if (deleteBtn && isEdit) {
@@ -861,7 +875,7 @@ import VibeShadowHost from './shadow-host.js';
       popover.querySelector('.vibe-cancel-btn').addEventListener('click', close);
       anchor.addEventListener('pointerdown', (e) => { if (e.target === anchor) close(); });
       escHandler = (e) => { if (e.key === 'Escape') close(); };
-      document.addEventListener('keydown', escHandler);
+      bindPopoverKeyListeners(anchor, escHandler);
       return;
     }
 
@@ -914,7 +928,7 @@ import VibeShadowHost from './shadow-host.js';
     popover.querySelector('.vibe-cancel-btn').addEventListener('click', close);
     anchor.addEventListener('pointerdown', (e) => { if (e.target === anchor) close(); });
     escHandler = (e) => { if (e.key === 'Escape') close(); };
-    document.addEventListener('keydown', escHandler);
+    bindPopoverKeyListeners(anchor, escHandler);
 
     const chooseBtn = popover.querySelector('.vibe-variants-choose');
     const hint = popover.querySelector('.vibe-variants-hint');
@@ -996,10 +1010,13 @@ import VibeShadowHost from './shadow-host.js';
       activeCssRulesStyleEl = null;
     }
 
+    if (escHandler) {
+      unbindPopoverKeyListeners(currentPopover, escHandler);
+      escHandler = null;
+    }
     if (currentPopover) { currentPopover.remove(); currentPopover = null; }
     stopHighlightRAF();
     if (currentTargetHighlight) { currentTargetHighlight.remove(); currentTargetHighlight = null; }
-    if (escHandler) { document.removeEventListener('keydown', escHandler); escHandler = null; }
     activeElement = null;
     activeExistingAnnotation = null;
     activeElType = null;
@@ -1196,5 +1213,5 @@ import VibeShadowHost from './shadow-host.js';
     return `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>`;
   }
 
-const VibeAnnotationPopover = { init, dismiss };
+const VibeAnnotationPopover = { init, dismiss, bindPopoverKeyListeners, unbindPopoverKeyListeners };
 export default VibeAnnotationPopover;
