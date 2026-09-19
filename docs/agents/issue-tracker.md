@@ -33,6 +33,16 @@ Create a GitHub issue.
 
 Run `gh issue view <number> --comments`.
 
+## When completing an implementation ticket
+
+A ticket is resolved only when all its acceptance criteria and tests are green.
+
+1. **Commit message**: Include the GitHub closing directive in the commit subject: `Fixes #<number>` or `Closes #<number>`.
+   - Example: `fix(extension): contain keyboard events within shadow DOM (Fixes #1)`
+2. **Close the issue**:
+   - When committing directly to `main`: Run `gh issue close <number> --comment "Resolved in <commit-sha>"`.
+   - When opening a PR: Include `Fixes #<number>` in the PR description so merging closes it automatically.
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.

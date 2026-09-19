@@ -38,7 +38,7 @@ Each package has its own CLAUDE.md with detailed architecture, file layout, and 
 
 ### Issue tracker
 
-GitHub Issues via `gh` CLI. See `docs/agents/issue-tracker.md`.
+GitHub Issues via `gh` CLI. Ticket lifecycle and resolution in `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
