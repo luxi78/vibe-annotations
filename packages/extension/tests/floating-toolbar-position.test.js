@@ -150,12 +150,27 @@ const shadowRootMock = new MockElement('div');
 shadowRootMock.host = rootElement;
 const documentListeners = {};
 
+const windowListeners = {};
+
 globalThis.window = {
   innerWidth: 1920,
   innerHeight: 1080,
   location: { protocol: 'http:', hostname: 'localhost', origin: 'http://localhost:3000' },
-  addEventListener: () => {},
-  removeEventListener: () => {},
+  addEventListener: (type, fn) => {
+    if (!windowListeners[type]) windowListeners[type] = [];
+    windowListeners[type].push(fn);
+  },
+  removeEventListener: (type, fn) => {
+    if (windowListeners[type]) {
+      windowListeners[type] = windowListeners[type].filter(f => f !== fn);
+    }
+  },
+  dispatchEvent: (event) => {
+    const fns = windowListeners[event.type] || [];
+    for (const fn of fns) {
+      fn(event);
+    }
+  },
   requestAnimationFrame: (cb) => { cb(); return 1; },
   cancelAnimationFrame: () => {}
 };
@@ -277,5 +292,195 @@ test('floating toolbar position lifecycle', async (t) => {
     assert.ok(toolbar, 'Toolbar element exists');
     assert.strictEqual(toolbar.style.right, '350px', 'Page reload preserves saved right coordinate');
     assert.strictEqual(toolbar.style.top, '220px', 'Page reload preserves saved top coordinate');
+  });
+
+  await t.test('restoring coordinates exceeding viewport width or height clamps within visible bounds with 8px margin', async () => {
+    window.innerWidth = 1920;
+    window.innerHeight = 1080;
+
+    // Saved position exceeding viewport dimensions
+    mockStorage.vibeToolbarPos = { right: '2500px', top: '1500px' };
+
+    shadowRootMock.children = [];
+    await VibeToolbar.init();
+
+    const toolbar = getToolbar();
+    assert.ok(toolbar, 'Toolbar element exists');
+    // maxRight = 1920 - 200 - 8 = 1712
+    assert.strictEqual(toolbar.style.right, '1712px', 'Excessive right coordinate clamped to viewport edge - 8px');
+    // maxTop = 1080 - 40 - 8 = 1032
+    assert.strictEqual(toolbar.style.top, '1032px', 'Excessive top coordinate clamped to viewport edge - 8px');
+
+    // Saved position with negative or sub-minimum coordinates
+    mockStorage.vibeToolbarPos = { right: '-50px', top: '2px' };
+    VibeEvents.emit('overlay:shown');
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    assert.strictEqual(toolbar.style.right, '8px', 'Sub-minimum right coordinate clamped to 8px');
+    assert.strictEqual(toolbar.style.top, '8px', 'Sub-minimum top coordinate clamped to 8px');
+  });
+
+  await t.test('narrow or short viewports clamp coordinates to maintain minimum 8px margin', async () => {
+    // Narrow viewport (300px) and short viewport (200px)
+    window.innerWidth = 300;
+    window.innerHeight = 200;
+
+    mockStorage.vibeToolbarPos = { right: '200px', top: '180px' };
+
+    shadowRootMock.children = [];
+    await VibeToolbar.init();
+
+    const toolbar = getToolbar();
+    assert.ok(toolbar, 'Toolbar element exists');
+    // maxRight = 300 - 200 - 8 = 92
+    assert.strictEqual(toolbar.style.right, '92px', 'Narrow viewport clamps right to 92px');
+    // maxTop = 200 - 40 - 8 = 152
+    assert.strictEqual(toolbar.style.top, '152px', 'Short viewport clamps top to 152px');
+
+    // Viewport smaller than toolbar itself (width 150 < 200, height 30 < 40)
+    window.innerWidth = 150;
+    window.innerHeight = 30;
+    mockStorage.vibeToolbarPos = { right: '50px', top: '50px' };
+
+    VibeEvents.emit('overlay:shown');
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    assert.strictEqual(toolbar.style.right, '8px', 'Extremely narrow viewport maintains at least 8px margin');
+    assert.strictEqual(toolbar.style.top, '8px', 'Extremely short viewport maintains at least 8px margin');
+  });
+
+  await t.test('resizing browser window while toolbar is visible adjusts position if overflowing', async () => {
+    window.innerWidth = 1920;
+    window.innerHeight = 1080;
+
+    mockStorage.vibeToolbarPos = { right: '500px', top: '200px' };
+
+    shadowRootMock.children = [];
+    await VibeToolbar.init();
+
+    const toolbar = getToolbar();
+    assert.ok(toolbar, 'Toolbar element exists');
+    assert.strictEqual(toolbar.style.right, '500px');
+    assert.strictEqual(toolbar.style.top, '200px');
+
+    // Resize window width from 1920 to 600
+    // maxRight = 600 - 200 - 8 = 392px (< 500px -> must adjust)
+    window.innerWidth = 600;
+    window.dispatchEvent({ type: 'resize' });
+
+    assert.strictEqual(toolbar.style.right, '392px', 'Window width shrink adjusted overflowing right coordinate');
+    assert.strictEqual(toolbar.style.top, '200px', 'Top coordinate remained unchanged because it was within bounds');
+
+    // Resize window height from 1080 to 220
+    // maxTop = 220 - 40 - 8 = 172px (< 200px -> must adjust)
+    window.innerHeight = 220;
+    window.dispatchEvent({ type: 'resize' });
+
+    assert.strictEqual(toolbar.style.right, '392px', 'Right coordinate remained intact');
+    assert.strictEqual(toolbar.style.top, '172px', 'Window height shrink adjusted overflowing top coordinate');
+
+    // Resize window back to larger size (1920x1080)
+    // 392px and 172px are well within bounds, so position should NOT be altered
+    window.innerWidth = 1920;
+    window.innerHeight = 1080;
+    window.dispatchEvent({ type: 'resize' });
+
+    assert.strictEqual(toolbar.style.right, '392px', 'Position not altered when expanding window');
+    assert.strictEqual(toolbar.style.top, '172px', 'Position not altered when expanding window');
+  });
+
+  await t.test('resizing window while overlay is closed does not adjust until reopened', async () => {
+    window.innerWidth = 1920;
+    window.innerHeight = 1080;
+
+    mockStorage.vibeToolbarPos = { right: '300px', top: '150px' };
+
+    shadowRootMock.children = [];
+    await VibeToolbar.init();
+
+    const toolbar = getToolbar();
+    assert.strictEqual(toolbar.style.right, '300px');
+    assert.strictEqual(toolbar.style.top, '150px');
+
+    // Close the overlay
+    VibeEvents.emit('overlay:closed');
+
+    // Resize window to narrow width while closed
+    window.innerWidth = 400;
+    window.dispatchEvent({ type: 'resize' });
+
+    // While closed, toolbar position was not adjusted by resize handler
+    assert.strictEqual(toolbar.style.right, '300px', 'Closed toolbar should not be adjusted on resize');
+
+    // Reopen the overlay
+    VibeEvents.emit('overlay:shown');
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    // Upon reopening, restorePosition clamps to new window width (400 - 200 - 8 = 192px)
+    assert.strictEqual(toolbar.style.right, '192px', 'Reopening restores position clamped to current viewport bounds');
+    assert.strictEqual(toolbar.style.top, '150px', 'Top coordinate within bounds restored correctly');
+  });
+
+  await t.test('initial load without saved position on constrained viewport clamps default position', async () => {
+    // Very constrained window
+    window.innerWidth = 150;
+    window.innerHeight = 50;
+    delete mockStorage.vibeToolbarPos;
+
+    shadowRootMock.children = [];
+    await VibeToolbar.init();
+
+    const toolbar = getToolbar();
+    assert.ok(toolbar, 'Toolbar element exists');
+    assert.strictEqual(toolbar.style.right, '8px', 'Default position clamped to minimum 8px on narrow screen');
+    assert.strictEqual(toolbar.style.top, '8px', 'Default position clamped to minimum 8px on short screen');
+  });
+
+  await t.test('dragging toolbar clamps within viewport bounds', async () => {
+    window.innerWidth = 800;
+    window.innerHeight = 600;
+    mockStorage.vibeToolbarPos = { right: '100px', top: '100px' };
+
+    shadowRootMock.children = [];
+    await VibeToolbar.init();
+
+    const toolbar = getToolbar();
+
+    toolbar.dispatchEvent({
+      type: 'mousedown',
+      target: toolbar,
+      clientX: 100,
+      clientY: 100,
+      preventDefault: () => {}
+    });
+
+    const mousemove = documentListeners.mousemove?.[documentListeners.mousemove.length - 1];
+    const mouseup = documentListeners.mouseup?.[documentListeners.mouseup.length - 1];
+
+    // Drag way beyond top-left corner
+    mousemove({ clientX: -500, clientY: -500 });
+    mouseup({});
+
+    // maxRight = 800 - 200 - 8 = 592px
+    assert.strictEqual(toolbar.style.right, '592px', 'Drag right clamped to maxRight');
+    // minTop = 8px
+    assert.strictEqual(toolbar.style.top, '8px', 'Drag top clamped to 8px');
+
+    // Now drag way beyond bottom-right corner
+    toolbar.dispatchEvent({
+      type: 'mousedown',
+      target: toolbar,
+      clientX: 100,
+      clientY: 100,
+      preventDefault: () => {}
+    });
+
+    mousemove({ clientX: 2000, clientY: 2000 });
+    mouseup({});
+
+    // minRight = 8px
+    assert.strictEqual(toolbar.style.right, '8px', 'Drag right clamped to 8px');
+    // maxTop = 600 - 40 - 8 = 552px
+    assert.strictEqual(toolbar.style.top, '552px', 'Drag top clamped to maxTop');
   });
 });
