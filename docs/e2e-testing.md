@@ -1,6 +1,8 @@
 # Extension E2E Test Harness & Keyboard Conflict Baselines
 
-This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, browser/headless configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, the automated IME composition coverage for A7, the A12/A13 session-recovery and focus-restoration coverage for ticket #10, and the A16 injection-path coverage (static, dynamic, late) for ticket #11.
+This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, browser/headless configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, the automated IME composition coverage for A7, the A12/A13 session-recovery and focus-restoration coverage for ticket #10, the A16 injection-path coverage (static, dynamic, late) for ticket #11, and the A15 cross-frame session coverage for ticket #12.
+
+Section 11 is the acceptance-coverage index: which committed spec automates each of A1–A16.
 
 ---
 
@@ -315,3 +317,100 @@ Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, new 
   pnpm test:extension                                  # 61 passed (unit)
   ```
   Raw output: `.scratch/annotate-keyboard-isolation/a11-after-fix.txt`.
+
+---
+
+## 10. A15 Cross-Frame Session Coverage (Ticket #12)
+
+Spec file: `tests/e2e/frame-session.spec.js` (part of the standard `pnpm test:extension:e2e` command). Fixtures: `tests/fixtures/framed-annotate.html` (top page), `tests/fixtures/frame-child.html` (frame) and their shared `tests/fixtures/frame-host-contract.js` (counters, event journal, parse-time host listeners). Unit coverage of the coordination protocol: `tests/keyboard-session-sync.test.js` (frame half, `lib/content/keyboard-router.js`) and `tests/session-coordinator.test.js` (tab half, `lib/background/session-coordinator.js`); the wire vocabulary both halves share lives in `lib/session-protocol.js`.
+
+### 10.1 Production contract under test
+
+One Annotate session per tab, shared by every frame the extension is authorized and able to control:
+
+- **Joining.** Each frame's keyboard router asks the coordinator which session the tab is in when it boots (`vibeSessionHello` plus a per-document nonce), so a frame that loads mid-session — a new iframe, or a frame that navigated — joins the session instead of leaking host shortcuts. Isolation starts at that moment: the frame consumes keys from `document_start`, and activates its own overlay (cursor, hover, click-to-annotate) once its UI exists (`VibeKeyboardRouter.onUiReady()`, called from `entrypoints/content/index.js` after `bootNormal()`), so annotating from a frame is the same action as annotating from the top page.
+- **Publication.** A frame's local transition is reported (`vibeSessionState`) with its nonce; the coordinator records that frame as the owner and relays the state (`vibeSessionRemoteState`) with `chrome.tabs.sendMessage`, which reaches exactly the frames that have a content script — unauthorized, restricted and non-injectable frames are never told they are protected. The owner's nonce travels with the broadcast, so the frame that produced a transition ignores its own echo.
+- **Ownership and transient state.** What is shared tab-wide is the existence of the session, not one frame's transient state. A frame running its own state machine keeps it: an editor open in one frame is not another frame's editor, and a frame that mirrored `editing` would consume keys with no editor of its own to route them to. A mirror is therefore in `selection` and owns the keyboard there; selecting an element in it opens *that frame's* editor and makes it the owner. `data-vibe-session-state` is each frame's own state on purpose — the evidence a frame publishes is a claim about that frame.
+- **Release.** Any frame can exit; the release is published, the coordinator ends the tab session and every frame hands its keyboard back. The release broadcast is stamped with the reporting frame's nonce, because that frame has already released locally and may start a new session while the broadcast it caused is still in flight.
+- **Frame lifecycle.** A frame whose document merely mirrors the session drops its own copy silently when that document goes away (subframe navigation or removal), so it cannot end the session the rest of the tab is using. The frame that *owns* the session reports the release when its document is replaced or removed, because nothing else can observe that the state machine driving the session is gone. A new top-level document always resets the tab (`frameId === 0`); subframe navigation never does.
+- **Registration.** Both permitted injection paths cover frames: the manifest content script declares `all_frames: true`, and `enableSite` registers the dynamic copy with `allFrames: true`. No site permission was added for this feature.
+- **Evidence.** Each frame publishes `data-vibe-session-state` (`idle`/`selection`/`waiting`/`editing`) and `data-vibe-session-mirror` (`true` when another frame drives the session) on its own shadow host. A frame without a shadow host publishes nothing, which is the honest record that it is not represented as protected.
+
+### 10.2 Automated scenarios
+
+| Test | Asserted behavior |
+| :--- | :--- |
+| A15 frames | Entering Annotate on the top page activates the session in the same-origin and the authorized cross-origin frame; each publishes `selection` with `mirror: true` and activates its own overlay. Focus moves into the same-origin frame by selecting an element there — a real extension action: the frame's own state machine drives `editing`, the change reaches the other frames, and editor Esc returns to selection without ending the session. Arrow keys, a character and Backspace sent while that frame has focus reach none of its window/document capture, bubble or property listeners and run no host command. Holding the exit key (press, repeat, release) exits the shared session, leaves every frame's host counters at zero, and a fresh Esc afterwards reaches the focused frame's host exactly once — while the top page's host receives nothing. |
+| A15 cross-origin frame | An authorized cross-origin frame annotates inside the shared session: an element there is selected, the editor keeps native text editing (Backspace edits the textarea), the save shortcut saves exactly once and produces exactly one badge in that frame, and the frame's host receives zero keyboard events. The exit releases the top page and both frames, and afterwards the frame owns its own keyboard again. |
+| A15 frame lifecycle | A mirror frame navigated by the host: the replacement document joins the running session and the top page's session is unaffected. A mirror frame removed from the DOM: the session survives in the frames that remain. Then the document that *owns* the session is replaced and, separately, removed: the release is published, the remaining frame hands its keyboard back, and a fresh key reaches the host again. |
+| A15 unauthorized | A frame on an origin outside every declared host permission has no extension UI and publishes no session evidence, before or during the session. Keys pressed while it has focus reach its own host, and the protected session in the other frames is untouched — the coverage claim stays truthful instead of implied. |
+| A15 dynamic registration | The production site-enable flow (permission modal → grant handling → `enableSite`) creates a dynamic registration with `allFrames: true`, `runAt: document_start` and `world: ISOLATED`, and frames of the enabled origin then take part in one session with its top page. |
+
+### 10.3 Controlled frame origins and coverage boundaries
+
+The top page embeds three frames, all route-fulfilled by the test runner and configurable per test through query parameters:
+
+| Frame | Origin | Relationship |
+| :--- | :--- | :--- |
+| `same-origin` | the top origin (`http://127.0.0.1:3005`, or the controlled origin) | same-origin frame |
+| `cross-origin` | `http://localhost:3005` | genuinely cross-origin (different host), inside the declared host permissions, injected at load |
+| `unlisted` | `http://vibe-unlisted.invalid:3005` | outside every declared host permission — never injectable |
+
+Boundaries, all verified in this environment (Windows 10.0.26200, Chromium 153.0.8010.12, Playwright 1.63.0, new headless mode):
+
+- **The unlisted frame proves the absence of a claim, not the absence of a leak.** It is not restricted by the browser, it is simply outside the extension's permissions, so the honest assertion is "no UI, no session evidence, and the keys still belong to that frame's host". Guaranteeing isolation in unauthorized or non-injectable frames is explicitly out of scope.
+- **Dynamic frame coverage is asserted from the registration plus a participating frame, not from a dynamic-only origin.** Enabling an origin outside the declared host permissions needs the native permission bubble, which cannot be answered in this harness (§9.4). The test therefore reads `allFrames: true` back from Chrome for the dynamic registration and then asserts that frames of the enabled origin share the session; that origin is also matched statically, which is the same configuration production uses for a granted non-localhost site.
+- **Focus is moved the way a user moves it.** Every frame transition in the spec is a real click inside the frame (an element selection while the session is active), and keyboard input is real browser input delivered by Playwright to the focused frame — including into the out-of-process cross-origin frame.
+- **The two "owner document disappears" scenarios are distinct code paths** (a `pagehide` report from the owner, and the coordinator's reset on a new top document), so they are asserted separately rather than assumed equivalent.
+- **Service-worker restarts are a documented gap.** The coordinator's session record lives in the MV3 service worker. Frames that are already participating keep their own protection across a worker restart (each frame holds its own state machine, and the next transition re-creates the record), but a frame that loads during the window in which the worker is gone is answered `idle` and does not join, so keys pressed while it has focus reach its own host. Closing this needs a worker-lifetime-independent record (for example `chrome.storage.session`) or a re-discovery probe; neither is implemented here, and neither is automatable in this harness without a flaky worker-kill test.
+
+### 10.4 Failure-to-pass evidence (Ticket #12)
+
+Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, new headless mode), extension built from `packages/extension` source.
+
+- Before the fix (production source reverted, tests kept): the three files this ticket changes are reverted, and the two new production modules are moved aside:
+  ```bash
+  # with lib/session-protocol.js and lib/background/session-coordinator.js moved aside
+  git checkout HEAD -- packages/extension/lib/content/keyboard-router.js \
+      packages/extension/entrypoints/background.js packages/extension/entrypoints/content/index.js
+  cd packages/extension && npx wxt build
+  node --test tests/keyboard-session-sync.test.js
+  npx playwright test tests/e2e/frame-session.spec.js --reporter=list
+  ```
+  Result: `pass 1, fail 11` for the frame-half unit tests and `5 failed` for every A15 test — no frame publishes session evidence and no frame joins a session, so nothing about frame synchronization holds. Raw output: `.scratch/annotate-keyboard-isolation/a15-before-fix.txt`.
+- After the fix (current source, three consecutive full runs):
+  ```bash
+  pnpm test:extension:e2e                                  # 50 passed, includes the 5 A15 tests and A1-A14, A16 regressions
+  pnpm --filter vibe-annotations-extension test:baseline    # 6 passed
+  pnpm test:extension                                      # 87 passed (unit, includes 12 frame-half and 14 coordinator tests)
+  ```
+  Raw output: `.scratch/annotate-keyboard-isolation/a15-after-fix.txt`.
+- The coordinator module (`lib/background/session-coordinator.js`) and the shared protocol module (`lib/session-protocol.js`) are new in this ticket, so `session-coordinator.test.js` has no "before" counterpart (it fails to import on the reverted tree, which is what the raw output shows); the coordinator's rules are also exercised end to end by the A15 spec.
+- An earlier iteration of this change failed the existing A13 "repeated entry and exit" regression intermittently: the release broadcast was not stamped with the reporting frame's nonce, so a frame that exited and immediately re-entered applied its own in-flight release and tore down the new session. The stamp and the ordering assertion that covers it (`a stale release caused by this frame's own exit cannot end a session it re-entered`) are part of this ticket.
+
+---
+
+## 11. Acceptance Coverage Index (A1–A16)
+
+Every core acceptance scenario is an automated E2E regression run by the standard command (`pnpm test:extension:e2e`), except A7's operating-system candidate-window path, whose automated scope and manual status are documented in §7. The conflict baselines of §6 are the separate command `pnpm --filter vibe-annotations-extension test:baseline`.
+
+| ID | Automated in | Notes |
+| :--- | :--- | :--- |
+| A1 | `selection-keyboard.spec.js` (canvas focus, toolbar focus), `keyboard-baseline.spec.js` | |
+| A2 | `selection-keyboard.spec.js`, `keyboard-baseline.spec.js` | |
+| A3 | `editing-keyboard.spec.js` (plain and hostile early-capture host), `keyboard-baseline.spec.js` | |
+| A4 | `selection-keyboard.spec.js` | |
+| A5 | `selection-keyboard.spec.js` | |
+| A6 | `editing-keyboard.spec.js` | |
+| A7 | `ime-composition.spec.js` (4 tests) | Browser-protocol composition only; OS candidate window not automated — see §7.2, manual check §7.3 (not executed) |
+| A8 | `editing-keyboard.spec.js` (editor Esc, save shortcut) | |
+| A9 | `editing-keyboard.spec.js` (delayed context, exit before completion) | |
+| A10 | `selection-keyboard.spec.js`, `injection-paths.spec.js` | |
+| A11 | `selection-keyboard.spec.js` (held Esc, repeat, release) | |
+| A12 | `session-recovery.spec.js` (3 tests) | Blur delivered as a controlled window event — see §8.2 |
+| A13 | `session-recovery.spec.js` (5 tests), `focus-restore.spec.js` (4 tests) | |
+| A14 | `a14-controls-keyboard.spec.js` (6 tests) | |
+| A15 | `frame-session.spec.js` (5 tests) | See §10 for coverage boundaries |
+| A16 | `injection-paths.spec.js` (3 tests, static/late/dynamic) | See §9.4 for coverage boundaries |
+
+Supporting specs that are not A-scenarios: `fixture-outside.spec.js` (proves the fixture's host listeners and counters work outside Annotate) and `extension-entry.spec.js` (extension loading and the toolbar entry point).

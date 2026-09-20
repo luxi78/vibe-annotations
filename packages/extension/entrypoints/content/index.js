@@ -106,6 +106,11 @@ async function bootNormal() {
   setupRouteChangeDetection();
   setupAnnotationEvents();
 
+  // The router mirrors the tab's Annotate session from document_start, before any
+  // of this UI existed. Now that it does, a mirrored session can drive the local
+  // overlay (cursor, hover, click-to-annotate) instead of only owning the keyboard.
+  VibeKeyboardRouter.onUiReady();
+
   if (!overlayClosed) {
     waitForHydrationAndShowAnnotations();
   }
