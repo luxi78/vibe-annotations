@@ -98,6 +98,8 @@
       deleteCount: 0,
       escCount: 0,
       backspaceCount: 0,
+      clickCount: 0,
+      mouseDownCount: 0,
       preventDefaultOnBackspace: false,
       stopImmediatePropagationOnEsc: false,
       lateListenersRegistered: false
@@ -247,6 +249,18 @@
       recordEvent('window-property', e);
     };
 
+    // 6. Mouse activity counters — prove the extension never simulates clicks on
+    // the host page (extension UI events are retargeted to its shadow host).
+    function isExtensionUI(e) {
+      return !!(e.target && e.target.id === 'vibe-annotations-root');
+    }
+    window.addEventListener('click', function(e) {
+      if (!isExtensionUI(e)) window.__FIXTURE_STATE.clickCount++;
+    }, true);
+    window.addEventListener('mousedown', function(e) {
+      if (!isExtensionUI(e)) window.__FIXTURE_STATE.mouseDownCount++;
+    }, true);
+
     // Public test helpers
     window.__resetFixtureState = function() {
       window.__FIXTURE_STATE.selected = true;
@@ -255,6 +269,8 @@
       window.__FIXTURE_STATE.deleteCount = 0;
       window.__FIXTURE_STATE.escCount = 0;
       window.__FIXTURE_STATE.backspaceCount = 0;
+      window.__FIXTURE_STATE.clickCount = 0;
+      window.__FIXTURE_STATE.mouseDownCount = 0;
       window.__EVENT_LOG = [];
       updateDOM();
     };
@@ -280,6 +296,10 @@
     }
     if (params.get('stopEsc') === 'true') {
       window.__FIXTURE_STATE.stopImmediatePropagationOnEsc = true;
+    }
+    // Controlled extension initialization failure (ticket #10 A13)
+    if (params.get('bootFail') === 'true') {
+      document.documentElement.setAttribute('data-vibe-boot-fail', '');
     }
   </script>
 </head>
@@ -311,6 +331,9 @@
     <div data-variant="1" class="variant-child" style="padding: 10px; background: #1e293b; border-radius: 4px;">Variant 1 Alpha</div>
     <div data-variant="2" class="variant-child" style="padding: 10px; background: #334155; border-radius: 4px; display: none;">Variant 2 Beta</div>
   </div>
+
+  <!-- Makes the page scrollable so focus restoration can prove it does not scroll -->
+  <div id="page-spacer" style="height: 1500px;"></div>
 
 
   <script>

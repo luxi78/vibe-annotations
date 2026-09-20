@@ -37,7 +37,10 @@ export const test = base.extend({
     ];
 
     const context = await chromium.launchPersistentContext(tmpDir, {
-      headless: false, // Chrome extensions require headed or xvfb in CI
+      // Extensions need full Chromium (channel) + new headless mode; the classic
+      // headless shell cannot load them. Set VIBE_E2E_HEADED=1 for a visible run.
+      channel: 'chromium',
+      headless: !process.env.VIBE_E2E_HEADED,
       args: launchArgs,
     });
 

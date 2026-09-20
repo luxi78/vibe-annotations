@@ -631,5 +631,139 @@ test('VibeKeyboardRouter unit tests', async (t) => {
     VibeKeyboardRouter.setActivePopoverForTesting?.(null);
     VibeShadowHost.getHost = origGetHost;
   });
+
+  await t.test('Blur with a lost keyup keeps the consumed release owned while a fresh press is routed (A12)', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.SELECTION);
+
+    // Held Esc exits Annotate; its keyup never arrives (window blurred)
+    const escDown = createSimulatedEvent({ key: 'Escape', code: 'Escape' });
+    dispatch(escDown);
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+
+    VibeKeyboardRouter.onBlur();
+
+    // The stray release of the consumed exit key is still owned by the session
+    const staleUp = createSimulatedEvent({ type: 'keyup', key: 'Escape', code: 'Escape' });
+    dispatch(staleUp);
+    assert.strictEqual(staleUp.defaultPrevented, true, 'Stray release must stay owned by the session');
+    assert.strictEqual(staleUp.immediatePropagationStopped, true, 'Stray release must not reach the host');
+
+    // A new full press after the blur is a fresh keystroke, not a continuation
+    const freshDown = createSimulatedEvent({ key: 'Escape', code: 'Escape' });
+    dispatch(freshDown);
+    assert.strictEqual(freshDown.defaultPrevented, false, 'Fresh press must not be swallowed by the stale release');
+    assert.strictEqual(freshDown.immediatePropagationStopped, false);
+
+    const freshUp = createSimulatedEvent({ type: 'keyup', key: 'Escape', code: 'Escape' });
+    dispatch(freshUp);
+    assert.strictEqual(freshUp.defaultPrevented, false, 'Release of the fresh press must be routed normally');
+  });
+
+  await t.test('Page hide terminates the session and releases keyboard ownership (A13)', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.WAITING);
+
+    let dismissRequests = 0;
+    let stopCount = 0;
+    const onDismiss = () => { dismissRequests++; };
+    const onStop = () => { stopCount++; };
+    VibeEvents.on('popover:requestDismiss', onDismiss);
+    VibeEvents.on('inspection:stop', onStop);
+
+    VibeKeyboardRouter.onPageHide();
+
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE, 'Page hide must end the session');
+    assert.strictEqual(dismissRequests, 1, 'Any open editor must be closed exactly once');
+    assert.strictEqual(stopCount, 1, 'Inspection must be stopped exactly once');
+
+    // Keys are no longer consumed
+    const ordinary = createSimulatedEvent({ key: 'a', code: 'KeyA' });
+    dispatch(ordinary);
+    assert.strictEqual(ordinary.defaultPrevented, false, 'Host must own its keyboard after page hide');
+    assert.strictEqual(ordinary.immediatePropagationStopped, false);
+
+    VibeEvents.off('popover:requestDismiss', onDismiss);
+    VibeEvents.off('inspection:stop', onStop);
+  });
+
+  await t.test('Explicit overlay closure ends the session exactly once (A13)', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.SELECTION);
+
+    let stopCount = 0;
+    const onStop = () => { stopCount++; };
+    VibeEvents.on('inspection:stop', onStop);
+
+    VibeEvents.emit('overlay:closed');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE, 'Overlay closure must end the session');
+    assert.strictEqual(stopCount, 1, 'Overlay closure must stop inspection once');
+
+    // A repeated closure must not run a second teardown
+    VibeEvents.emit('overlay:closed');
+    assert.strictEqual(stopCount, 1, 'Repeated closure must not duplicate commands');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+
+    VibeEvents.off('inspection:stop', onStop);
+  });
+
+  await t.test('Page hidden clears held keys without releasing an active session (A13)', () => {
+    VibeKeyboardRouter.resetForTesting();
+    const previousDocument = typeof globalThis.document !== 'undefined' ? globalThis.document : null;
+    globalThis.document = { visibilityState: 'hidden' };
+
+    try {
+      VibeKeyboardRouter.setState(SessionState.SELECTION);
+      VibeKeyboardRouter.onVisibilityChange();
+      assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION, 'A hidden page keeps its session');
+
+      const consumed = createSimulatedEvent({ key: 'a', code: 'KeyA' });
+      dispatch(consumed);
+      assert.strictEqual(consumed.defaultPrevented, true, 'Selection still owns the keyboard');
+
+      // Exit, then lose the release while the page is hidden
+      const escDown = createSimulatedEvent({ key: 'Escape', code: 'Escape' });
+      dispatch(escDown);
+      VibeKeyboardRouter.onVisibilityChange();
+      assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+
+      const staleUp = createSimulatedEvent({ type: 'keyup', key: 'Escape', code: 'Escape' });
+      dispatch(staleUp);
+      assert.strictEqual(staleUp.defaultPrevented, true, 'The release lost to the hidden page stays owned');
+
+      const freshDown = createSimulatedEvent({ key: 'Escape', code: 'Escape' });
+      dispatch(freshDown);
+      assert.strictEqual(freshDown.defaultPrevented, false, 'A fresh press is routed to the host');
+    } finally {
+      if (previousDocument) globalThis.document = previousDocument;
+      else delete globalThis.document;
+    }
+  });
+
+  await t.test('teardown is idempotent and re-init does not duplicate listeners or commands (A13)', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.SELECTION);
+
+    VibeKeyboardRouter.teardown();
+    VibeKeyboardRouter.teardown();
+
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE, 'Teardown must release ownership');
+    assert.strictEqual((listeners.capture.keydown || []).length, 0, 'Teardown must remove capture listeners');
+    assert.strictEqual((listeners.bubble.blur || []).length, 0, 'Teardown must remove the blur listener');
+
+    // Re-init registers exactly one set of listeners and one command per keystroke
+    VibeKeyboardRouter.init();
+    assert.strictEqual((listeners.capture.keydown || []).length, 1, 'Re-init must not duplicate capture listeners');
+
+    VibeKeyboardRouter.setState(SessionState.SELECTION);
+    let stopCount = 0;
+    const onStop = () => { stopCount++; };
+    VibeEvents.on('inspection:stop', onStop);
+
+    dispatch(createSimulatedEvent({ key: 'Escape', code: 'Escape' }));
+    assert.strictEqual(stopCount, 1, 'One exit keystroke must run exactly one command');
+
+    VibeEvents.off('inspection:stop', onStop);
+  });
 });
 

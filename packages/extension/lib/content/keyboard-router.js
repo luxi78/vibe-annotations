@@ -1,6 +1,8 @@
 // Centralized keyboard router and event isolation manager.
 // Intercepts window capture-phase keyboard events from document_start,
 // owns keyboard routing by annotation-session lifecycle, and drains exit-key sequences.
+// Session cleanup (blur, page hiding, overlay closure, initialization failure,
+// destruction) is idempotent and never leaves the page with stale key ownership.
 
 import VibeEvents from './event-bus.js';
 import VibeAPI from './api-bridge.js';
@@ -60,11 +62,126 @@ const pressedKeys = new Set();
 let drainingCodes = new Set();
 let drainingKeys = new Set();
 
+// Keys the session consumed whose release was lost to a blur. The eventual
+// release still belongs to the consumed keystroke and must not reach the host,
+// but a new full press of the same key is a fresh keystroke and supersedes it.
+const pendingReleaseCodes = new Set();
+const pendingReleaseKeys = new Set();
+
 // Element currently receiving IME composition text inside the extension UI
 let composingTarget = null;
 
 function getEventTarget() {
   return typeof window !== 'undefined' ? window : null;
+}
+
+let shortcutStorageListener = null;
+let sessionEventsSubscribed = false;
+
+function onShortcutStorageChanged(changes, ns) {
+  if (ns === 'local' && changes.vibeCustomShortcut) {
+    customShortcut = changes.vibeCustomShortcut.newValue || null;
+  }
+}
+
+function onInspectionStart() {
+  currentState = SessionState.SELECTION;
+}
+
+function onInspectionStop() {
+  currentState = SessionState.IDLE;
+}
+
+function onElementSelected() {
+  currentState = SessionState.WAITING;
+}
+
+function onAnnotationEdit() {
+  if (VibeInspectionMode.isActive()) {
+    currentState = SessionState.WAITING;
+  }
+}
+
+function onPopoverOpened() {
+  if (currentState === SessionState.WAITING) {
+    currentState = SessionState.EDITING;
+  }
+}
+
+function onPopoverDismissed({ reEnableInspection } = {}) {
+  currentState = reEnableInspection ? SessionState.SELECTION : SessionState.IDLE;
+}
+
+function onPopoverCancelled() {
+  currentState = VibeInspectionMode.isActive() ? SessionState.SELECTION : SessionState.IDLE;
+}
+
+function onShortcutRecordingStart() {
+  isRecordingShortcut = true;
+}
+
+function onShortcutRecordingStop() {
+  isRecordingShortcut = false;
+}
+
+// The overlay disappeared: whatever the user was annotating is over, so the
+// session must not keep ownership (or an editor) alive behind a hidden UI.
+function onOverlayClosed() {
+  terminateSession();
+}
+
+function subscribeSessionEvents() {
+  if (sessionEventsSubscribed) return;
+  sessionEventsSubscribed = true;
+
+  VibeEvents.on('inspection:start', onInspectionStart);
+  VibeEvents.on('inspection:started', onInspectionStart);
+  VibeEvents.on('inspection:stop', onInspectionStop);
+  VibeEvents.on('inspection:stopped', onInspectionStop);
+  VibeEvents.on('inspection:elementClicked', onElementSelected);
+  VibeEvents.on('annotation:edit', onAnnotationEdit);
+  VibeEvents.on('popover:opened', onPopoverOpened);
+  VibeEvents.on('popover:dismissed', onPopoverDismissed);
+  VibeEvents.on('popover:cancelled', onPopoverCancelled);
+  VibeEvents.on('shortcut:recording:start', onShortcutRecordingStart);
+  VibeEvents.on('shortcut:recording:stop', onShortcutRecordingStop);
+  VibeEvents.on('overlay:closed', onOverlayClosed);
+}
+
+function unsubscribeSessionEvents() {
+  if (!sessionEventsSubscribed) return;
+  sessionEventsSubscribed = false;
+
+  VibeEvents.off('inspection:start', onInspectionStart);
+  VibeEvents.off('inspection:started', onInspectionStart);
+  VibeEvents.off('inspection:stop', onInspectionStop);
+  VibeEvents.off('inspection:stopped', onInspectionStop);
+  VibeEvents.off('inspection:elementClicked', onElementSelected);
+  VibeEvents.off('annotation:edit', onAnnotationEdit);
+  VibeEvents.off('popover:opened', onPopoverOpened);
+  VibeEvents.off('popover:dismissed', onPopoverDismissed);
+  VibeEvents.off('popover:cancelled', onPopoverCancelled);
+  VibeEvents.off('shortcut:recording:start', onShortcutRecordingStart);
+  VibeEvents.off('shortcut:recording:stop', onShortcutRecordingStop);
+  VibeEvents.off('overlay:closed', onOverlayClosed);
+}
+
+function attachKeyboardListeners(target) {
+  target.addEventListener('keydown', onKeyDown, true);
+  target.addEventListener('keyup', onKeyUp, true);
+  target.addEventListener('keypress', onKeyPress, true);
+  target.addEventListener('compositionstart', onCompositionStart, true);
+  target.addEventListener('compositionend', onCompositionEnd, true);
+  target.addEventListener('blur', onBlur);
+}
+
+function detachKeyboardListeners(target) {
+  target.removeEventListener('keydown', onKeyDown, true);
+  target.removeEventListener('keyup', onKeyUp, true);
+  target.removeEventListener('keypress', onKeyPress, true);
+  target.removeEventListener('compositionstart', onCompositionStart, true);
+  target.removeEventListener('compositionend', onCompositionEnd, true);
+  target.removeEventListener('blur', onBlur);
 }
 
 function init() {
@@ -73,12 +190,11 @@ function init() {
 
   const target = getEventTarget();
   if (target && target.addEventListener) {
-    target.addEventListener('keydown', onKeyDown, true);
-    target.addEventListener('keyup', onKeyUp, true);
-    target.addEventListener('keypress', onKeyPress, true);
-    target.addEventListener('compositionstart', onCompositionStart, true);
-    target.addEventListener('compositionend', onCompositionEnd, true);
-    target.addEventListener('blur', onBlur);
+    attachKeyboardListeners(target);
+    target.addEventListener('pagehide', onPageHide);
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
   }
 
   // Load shortcut and subscribe to changes
@@ -87,52 +203,103 @@ function init() {
   }
 
   if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    chrome.storage.onChanged.addListener((changes, ns) => {
-      if (ns === 'local' && changes.vibeCustomShortcut) {
-        customShortcut = changes.vibeCustomShortcut.newValue || null;
-      }
-    });
+    shortcutStorageListener = onShortcutStorageChanged;
+    chrome.storage.onChanged.addListener(shortcutStorageListener);
   }
 
   // Synchronize state with annotation lifecycle events
-  VibeEvents.on('inspection:start', () => {
-    currentState = SessionState.SELECTION;
-  });
-  VibeEvents.on('inspection:started', () => {
-    currentState = SessionState.SELECTION;
-  });
-  VibeEvents.on('inspection:stop', () => {
-    currentState = SessionState.IDLE;
-  });
-  VibeEvents.on('inspection:stopped', () => {
-    currentState = SessionState.IDLE;
-  });
-  VibeEvents.on('inspection:elementClicked', () => {
-    currentState = SessionState.WAITING;
-  });
-  VibeEvents.on('annotation:edit', () => {
-    if (VibeInspectionMode.isActive()) {
-      currentState = SessionState.WAITING;
-    }
-  });
-  VibeEvents.on('popover:opened', () => {
-    if (currentState === SessionState.WAITING) {
-      currentState = SessionState.EDITING;
-    }
-  });
-  VibeEvents.on('popover:dismissed', ({ reEnableInspection } = {}) => {
-    currentState = reEnableInspection ? SessionState.SELECTION : SessionState.IDLE;
-  });
-  VibeEvents.on('popover:cancelled', () => {
-    currentState = VibeInspectionMode.isActive() ? SessionState.SELECTION : SessionState.IDLE;
-  });
-  VibeEvents.on('shortcut:recording:start', () => {
-    isRecordingShortcut = true;
-  });
-  VibeEvents.on('shortcut:recording:stop', () => {
-    isRecordingShortcut = false;
-  });
+  subscribeSessionEvents();
 }
+
+// Release every key the session still believes is held or owned. Used when an
+// event that would deliver the release cannot reach the page anymore.
+function clearHeldKeyData() {
+  pressedCodes.clear();
+  pressedKeys.clear();
+  drainingCodes = new Set();
+  drainingKeys = new Set();
+  pendingReleaseCodes.clear();
+  pendingReleaseKeys.clear();
+  composingTarget = null;
+}
+
+// Focus left the page: released keys may never be reported. Keep consumed exit
+// keys owned so their stray release cannot hit the host, while a new press of
+// the same key supersedes the stale entry (see handlePendingReleaseEvent).
+// Ownership itself survives: a page that regains focus keeps its session, and
+// A12 requires "returning, re-entering, or exiting" to stay safe.
+function onFocusLoss() {
+  pressedCodes.clear();
+  pressedKeys.clear();
+
+  for (const code of drainingCodes) pendingReleaseCodes.add(code);
+  for (const key of drainingKeys) pendingReleaseKeys.add(key);
+  drainingCodes = new Set();
+  drainingKeys = new Set();
+
+  composingTarget = null;
+}
+
+function onPageHide() {
+  terminateSession();
+  clearHeldKeyData();
+}
+
+function onVisibilityChange() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') onFocusLoss();
+}
+
+function isSessionActive() {
+  return currentState !== SessionState.IDLE || VibeInspectionMode.isActive();
+}
+
+// End the Annotate session: close any open editor, hand DOM focus back to the
+// page, stop inspection and release keyboard ownership. Idempotent, and safe to
+// call from any state.
+function terminateSession() {
+  if (!isSessionActive()) return false;
+
+  VibeEvents.emit('popover:requestDismiss', { reEnableInspection: false });
+  currentState = SessionState.IDLE;
+
+  // Focus inside a (possibly hidden) extension UI would keep swallowing keys,
+  // so hand it back before the session's ownership is released.
+  const root = VibeShadowHost.getRoot?.();
+  if (root && root.activeElement && typeof root.activeElement.blur === 'function') {
+    root.activeElement.blur();
+  }
+
+  VibeEvents.emit('inspection:stop');
+  return true;
+}
+
+// Detach everything and forget all session state. Idempotent; init() can run
+// again afterwards without duplicating listeners or commands.
+function teardown() {
+  terminateSession();
+  unsubscribeSessionEvents();
+
+  const target = getEventTarget();
+  if (initialized && target && target.removeEventListener) {
+    detachKeyboardListeners(target);
+    target.removeEventListener('pagehide', onPageHide);
+    if (typeof document !== 'undefined' && document.removeEventListener) {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
+  }
+  if (shortcutStorageListener && typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+    chrome.storage.onChanged.removeListener(shortcutStorageListener);
+  }
+
+  initialized = false;
+  shortcutStorageListener = null;
+  customShortcut = null;
+  isRecordingShortcut = false;
+  activePopoverForTesting = null;
+  currentState = SessionState.IDLE;
+  clearHeldKeyData();
+}
+
 
 
 function isOurUI(e) {
@@ -199,11 +366,7 @@ function trackKeyUp(e) {
 }
 
 function onBlur() {
-  pressedCodes.clear();
-  pressedKeys.clear();
-  drainingCodes.clear();
-  drainingKeys.clear();
-  composingTarget = null;
+  onFocusLoss();
 }
 
 const MODIFIER_MAP = {
@@ -254,6 +417,39 @@ function handleDrainingEvent(e) {
   return true;
 }
 
+function matchesPendingRelease(e) {
+  return (!!e.code && pendingReleaseCodes.has(e.code)) || (!!e.key && pendingReleaseKeys.has(e.key));
+}
+
+function forgetPendingRelease(e) {
+  if (e.code) pendingReleaseCodes.delete(e.code);
+  if (e.key) pendingReleaseKeys.delete(e.key);
+
+  const mod = MODIFIER_MAP[e.key];
+  if (mod) {
+    for (const code of mod.codes) pendingReleaseCodes.delete(code);
+  }
+}
+
+// Releases lost to a blur (A12): a stray keyup for a key the session consumed
+// stays owned, while a new keydown of the same key is a fresh keystroke that
+// supersedes the stale entry and is routed normally.
+function handlePendingReleaseEvent(e) {
+  if (e.type === 'keydown') {
+    if (matchesPendingRelease(e)) forgetPendingRelease(e);
+    return false;
+  }
+
+  if (e.type === 'keyup' && matchesPendingRelease(e)) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    forgetPendingRelease(e);
+    return true;
+  }
+
+  return false;
+}
+
 function onKeyDown(e) {
   trackKeyDown(e);
   dispatchKeyboardEvent(e);
@@ -274,7 +470,12 @@ function dispatchKeyboardEvent(e) {
     return;
   }
 
-  // 2. Route event according to annotation session state
+  // 2. Own releases whose keyup was lost to a blur, and let a fresh press supersede them
+  if (handlePendingReleaseEvent(e)) {
+    return;
+  }
+
+  // 3. Route event according to annotation session state
   switch (currentState) {
     case SessionState.IDLE:
       handleIdle(e);
@@ -361,6 +562,8 @@ function handleIdle(e) {
 }
 
 function exitSelectionMode(e) {
+  if (currentState === SessionState.IDLE) return;
+
   currentState = SessionState.IDLE;
   beginDrain(e);
 
@@ -493,7 +696,8 @@ function handleEditing(e) {
   if (shouldTriggerHotkey(e, getActiveShortcut())) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    VibeAnnotationPopover.dismiss?.(false);
+    // Close the editor through the regular request channel, then release ownership.
+    VibeEvents.emit('popover:requestDismiss', { reEnableInspection: false });
     exitSelectionMode(e);
     return;
   }
@@ -570,6 +774,8 @@ function resetForTesting() {
   pressedKeys.clear();
   drainingCodes.clear();
   drainingKeys.clear();
+  pendingReleaseCodes.clear();
+  pendingReleaseKeys.clear();
   composingTarget = null;
   customShortcut = null;
   isRecordingShortcut = false;
@@ -578,8 +784,10 @@ function resetForTesting() {
 
 const VibeKeyboardRouter = {
   init,
+  teardown,
   getState,
   setState,
+  terminateSession,
   setCustomShortcutForTesting,
   setActivePopoverForTesting,
   resetForTesting,
@@ -589,6 +797,8 @@ const VibeKeyboardRouter = {
   onCompositionStart,
   onCompositionEnd,
   onBlur,
+  onPageHide,
+  onVisibilityChange,
   SessionState,
 };
 
