@@ -24,7 +24,7 @@ test('VibeKeyboardRouter unit tests', async (t) => {
 
   VibeKeyboardRouter.init();
 
-  function createSimulatedEvent({ type = 'keydown', key, code, repeat = false, ctrlKey = false, shiftKey = false, altKey = false, metaKey = false }) {
+  function createSimulatedEvent({ type = 'keydown', key, code, repeat = false, ctrlKey = false, shiftKey = false, altKey = false, metaKey = false, target = null, composedPath = null }) {
     let defaultPrevented = false;
     let immediatePropagationStopped = false;
     let propagationStopped = false;
@@ -38,6 +38,8 @@ test('VibeKeyboardRouter unit tests', async (t) => {
       shiftKey,
       altKey,
       metaKey,
+      target,
+      composedPath: composedPath ? () => composedPath : (target ? () => [target] : () => []),
       preventDefault: () => { defaultPrevented = true; },
       stopPropagation: () => { propagationStopped = true; },
       stopImmediatePropagation: () => {
@@ -204,6 +206,8 @@ test('VibeKeyboardRouter unit tests', async (t) => {
     assert.strictEqual(keyA.immediatePropagationStopped, false);
   });
 
+  const { default: VibeShadowHost } = await import('../lib/content/shadow-host.js');
+
   await t.test('Window blur resets any active drain state', () => {
     VibeKeyboardRouter.resetForTesting();
     VibeKeyboardRouter.setState(SessionState.SELECTION);
@@ -220,5 +224,141 @@ test('VibeKeyboardRouter unit tests', async (t) => {
     const escAfterBlur = createSimulatedEvent({ key: 'Escape', code: 'Escape' });
     dispatch(escAfterBlur);
     assert.strictEqual(escAfterBlur.defaultPrevented, false, 'Keys must not be stuck draining after blur');
+  });
+
+  await t.test('WAITING state isolates all keys, and Escape exits Annotate to IDLE', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.WAITING);
+
+    // Ordinary keys in WAITING are prevented and stopped
+    const ev = createSimulatedEvent({ key: 'a' });
+    dispatch(ev);
+    assert.strictEqual(ev.defaultPrevented, true, 'Ordinary key in WAITING must be default-prevented');
+    assert.strictEqual(ev.immediatePropagationStopped, true, 'Ordinary key in WAITING must be stopped');
+
+    let stopped = false;
+    const onStop = () => { stopped = true; };
+    VibeEvents.on('inspection:stop', onStop);
+
+    // Escape in WAITING cancels waiting and exits to IDLE
+    const escEv = createSimulatedEvent({ key: 'Escape', code: 'Escape' });
+    dispatch(escEv);
+    assert.strictEqual(escEv.defaultPrevented, true);
+    assert.strictEqual(escEv.immediatePropagationStopped, true);
+    assert.strictEqual(stopped, true, 'Escape in WAITING must trigger inspection:stop');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE, 'State must transition to IDLE');
+
+    VibeEvents.off('inspection:stop', onStop);
+  });
+
+  await t.test('EDITING state: native typing separates propagation blocking from default cancellation', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.EDITING);
+
+    const mockHost = { tagName: 'DIV', id: 'vibe-annotations-root' };
+    const origGetHost = VibeShadowHost.getHost;
+    VibeShadowHost.getHost = () => mockHost;
+
+    const mockTextarea = { tagName: 'TEXTAREA', id: 'comment-textarea' };
+    const composedPath = [mockTextarea, mockHost];
+
+    // Typing a character in popover textarea
+    const charEv = createSimulatedEvent({ key: 'a', code: 'KeyA', target: mockTextarea, composedPath });
+    dispatch(charEv);
+    assert.strictEqual(charEv.immediatePropagationStopped, true, 'Typing must stop propagation to host');
+    assert.strictEqual(charEv.defaultPrevented, false, 'Typing must NOT be default-prevented (A6)');
+
+    // Pressing Backspace in popover textarea
+    const bsEv = createSimulatedEvent({ key: 'Backspace', code: 'Backspace', target: mockTextarea, composedPath });
+    dispatch(bsEv);
+    assert.strictEqual(bsEv.immediatePropagationStopped, true, 'Backspace must stop propagation to host');
+    assert.strictEqual(bsEv.defaultPrevented, false, 'Backspace must NOT be default-prevented (A3, A6)');
+
+    // Pressing Delete in popover textarea
+    const delEv = createSimulatedEvent({ key: 'Delete', code: 'Delete', target: mockTextarea, composedPath });
+    dispatch(delEv);
+    assert.strictEqual(delEv.immediatePropagationStopped, true, 'Delete must stop propagation to host');
+    assert.strictEqual(delEv.defaultPrevented, false, 'Delete must NOT be default-prevented (A6)');
+
+    // Cursor navigation ArrowLeft
+    const arrowEv = createSimulatedEvent({ key: 'ArrowLeft', code: 'ArrowLeft', target: mockTextarea, composedPath });
+    dispatch(arrowEv);
+    assert.strictEqual(arrowEv.immediatePropagationStopped, true, 'Arrow keys in editable must stop propagation');
+    assert.strictEqual(arrowEv.defaultPrevented, false, 'Arrow keys in editable must NOT be default-prevented');
+
+    VibeShadowHost.getHost = origGetHost;
+  });
+
+  await t.test('EDITING state: Escape closes editor once and returns to SELECTION without exiting selection', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.EDITING);
+
+    const mockHost = { tagName: 'DIV', id: 'vibe-annotations-root' };
+    const origGetHost = VibeShadowHost.getHost;
+    VibeShadowHost.getHost = () => mockHost;
+
+    let dismissed = false;
+    let stopCount = 0;
+    const onDismissRequest = ({ reEnableInspection } = {}) => {
+      dismissed = true;
+      if (reEnableInspection) {
+        VibeEvents.emit('popover:dismissed', { reEnableInspection: true });
+      }
+    };
+    VibeEvents.on('popover:requestDismiss', onDismissRequest);
+    const onStop = () => { stopCount++; };
+    VibeEvents.on('inspection:stop', onStop);
+
+    const escEv = createSimulatedEvent({ key: 'Escape', code: 'Escape' });
+    dispatch(escEv);
+
+    assert.strictEqual(dismissed, true, 'Escape must emit popover:requestDismiss');
+    assert.strictEqual(escEv.defaultPrevented, true);
+    assert.strictEqual(escEv.immediatePropagationStopped, true);
+    assert.strictEqual(stopCount, 0, 'Editor Esc must NOT trigger inspection:stop (A8)');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION, 'State must return to SELECTION');
+
+    VibeEvents.off('inspection:stop', onStop);
+    VibeEvents.off('popover:requestDismiss', onDismissRequest);
+    VibeShadowHost.getHost = origGetHost;
+  });
+
+  await t.test('EDITING state: Save shortcut triggers save once and does not execute in next state', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.EDITING);
+
+    let saveRequested = 0;
+    const onSave = () => { saveRequested++; };
+    VibeEvents.on('popover:requestSave', onSave);
+
+    const saveEv = createSimulatedEvent({ key: 'Enter', code: 'Enter', ctrlKey: true });
+    dispatch(saveEv);
+
+    assert.strictEqual(saveRequested, 1, 'Save shortcut must emit popover:requestSave once');
+    assert.strictEqual(saveEv.defaultPrevented, true);
+    assert.strictEqual(saveEv.immediatePropagationStopped, true);
+
+    VibeEvents.off('popover:requestSave', onSave);
+  });
+
+  await t.test('IDLE state: independent edit entry point in extension UI is isolated without whole-page session semantics', () => {
+    VibeKeyboardRouter.resetForTesting();
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+
+    const mockHost = { tagName: 'DIV', id: 'vibe-annotations-root' };
+    const origGetHost = VibeShadowHost.getHost;
+    VibeShadowHost.getHost = () => mockHost;
+
+    const mockBtn = { tagName: 'BUTTON', className: 'vibe-shortcut-btn' };
+    const composedPath = [mockBtn, mockHost];
+
+    // Key pressed while focusing an extension toolbar element in IDLE
+    const ev = createSimulatedEvent({ key: 'k', ctrlKey: true, target: mockBtn, composedPath });
+    dispatch(ev);
+
+    assert.strictEqual(ev.immediatePropagationStopped, true, 'Extension UI event in IDLE must stop propagation');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE, 'State must remain IDLE');
+
+    VibeShadowHost.getHost = origGetHost;
   });
 });

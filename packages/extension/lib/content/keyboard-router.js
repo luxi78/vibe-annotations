@@ -70,18 +70,29 @@ function init() {
   VibeEvents.on('inspection:elementClicked', () => {
     currentState = SessionState.WAITING;
   });
-  VibeEvents.on('popover:dismissed', () => {
-    currentState = VibeInspectionMode.isActive() ? SessionState.SELECTION : SessionState.IDLE;
+  VibeEvents.on('annotation:edit', () => {
+    currentState = SessionState.WAITING;
+  });
+  VibeEvents.on('popover:opened', () => {
+    currentState = SessionState.EDITING;
+  });
+  VibeEvents.on('popover:dismissed', ({ reEnableInspection } = {}) => {
+    currentState = reEnableInspection ? SessionState.SELECTION : SessionState.IDLE;
   });
   VibeEvents.on('popover:cancelled', () => {
     currentState = VibeInspectionMode.isActive() ? SessionState.SELECTION : SessionState.IDLE;
   });
 }
 
-function isOurEditable(e) {
+function isOurUI(e) {
   const path = e.composedPath ? e.composedPath() : [];
   const host = VibeShadowHost.getHost?.();
-  if (!host || !path.includes(host)) return false;
+  return !!(host && path.includes(host));
+}
+
+function isOurEditable(e) {
+  if (!isOurUI(e)) return false;
+  const path = e.composedPath ? e.composedPath() : [];
   const target = path[0] || e.target;
   if (!target) return false;
   return target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable;
@@ -172,11 +183,6 @@ function dispatchKeyboardEvent(e) {
     return;
   }
 
-  // 2. Preserve native typing inside extension UI inputs/textareas
-  if (isOurEditable(e)) {
-    return;
-  }
-
   // 2. Route event according to annotation session state
   switch (currentState) {
     case SessionState.IDLE:
@@ -198,6 +204,12 @@ function dispatchKeyboardEvent(e) {
 }
 
 function handleIdle(e) {
+  // Preserve UI event protection for independent edit entry points without assigning them unsupported whole-page session semantics
+  if (isOurUI(e)) {
+    e.stopImmediatePropagation();
+    return;
+  }
+
   if (e.type !== 'keydown') return;
 
   // Check for global toggle shortcut
@@ -256,19 +268,74 @@ function handleSelection(e) {
 }
 
 function handleWaiting(e) {
-  // Waiting state during async context generation (ticket #7 scope)
+  // Waiting state during async context generation
   e.preventDefault();
   e.stopImmediatePropagation();
 
-  if (e.type === 'keydown' && e.key === 'Escape') {
-    currentState = SessionState.IDLE;
-    beginDrain(e);
-    VibeEvents.emit('inspection:stop');
+  if (e.type === 'keydown') {
+    if (e.key === 'Escape' || shouldTriggerHotkey(e, customShortcut)) {
+      exitSelectionMode(e);
+    }
   }
 }
 
 function handleEditing(e) {
-  // Popover editing state (ticket #7 scope)
+  if (e.type !== 'keydown') {
+    // For keyup / keypress while editing in our UI:
+    if (isOurUI(e)) {
+      e.stopImmediatePropagation();
+    } else {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+    return;
+  }
+
+  // 1. Toggle hotkey exits Annotate mode completely
+  if (shouldTriggerHotkey(e, customShortcut)) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    VibeAnnotationPopover.dismiss?.(false);
+    exitSelectionMode(e);
+    return;
+  }
+
+  // 2. Escape: editor-Esc close / continue-selection
+  // Dismisses popover and returns to SELECTION mode. Event must NOT execute again in SELECTION mode!
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    beginDrain(e);
+    VibeEvents.emit('popover:requestDismiss', { reEnableInspection: true });
+    return;
+  }
+
+  // 3. Save shortcut: Cmd/Ctrl + Enter
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    beginDrain(e);
+    VibeEvents.emit('popover:requestSave');
+    return;
+  }
+
+  // 4. Target is an editable element inside extension UI (e.g. comment textarea, raw css, css rules)
+  if (isOurEditable(e)) {
+    // Separate propagation blocking from default cancellation!
+    // Block host listeners by stopping immediate propagation, but allow native editing by NOT preventing default.
+    e.stopImmediatePropagation();
+    return;
+  }
+
+  // 6. Target is other extension UI element
+  if (isOurUI(e)) {
+    e.stopImmediatePropagation();
+    return;
+  }
+
+  // 7. Any key pressed outside our UI while editing is owned by the session
+  e.preventDefault();
+  e.stopImmediatePropagation();
 }
 
 function getState() {
