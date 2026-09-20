@@ -89,7 +89,7 @@ pnpm test:e2e
 pnpm test:baseline
 ```
 
-See `docs/e2e-testing.md` for environment details, headed-mode requirements, and CI xvfb configuration.
+See `docs/e2e-testing.md` for environment details, browser/headless configuration, CI setup, and per-ticket coverage notes.
 
 ### Manual testing
 

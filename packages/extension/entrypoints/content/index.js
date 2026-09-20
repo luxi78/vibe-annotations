@@ -12,6 +12,7 @@ import VibeBridgeHandler from '../../lib/content/bridge-handler.js';
 import VibeToolbar from '../../lib/content/floating-toolbar.js';
 import VibeScreenshot from '../../lib/content/screenshot.js';
 import VibeKeyboardRouter from '../../lib/content/keyboard-router.js';
+import VibeSessionFocus from '../../lib/content/session-focus.js';
 
 // --- State ---
 let annotations = [];
@@ -39,6 +40,12 @@ function injectFontFace() {
 
 // --- Initialize all modules ---
 async function init() {
+  // Controlled fault injection for the E2E suite (tests/fixtures/selected-rectangle.html
+  // sets this attribute). Absent on real pages, so the boot path is unchanged.
+  if (document.documentElement?.hasAttribute('data-vibe-boot-fail')) {
+    throw new Error('[Vibe] Controlled initialization failure');
+  }
+
   injectFontFace();
   VibeShadowHost.init();
 
@@ -71,6 +78,7 @@ async function bootNormal() {
 
   VibeBadgeManager.init();
   VibeInspectionMode.init();
+  VibeSessionFocus.init();
   VibeAnnotationPopover.init();
   VibeBridgeHandler.init(() => annotations);
   VibeScreenshot.init();
@@ -460,7 +468,11 @@ export default defineContentScript({
 
     // Initialize body-dependent UI when DOM is ready
     onDOMReady(() => {
-      init().catch((err) => console.error('[Vibe] Init failed:', err));
+      init().catch((err) => {
+        console.error('[Vibe] Init failed:', err);
+        // A failed boot must leave the page untouched: no UI, no keyboard ownership.
+        VibeKeyboardRouter.teardown();
+      });
     });
   },
 });

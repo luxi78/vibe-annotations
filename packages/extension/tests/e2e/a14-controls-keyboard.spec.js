@@ -60,9 +60,15 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await page.keyboard.press('ArrowDown');
     await expect(widthInput).toHaveValue(`${initialWidth + 10}px`);
 
-    // Verify host target received the style update
-    const targetStyle = await page.locator('.rect-title').getAttribute('style');
-    expect(targetStyle).toContain(`width: ${initialWidth + 10}px`);
+    // Verify the annotated host element received the style update. Which of the
+    // rectangle's children is under the click point depends on font metrics, so
+    // assert on whichever element the live preview actually styled.
+    const styledWidth = await page.evaluate(() => {
+      const candidates = Array.from(document.querySelectorAll('.rect-title, .rect-subtitle, #canvas-rect'));
+      const styled = candidates.find((el) => el.style.width);
+      return styled ? styled.style.width : null;
+    });
+    expect(styledWidth, 'Live preview must reach the annotated host element').toBe(`${initialWidth + 10}px`);
 
     // Assert host received ZERO keyboard events from Design controls
     const eventLog = await page.evaluate(() => window.__EVENT_LOG);

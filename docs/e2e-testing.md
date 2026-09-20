@@ -1,6 +1,6 @@
 # Extension E2E Test Harness & Keyboard Conflict Baselines
 
-This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, CI display configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, and the automated IME composition coverage for A7.
+This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, browser/headless configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, the automated IME composition coverage for A7, and the A12/A13 session-recovery and focus-restoration coverage for ticket #10.
 
 ---
 
@@ -43,38 +43,39 @@ pnpm test:e2e
 # Run only keyboard conflict baseline scenarios
 pnpm test:baseline
 
-# Run E2E in headed mode with visible browser window
-pnpm test:e2e:headed
+# Run E2E with a visible browser window (all tests)
+VIBE_E2E_HEADED=1 pnpm test:e2e            # bash / Git Bash
+$env:VIBE_E2E_HEADED=1; pnpm test:e2e      # PowerShell
 
 # Run existing Node unit tests
 pnpm test:unit
 ```
 
+By default the suite runs in Chromium's **new headless mode** (no windows pop up). `VIBE_E2E_HEADED=1` switches every test to a visible window, which is only needed to watch a run or to use OS-level window focus manually.
+
 ---
 
-## 3. Supported Environments & Headed-Mode Requirements
+## 3. Supported Environments & Browser Mode
 
 ### Extension Architecture in Playwright
-Chrome Manifest V3 extensions cannot be loaded into traditional headless Chrome (`--headless`). Chrome extensions require:
+Extensions cannot be loaded into the classic headless shell (`--headless`), which Playwright uses by default for `headless: true`. The harness therefore launches the **full Chromium build** (`channel: 'chromium'`) in **new headless mode**, which supports Manifest V3 extensions:
 1. Extension-capable Chromium launched via `chromium.launchPersistentContext(userDataDir, ...)`.
 2. Chromium arguments: `--disable-extensions-except=<path>`, `--load-extension=<path>`, `--no-sandbox`.
-3. A GUI display environment.
+3. Either new headless mode (default) or a real display (headed / `xvfb`).
 
 ### Operating Systems
-- **Windows**: Supported natively (headed mode launches Chromium window).
-- **macOS**: Supported natively (headed mode launches Chromium window).
-- **Linux (Local & CI)**: Supported via X11 or virtual display server (`xvfb`).
+- **Windows / macOS / Linux**: Supported in new headless mode; `VIBE_E2E_HEADED=1` (Linux: X11 or `xvfb`) shows the window.
 
 ### CI Display Setup (Linux / GitHub Actions)
 
-In Linux CI environments, run the tests wrapped with `xvfb-run` to provide a virtual display server:
+New headless mode needs no display server; the `xvfb-run` wrapper is only required for headed runs:
 
 ```yaml
 - name: Install Playwright Browsers
   run: pnpm --filter vibe-annotations-extension exec playwright install --with-deps chromium
 
 - name: Run Extension E2E Tests
-  run: xvfb-run --auto-servernum -- pnpm test:extension:e2e
+  run: pnpm test:extension:e2e
 ```
 
 ---
@@ -204,3 +205,58 @@ Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, head
   pnpm --filter vibe-annotations-extension test:baseline   # 6 passed
   pnpm test:extension              # 41 passed (unit)
   ```
+
+---
+
+## 8. A12/A13 Recovery and Focus Restoration Coverage (Ticket #10)
+
+Specs: `tests/e2e/session-recovery.spec.js` (A12, A13) and `tests/e2e/focus-restore.spec.js` (DOM focus), both part of the standard `pnpm test:extension:e2e` command. Node state tests: `tests/keyboard-router.test.js` (blur/page-hide/overlay/teardown) and `tests/session-focus.test.js`.
+
+Production contract under test (`lib/content/keyboard-router.js`, `lib/content/session-focus.js`): a consumed keydown whose keyup is lost to a blur keeps its release owned (a stray keyup never reaches the host) while a new full press supersedes it; page hide and navigation terminate the session and clear held keys; explicit overlay closure ends the session, closes an open editor, releases DOM focus and stops inspection; initialization failure tears the router down; teardown is idempotent and re-init does not duplicate listeners or commands; exiting restores the host element that had DOM focus before entry (connected + focusable only, `preventScroll`, no clicks).
+
+### 8.1 Automated scenarios
+
+| Test | Asserted behavior |
+| :--- | :--- |
+| A12 consumed key + blur | `ArrowDown` consumed by selection, keyup lost to a blur. The session survives, a fresh full press of the same key is still routed as a new keystroke, the host receives no navigation keys, exiting hands the keyboard back, and only a fresh `Esc` reaches the host. |
+| A12 held exit key + blur | `Esc` exits with its keyup lost to a blur. The stray release stays owned (zero host keydowns/keyups, rectangle stays selected) while a fresh full `Esc` is delivered end to end. |
+| A12 re-entry after blur | After a lost release, re-entering Annotate isolates keys and exits exactly once; a fresh key is delivered afterwards. |
+| A13 repeated entry/exit | Four entry/exit cycles through the toolbar: exactly one fresh `Esc` press reaches the host afterwards, one save produces exactly one badge, no duplicate commands. |
+| A13 overlay closure | Closing with the toolbar `×` ends the session, removes the cursor/ownership, hands the keyboard back, and reopening the overlay (background-worker toggle, the popup's own message) + entering again isolates exactly once. |
+| A13 closure with open editor | Closing the overlay with an unsaved editor open discards it without saving or duplicating; the host keeps its state and keyboard. |
+| A13 navigation | A real navigation away and back (`page.goto` + `goBack`) leaves no crosshair or ownership on the restored page; the restored page owns its keyboard again. |
+| A13 initialization failure | `?bootFail=true` (controlled injection): no extension UI, the toggle hotkey cannot acquire ownership, and `Esc`/`Backspace` are handled by the host. |
+| Focus restoration | Starting focus on a page input, on the canvas (`tabindex=0`) and on the toolbar only: the original element is re-focused on exit, no clicks/mousedown are simulated, host logical selection is untouched, the page is not scrolled (`preventScroll`), and focus moved by the host during the session is not stolen. |
+
+### 8.2 Controlled failure/blur conditions
+
+- **Blur**: Chromium re-focuses a renderer as soon as it has received synthetic input, so a real OS-level window blur cannot be produced once a test has clicked or typed. The committed specs deliver the blur as a **controlled `window` blur event**; all key input stays real browser/CDP input. The production listener was separately observed receiving a real Chromium blur (headed run with `Emulation.setFocusEmulationEnabled(false)` plus a second tab), which is why the handler path is considered covered — the delivery mechanism in CI is controlled, not synthetic key input.
+- **Page hidden**: Playwright's persistent context reports pages as visible and focused, so `visibilitychange → hidden` cannot be reproduced; the hidden transition runs the same held-key cleanup (`onFocusLoss`) as the blur case that is covered, and is additionally asserted in the Node state test for `onVisibilityChange`.
+- **Initialization failure**: the fixture sets `data-vibe-boot-fail` on `<html>` (`?bootFail=true`), which makes `init()` throw before any UI is created. The attribute is absent on real pages; the production path under test is the `catch` → `VibeKeyboardRouter.teardown()` cleanup.
+- **Destruction**: there is no user-reachable "destroy the extension" path to drive from a page, so destruction is covered by Node state tests (`teardown()` from an active session, idempotent double teardown, re-init without duplicate listeners/commands) while the E2E init-failure case exercises the same teardown in production code.
+
+### 8.3 Failure-to-pass evidence (Ticket #10)
+
+Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, new headless mode), extension built from `packages/extension` source.
+
+- Before the fix (source changes reverted, tests kept):
+  ```bash
+  git stash push -u -- packages/extension/lib/content/keyboard-router.js packages/extension/lib/content/session-focus.js packages/extension/entrypoints/content/index.js
+  cd packages/extension && npx wxt build
+  npx playwright test tests/e2e/session-recovery.spec.js tests/e2e/focus-restore.spec.js --reporter=list
+  git stash pop
+  ```
+  Result: `6 failed, 6 passed` — input focus restore, canvas focus restore, A12 held-exit release, A13 overlay closure, A13 closure-with-editor and A13 initialization failure all fail on unfixed behavior; the remaining cases are regression guards that already held. Raw output: `.scratch/annotate-keyboard-isolation/a10-before-fix.txt`.
+- After the fix (current source):
+  ```bash
+  pnpm test:extension:e2e                                    # 42 passed
+  npx playwright test tests/e2e/session-recovery.spec.js tests/e2e/focus-restore.spec.js   # 12 passed
+  pnpm --filter vibe-annotations-extension test:baseline      # 6 passed
+  pnpm test:extension                                        # 55 passed (unit)
+  ```
+  Raw output: `.scratch/annotate-keyboard-isolation/a10-after-fix.txt`.
+
+### 8.4 Harness changes
+
+- The suites now run in Chromium's **new headless mode** (`channel: 'chromium'`), so no browser windows pop up during a run; `VIBE_E2E_HEADED=1` restores a visible window for the whole suite.
+- `A14 Design keyboard actions` asserted the live preview on `.rect-title`; headless font metrics put the click point in the 1–2px gap between the rectangle's two text lines, so the annotated element can be `#canvas-rect` itself. The assertion now checks whichever host element the preview actually styled.
