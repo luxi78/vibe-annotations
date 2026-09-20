@@ -178,12 +178,20 @@
       recordEvent('window-capture', e);
     }, true);
 
+    window.addEventListener('keypress', function(e) {
+      recordEvent('window-capture', e);
+    }, true);
+
     // 2. Document capture listeners
     document.addEventListener('keydown', function(e) {
       recordEvent('document-capture', e);
     }, true);
 
     document.addEventListener('keyup', function(e) {
+      recordEvent('document-capture', e);
+    }, true);
+
+    document.addEventListener('keypress', function(e) {
       recordEvent('document-capture', e);
     }, true);
 
@@ -214,6 +222,10 @@
       recordEvent('document-bubble', e);
     }, false);
 
+    document.addEventListener('keypress', function(e) {
+      recordEvent('document-bubble', e);
+    }, false);
+
     // 4. Window bubble listeners
     window.addEventListener('keydown', function(e) {
       recordEvent('window-bubble', e);
@@ -223,8 +235,15 @@
       recordEvent('window-bubble', e);
     }, false);
 
+    window.addEventListener('keypress', function(e) {
+      recordEvent('window-bubble', e);
+    }, false);
+
     // 5. Property handler
     window.onkeydown = function(e) {
+      recordEvent('window-property', e);
+    };
+    window.onkeypress = function(e) {
       recordEvent('window-property', e);
     };
 
