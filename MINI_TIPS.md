@@ -1,9 +1,9 @@
-## 编译 extension：
+## build extension：
 pnpm --filter vibe-annotations-extension build
 
 
 
-## 启动 mcp server
+## run mcp server
 ```
 # = node lib/server.js
 pnpm --filter vibe-annotations-server start   
