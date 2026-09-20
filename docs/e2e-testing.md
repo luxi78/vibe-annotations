@@ -1,6 +1,6 @@
 # Extension E2E Test Harness & Keyboard Conflict Baselines
 
-This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, browser/headless configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, the automated IME composition coverage for A7, and the A12/A13 session-recovery and focus-restoration coverage for ticket #10.
+This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, browser/headless configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, the automated IME composition coverage for A7, the A12/A13 session-recovery and focus-restoration coverage for ticket #10, and the A16 injection-path coverage (static, dynamic, late) for ticket #11.
 
 ---
 
@@ -260,3 +260,58 @@ Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, new 
 
 - The suites now run in Chromium's **new headless mode** (`channel: 'chromium'`), so no browser windows pop up during a run; `VIBE_E2E_HEADED=1` restores a visible window for the whole suite.
 - `A14 Design keyboard actions` asserted the live preview on `.rect-title`; headless font metrics put the click point in the 1–2px gap between the rectangle's two text lines, so the annotated element can be `#canvas-rect` itself. The assertion now checks whichever host element the preview actually styled.
+
+---
+
+## 9. A16 Injection-Path Coverage (Ticket #11)
+
+Spec file: `tests/e2e/injection-paths.spec.js` (part of the standard `pnpm test:extension:e2e` command). Unit coverage for the evidence record: `tests/keyboard-install-evidence.test.js`.
+
+### 9.1 Production contract under test
+
+- `entrypoints/content/index.js` installs the keyboard router synchronously at `document_start`, i.e. before the page's own scripts run. `lib/content/keyboard-router.js` records **install evidence** once per page: world, `document.readyState` at install (`runAt`), install time (`installedAt`), whether the background marked a runtime injection, and the derived `earlyCapture` flag (`runAt === 'loading'` and no late marker).
+- `entrypoints/background.js` registers a dynamically enabled site with `runAt: 'document_start'` — the same early timing as the manifest content script — and marks every runtime injection (`chrome.scripting.executeScript` into a page that is already running) with `__VIBE_LATE_INJECTION` before injecting.
+- `entrypoints/content/index.js` publishes the evidence as `data-vibe-keyboard-*` attributes on the shadow host, the one DOM node both the content-script world and the page world can read.
+- `lib/content/floating-toolbar.js` shows a persistent **refresh banner** (`.vibe-refresh-banner`, never dismissed, only cleared by a reload) whenever `earlyCapture` is false: the page must be reloaded before full keyboard isolation can be claimed. Annotate stays usable in that state — host commands stay blocked by the session — but the page's parse-time listeners still receive the keys first, which is what the guidance states.
+
+### 9.2 Automated scenarios
+
+| Test | Asserted behavior |
+| :--- | :--- |
+| A16 static | The built manifest declares the keyboard content script as `document_start`, ISOLATED, `all_frames`, and no site permissions changed for this work. On the fixture origin the evidence says `world: ISOLATED`, `runAt: loading`, `earlyCapture: true`, `lateInjection: false`, and `installedAt` is **before** the fixture's parse-time listener registration. No refresh banner is shown. Early window capture, document capture/bubble and property listeners receive zero events during Annotate, the exit Esc stays inside the session, and a fresh Esc reaches the preserved host listeners. |
+| A16 late injection | A runtime injection into a page without live protection: the evidence says `runAt: complete` (not `loading`), `lateInjection: true`, `earlyCapture: false`, and `installedAt` is **after** the fixture's parse-time registration. The refresh banner is visible and names the reload requirement. During Annotate the key demonstrably reaches the host's parse-time listener — the honest reason for the notice — while host commands stay blocked (`cancelCount` 0) and the session exits cleanly. |
+| A16 dynamic | The production site-enable flow (permission modal → grant handling → `enableSite`) creates a **real dynamic registration** for the controlled origin: `runAt: document_start`, `world: ISOLATED`, `persistAcrossSessions: true`, and the origin is stored in `vibeEnabledSites`. The instance that just arrived is late-injected, so it shows the refresh banner. After the reload the same page passes the full early-capture checks: evidence says `runAt: loading` / `earlyCapture: true`, the banner is gone, host listeners receive zero events during Annotate, the exit Esc keeps host selection, a fresh Esc reaches the host, and a save produces exactly one badge. |
+
+### 9.3 Timing/world evidence
+
+- The fixture records `window.__FIXTURE_STATE.earlyListenersRegisteredAt = performance.now()` at its earliest parse-time listener registration (`tests/fixtures/selected-rectangle.html`). Both the router's `installedAt` and this timestamp are `performance.now()` values on the same document timeline, so the tests assert the ordering per path (early: router first; late: fixture first) instead of only observing that isolation works.
+- World evidence comes from two independent sources: the router's recorded world, and the registration configuration read back from Chrome (`chrome.scripting.getRegisteredContentScripts()` for the dynamic path, `manifest.json` for the static path).
+- Registrations and storage are read through the Playwright service-worker handle, so the assertions observe the browser's registration state, not a page-side simulation.
+
+### 9.4 Controlled origin and coverage boundaries
+
+The controlled origin is `http://vibe-injection.test:3005`, route-fulfilled by the test runner (no DNS, no shared server state) inside a per-test browser profile. The boundaries below are deliberate and were verified in this environment (Windows 10.0.26200, Chromium 153.0.8010.12, Playwright 1.63.0, new headless mode):
+
+- **The native host-permission bubble cannot be answered by the runner.** `chrome.permissions.request` for an origin outside the declared `host_permissions` opens a browser prompt; in headless mode it never resolves (verified: the modal stays on "Requesting permission…"), and `chrome.permissions.contains({ origins: ['*://*/*'] })` is false in a freshly loaded unpacked profile. A *fresh* origin therefore cannot be enabled, injected into, or protected automatically at all — reaching one requires the user to answer that prompt. The dynamic-registration test therefore enables a controlled origin the profile already permits and drives the extension's own grant handling, registration and persistence; the browser-side grant is the documented gap.
+- **The toolbar-icon click is browser UI.** Tests perform the injection that `chrome.action.onClicked` performs — seed the boot intent, mark the runtime injection, inject the production content scripts, then let the production modal and message handlers run. The extension's keyboard command does not fire from synthetic key input in this harness (verified), so `activeTab` cannot be obtained either; this is why the tests inject explicitly rather than clicking the icon.
+- **The late-injection scenario starts from the controlled `?bootFail=true` page** (an existing harness condition, §8.2): the manifest script runs but the instance stays inert, leaving no UI, no ownership and host listeners already registered — exactly what a runtime injection finds on a page the extension could not protect at load. An update-style variant built on `chrome.runtime.reload()` is not reproducible here: Chromium kept the previous content script instance alive across the reload in this harness (its toolbar stayed functional), so it cannot produce a page that genuinely lost its extension instance.
+- **Double injection is avoided by construction.** The dynamic-registration test enables an origin the manifest already matches, which production only does for non-localhost granted sites; in this test the dynamically injected copy is removed by the reload before isolation is asserted, so no page runs two live instances while isolation is measured.
+
+### 9.5 Failure-to-pass evidence (Ticket #11)
+
+Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, new headless mode), extension built from `packages/extension` source.
+
+- Before the fix (production source reverted, tests kept):
+  ```bash
+  git stash push -- packages/extension/lib/content/keyboard-router.js packages/extension/entrypoints/background.js packages/extension/entrypoints/content/index.js packages/extension/lib/content/floating-toolbar.js packages/extension/lib/content/styles.js
+  cd packages/extension && npx wxt build && npx playwright test tests/e2e/injection-paths.spec.js --reporter=list
+  git stash pop
+  ```
+  Result: `3 failed` — the static test finds no install evidence (`data-vibe-keyboard-world` absent), the late-injection test finds no refresh banner, and the dynamic test reads back `runAt: "document_idle"` from the production registration. Raw output: `.scratch/annotate-keyboard-isolation/a11-before-fix.txt`.
+- After the fix (current source):
+  ```bash
+  pnpm test:extension:e2e                              # 45 passed, includes the 3 A16 tests and A1-A14 regressions
+  pnpm --filter vibe-annotations-extension test:baseline   # 6 passed
+  pnpm test:extension                                  # 61 passed (unit)
+  ```
+  Raw output: `.scratch/annotate-keyboard-isolation/a11-after-fix.txt`.

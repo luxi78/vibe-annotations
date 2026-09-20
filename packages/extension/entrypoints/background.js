@@ -17,6 +17,15 @@ function isRestrictedUrl(url) {
 }
 
 async function injectContentScripts(tabId) {
+  // Runtime injection into a page that is already running cannot install the
+  // keyboard router before host listeners that page scripts registered at parse
+  // time, so tell the injected script that full early-listener protection is
+  // unavailable and the user must reload. The content script reads this flag
+  // (see lib/content/keyboard-router.js).
+  await chrome.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    func: () => { window.__VIBE_LATE_INJECTION = true; },
+  });
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
     files: ['content-scripts/content.js'],
@@ -524,13 +533,15 @@ class VibeAnnotationsBackground {
     // WXT bundles each entrypoint into a single file under content-scripts/.
     // Entrypoint `content/index.js` → `content-scripts/content.js`.
     // Entrypoint `bridge.content.js` → `content-scripts/bridge.js`.
+    // document_start matches the static registration: the keyboard router must own
+    // window capture before the page's own parse-time listeners (A16).
     const scriptId = 'vibe-' + originPattern.replace(/[^a-zA-Z0-9]/g, '_');
     try {
       await chrome.scripting.unregisterContentScripts({ ids: [scriptId] }).catch(() => {});
       await chrome.scripting.registerContentScripts([{
         id: scriptId, matches: [originPattern],
         js: ['content-scripts/content.js'],
-        runAt: 'document_idle', persistAcrossSessions: true
+        runAt: 'document_start', persistAcrossSessions: true
       }]);
       const bridgeScriptId = scriptId + '_bridge';
       await chrome.scripting.unregisterContentScripts({ ids: [bridgeScriptId] }).catch(() => {});

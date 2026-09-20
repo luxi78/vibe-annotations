@@ -184,9 +184,39 @@ function detachKeyboardListeners(target) {
   target.removeEventListener('blur', onBlur);
 }
 
+// How this content script was installed relative to page parsing, so callers can
+// tell full early-listener protection apart from a runtime injection. The router
+// owns window capture events before parse-time host listeners only when the
+// browser injected the script at document_start; chrome.scripting.executeScript
+// into an already-loaded page runs after those listeners are registered and the
+// background marks that case with LATE_INJECTION_FLAG.
+const CONTENT_SCRIPT_WORLD = 'ISOLATED';
+const LATE_INJECTION_FLAG = '__VIBE_LATE_INJECTION';
+let installationEvidence = null;
+
+function captureInstallationEvidence() {
+  const runAt = typeof document !== 'undefined' && document.readyState ? document.readyState : 'unknown';
+  const lateInjection = typeof window !== 'undefined' && window[LATE_INJECTION_FLAG] === true;
+  const installedAt = typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : 0;
+
+  return {
+    world: CONTENT_SCRIPT_WORLD,
+    runAt,
+    installedAt,
+    lateInjection,
+    earlyCapture: runAt === 'loading' && !lateInjection,
+  };
+}
+
 function init() {
   if (initialized) return;
   initialized = true;
+
+  // Recorded once per page: teardown and re-init must not rewrite the fact that
+  // this page's injection was early (or late).
+  if (!installationEvidence) installationEvidence = captureInstallationEvidence();
 
   const target = getEventTarget();
   if (target && target.addEventListener) {
@@ -756,6 +786,10 @@ function getState() {
   return currentState;
 }
 
+function getInstallEvidence() {
+  return installationEvidence ? { ...installationEvidence } : null;
+}
+
 function setState(state) {
   currentState = state;
 }
@@ -780,12 +814,14 @@ function resetForTesting() {
   customShortcut = null;
   isRecordingShortcut = false;
   activePopoverForTesting = null;
+  installationEvidence = null;
 }
 
 const VibeKeyboardRouter = {
   init,
   teardown,
   getState,
+  getInstallEvidence,
   setState,
   terminateSession,
   setCustomShortcutForTesting,
