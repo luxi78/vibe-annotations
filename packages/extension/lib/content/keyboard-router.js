@@ -41,6 +41,7 @@ function dispatchInternalUIEvent(e, target) {
       key: e.key,
       code: e.code,
       repeat: e.repeat,
+      isComposing: e.isComposing,
       shiftKey: e.shiftKey,
       ctrlKey: e.ctrlKey,
       altKey: e.altKey,
@@ -59,6 +60,9 @@ const pressedKeys = new Set();
 let drainingCodes = new Set();
 let drainingKeys = new Set();
 
+// Element currently receiving IME composition text inside the extension UI
+let composingTarget = null;
+
 function getEventTarget() {
   return typeof window !== 'undefined' ? window : null;
 }
@@ -72,6 +76,8 @@ function init() {
     target.addEventListener('keydown', onKeyDown, true);
     target.addEventListener('keyup', onKeyUp, true);
     target.addEventListener('keypress', onKeyPress, true);
+    target.addEventListener('compositionstart', onCompositionStart, true);
+    target.addEventListener('compositionend', onCompositionEnd, true);
     target.addEventListener('blur', onBlur);
   }
 
@@ -137,10 +143,49 @@ function isOurUI(e) {
 
 function isOurEditable(e) {
   if (!isOurUI(e)) return false;
-  const path = e.composedPath ? e.composedPath() : [];
-  const target = path[0] || e.target;
+  const target = getDeepestTarget(e);
   if (!target) return false;
   return target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable;
+}
+
+function getDeepestTarget(e) {
+  const path = e.composedPath ? e.composedPath() : [];
+  return path[0] || e.target || null;
+}
+
+function onCompositionStart(e) {
+  composingTarget = getDeepestTarget(e);
+}
+
+function onCompositionEnd() {
+  composingTarget = null;
+}
+
+function isEventFromComposingTarget(e) {
+  if (!composingTarget) return false;
+  const path = e.composedPath ? e.composedPath() : [];
+  return path.length ? path.includes(composingTarget) : e.target === composingTarget;
+}
+
+// Keys owned by an active IME composition (candidate confirm/cancel/navigate).
+// They must not run session commands and are blocked from reaching the host,
+// while their default action is consumed so they cannot edit the text on their
+// own. Modifier combinations stay available as explicit session commands (save
+// shortcut, mode toggle hotkey).
+const IME_PROCESS_KEY_CODE = 229;
+
+function isCompositionKey(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  if (e.isComposing === true) return true;
+  // Browsers without isComposing report candidate keys as the "Process" key (229)
+  if (e.keyCode === IME_PROCESS_KEY_CODE || e.key === 'Process') return true;
+  return isEventFromComposingTarget(e);
+}
+
+// Isolate a composition-owned key from the host and suppress its session command.
+function consumeCompositionKey(e) {
+  e.preventDefault();
+  e.stopImmediatePropagation();
 }
 
 function trackKeyDown(e) {
@@ -158,6 +203,7 @@ function onBlur() {
   pressedKeys.clear();
   drainingCodes.clear();
   drainingKeys.clear();
+  composingTarget = null;
 }
 
 const MODIFIER_MAP = {
@@ -257,6 +303,15 @@ function handleIdle(e) {
   if (isOurUI(e)) {
     if (e.type !== 'keydown') {
       e.stopImmediatePropagation();
+      return;
+    }
+
+    // 0. IME composition keys belong to the editor: keep them away from the
+    // host, run no command, and consume their default action so candidate
+    // confirm/cancel keys cannot alter the editor text (the native composition
+    // itself is driven by the IME, not by the key's default action).
+    if (isCompositionKey(e)) {
+      consumeCompositionKey(e);
       return;
     }
 
@@ -425,6 +480,15 @@ function handleEditing(e) {
     return;
   }
 
+  // 0. IME composition keys (candidate confirm/cancel/navigate) belong to the
+  // editor: keep them away from the host, run no session command, and consume
+  // their default action so they cannot alter the editor text on their own.
+  // Explicit modifier commands (save shortcut, mode toggle) stay available.
+  if (isOurUI(e) && isCompositionKey(e)) {
+    consumeCompositionKey(e);
+    return;
+  }
+
   // 1. Toggle hotkey exits Annotate mode completely
   if (shouldTriggerHotkey(e, getActiveShortcut())) {
     e.preventDefault();
@@ -506,6 +570,7 @@ function resetForTesting() {
   pressedKeys.clear();
   drainingCodes.clear();
   drainingKeys.clear();
+  composingTarget = null;
   customShortcut = null;
   isRecordingShortcut = false;
   activePopoverForTesting = null;
@@ -521,6 +586,8 @@ const VibeKeyboardRouter = {
   onKeyDown,
   onKeyUp,
   onKeyPress,
+  onCompositionStart,
+  onCompositionEnd,
   onBlur,
   SessionState,
 };

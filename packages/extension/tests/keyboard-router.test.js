@@ -24,7 +24,7 @@ test('VibeKeyboardRouter unit tests', async (t) => {
 
   VibeKeyboardRouter.init();
 
-  function createSimulatedEvent({ type = 'keydown', key, code, repeat = false, ctrlKey = false, shiftKey = false, altKey = false, metaKey = false, target = null, composedPath = null }) {
+  function createSimulatedEvent({ type = 'keydown', key, code, repeat = false, ctrlKey = false, shiftKey = false, altKey = false, metaKey = false, isComposing = false, keyCode = 0, target = null, composedPath = null }) {
     let defaultPrevented = false;
     let immediatePropagationStopped = false;
     let propagationStopped = false;
@@ -34,6 +34,8 @@ test('VibeKeyboardRouter unit tests', async (t) => {
       key,
       code: code || key,
       repeat,
+      keyCode,
+      isComposing,
       ctrlKey,
       shiftKey,
       altKey,
@@ -339,6 +341,172 @@ test('VibeKeyboardRouter unit tests', async (t) => {
     assert.strictEqual(saveEv.immediatePropagationStopped, true);
 
     VibeEvents.off('popover:requestSave', onSave);
+  });
+
+  await t.test('EDITING state: IME composition keys are isolated from the host without closing the editor or saving', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.EDITING);
+
+    const mockHost = { tagName: 'DIV', id: 'vibe-annotations-root' };
+    const origGetHost = VibeShadowHost.getHost;
+    VibeShadowHost.getHost = () => mockHost;
+
+    const mockTextarea = { tagName: 'TEXTAREA', id: 'comment-textarea' };
+    const composedPath = [mockTextarea, mockHost];
+
+    let dismissed = 0;
+    let saveRequested = 0;
+    const onDismiss = () => { dismissed++; };
+    const onSave = () => { saveRequested++; };
+    VibeEvents.on('popover:requestDismiss', onDismiss);
+    VibeEvents.on('popover:requestSave', onSave);
+
+    // Candidate confirmation (Enter) while composing
+    const enterEv = createSimulatedEvent({ key: 'Enter', keyCode: 229, isComposing: true, target: mockTextarea, composedPath });
+    dispatch(enterEv);
+    assert.strictEqual(enterEv.immediatePropagationStopped, true, 'Composing Enter must stay away from the host');
+    assert.strictEqual(enterEv.defaultPrevented, true, 'Composing Enter must not alter the editor text');
+    assert.strictEqual(saveRequested, 0, 'Composing Enter must not save');
+
+    // Candidate cancellation (Escape) while composing
+    const escEv = createSimulatedEvent({ key: 'Escape', code: 'Escape', keyCode: 229, isComposing: true, target: mockTextarea, composedPath });
+    dispatch(escEv);
+    assert.strictEqual(escEv.immediatePropagationStopped, true, 'Composing Escape must stay away from the host');
+    assert.strictEqual(escEv.defaultPrevented, true, 'Composing Escape must not alter the editor text');
+    assert.strictEqual(dismissed, 0, 'Composing Escape must not close the editor');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.EDITING, 'Composing Escape must not leave EDITING');
+
+    // Candidate navigation (arrows) while composing must not step design inputs
+    const arrowEv = createSimulatedEvent({ key: 'ArrowUp', isComposing: true, target: mockTextarea, composedPath });
+    dispatch(arrowEv);
+    assert.strictEqual(arrowEv.immediatePropagationStopped, true);
+    assert.strictEqual(arrowEv.defaultPrevented, true);
+
+    VibeEvents.off('popover:requestDismiss', onDismiss);
+    VibeEvents.off('popover:requestSave', onSave);
+    VibeShadowHost.getHost = origGetHost;
+  });
+
+  await t.test('EDITING state: composition ownership lasts until compositionend, then commands resume', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.EDITING);
+
+    const mockHost = { tagName: 'DIV', id: 'vibe-annotations-root' };
+    const origGetHost = VibeShadowHost.getHost;
+    VibeShadowHost.getHost = () => mockHost;
+
+    const mockTextarea = { tagName: 'TEXTAREA', id: 'comment-textarea' };
+    const composedPath = [mockTextarea, mockHost];
+
+    let dismissed = 0;
+    const onDismiss = () => {
+      dismissed++;
+      VibeEvents.emit('popover:dismissed', { reEnableInspection: true });
+    };
+    VibeEvents.on('popover:requestDismiss', onDismiss);
+
+    VibeKeyboardRouter.onCompositionStart({ composedPath: () => composedPath });
+
+    // Key without isComposing while a composition session is active is still owned by the composition
+    const escDuringSession = createSimulatedEvent({ key: 'Escape', code: 'Escape', target: mockTextarea, composedPath });
+    dispatch(escDuringSession);
+    assert.strictEqual(escDuringSession.immediatePropagationStopped, true);
+    assert.strictEqual(dismissed, 0, 'Escape during the composition session must not close the editor');
+
+    VibeKeyboardRouter.onCompositionEnd({ composedPath: () => composedPath });
+
+    // Normal commands resume once the composition has ended
+    const escAfter = createSimulatedEvent({ key: 'Escape', code: 'Escape', target: mockTextarea, composedPath });
+    dispatch(escAfter);
+    assert.strictEqual(dismissed, 1, 'Escape after compositionend must close the editor again');
+    assert.strictEqual(escAfter.defaultPrevented, true);
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION);
+
+    VibeEvents.off('popover:requestDismiss', onDismiss);
+    VibeShadowHost.getHost = origGetHost;
+  });
+
+  await t.test('EDITING state: explicit modifier commands stay available during composition', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.EDITING);
+
+    const mockHost = { tagName: 'DIV', id: 'vibe-annotations-root' };
+    const origGetHost = VibeShadowHost.getHost;
+    VibeShadowHost.getHost = () => mockHost;
+
+    const mockTextarea = { tagName: 'TEXTAREA', id: 'comment-textarea' };
+    const composedPath = [mockTextarea, mockHost];
+
+    let saveRequested = 0;
+    const onSave = () => { saveRequested++; };
+    VibeEvents.on('popover:requestSave', onSave);
+
+    VibeKeyboardRouter.onCompositionStart({ composedPath: () => composedPath });
+
+    const saveEv = createSimulatedEvent({ key: 'Enter', code: 'Enter', ctrlKey: true, isComposing: true, target: mockTextarea, composedPath });
+    dispatch(saveEv);
+    assert.strictEqual(saveRequested, 1, 'Explicit save shortcut must still run during composition');
+    assert.strictEqual(saveEv.defaultPrevented, true);
+
+    VibeKeyboardRouter.onCompositionEnd({ composedPath: () => composedPath });
+
+    VibeEvents.off('popover:requestSave', onSave);
+    VibeShadowHost.getHost = origGetHost;
+  });
+
+  await t.test('IDLE state: composing keys in a standalone editor are isolated without dismissing or saving', () => {
+    VibeKeyboardRouter.resetForTesting();
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+
+    const mockHost = { tagName: 'DIV', id: 'vibe-annotations-root' };
+    const origGetHost = VibeShadowHost.getHost;
+    VibeShadowHost.getHost = () => mockHost;
+
+    const mockTextarea = { tagName: 'TEXTAREA', id: 'comment-textarea' };
+    const composedPath = [mockTextarea, mockHost];
+
+    let dismissed = 0;
+    const onDismiss = () => { dismissed++; };
+    VibeEvents.on('popover:requestDismiss', onDismiss);
+
+    const escEv = createSimulatedEvent({ key: 'Escape', code: 'Escape', isComposing: true, target: mockTextarea, composedPath });
+    dispatch(escEv);
+    assert.strictEqual(escEv.immediatePropagationStopped, true, 'Composing Escape must stay away from the host');
+    assert.strictEqual(escEv.defaultPrevented, true, 'Composing Escape must not alter the editor text');
+    assert.strictEqual(dismissed, 0, 'Composing Escape must not dismiss the standalone editor');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+
+    VibeEvents.off('popover:requestDismiss', onDismiss);
+    VibeShadowHost.getHost = origGetHost;
+  });
+
+  await t.test('Window blur clears composition ownership so later keys resume normal commands', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.EDITING);
+
+    const mockHost = { tagName: 'DIV', id: 'vibe-annotations-root' };
+    const origGetHost = VibeShadowHost.getHost;
+    VibeShadowHost.getHost = () => mockHost;
+
+    const mockTextarea = { tagName: 'TEXTAREA', id: 'comment-textarea' };
+    const composedPath = [mockTextarea, mockHost];
+
+    let dismissed = 0;
+    const onDismiss = () => {
+      dismissed++;
+      VibeEvents.emit('popover:dismissed', { reEnableInspection: true });
+    };
+    VibeEvents.on('popover:requestDismiss', onDismiss);
+
+    VibeKeyboardRouter.onCompositionStart({ composedPath: () => composedPath });
+    VibeKeyboardRouter.onBlur();
+
+    const escEv = createSimulatedEvent({ key: 'Escape', code: 'Escape', target: mockTextarea, composedPath });
+    dispatch(escEv);
+    assert.strictEqual(dismissed, 1, 'Composition state must not survive a window blur');
+
+    VibeEvents.off('popover:requestDismiss', onDismiss);
+    VibeShadowHost.getHost = origGetHost;
   });
 
   await t.test('IDLE state: independent edit entry point in extension UI is isolated without whole-page session semantics', () => {
