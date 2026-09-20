@@ -24,7 +24,6 @@ import VibeElementContext from './element-context.js';
   let onMouseUp = null;
   let onPointerCancel = null;
   let onClick = null;
-  let onKeyDown = null;
   let swallowingClick = false;
   let swallowTimeout = null;
 
@@ -66,7 +65,6 @@ import VibeElementContext from './element-context.js';
     onMouseUp = handleMouseUp;
     onPointerCancel = handlePointerCancel;
     onClick = handleClick;
-    onKeyDown = handleKeyDown;
 
     target.addEventListener('mouseover', onMouseOver, true);
     target.addEventListener('mouseout', onMouseOut, true);
@@ -77,7 +75,6 @@ import VibeElementContext from './element-context.js';
     target.addEventListener('mouseup', onMouseUp, true);
     target.addEventListener('pointercancel', onPointerCancel, true);
     target.addEventListener('click', onClick, true);
-    target.addEventListener('keydown', onKeyDown, true);
     listenersAttached = true;
 
     // Crosshair cursor on all host page elements
@@ -107,11 +104,10 @@ import VibeElementContext from './element-context.js';
       target.removeEventListener('mouseup', onMouseUp, true);
       target.removeEventListener('pointercancel', onPointerCancel, true);
       target.removeEventListener('click', onClick, true);
-      target.removeEventListener('keydown', onKeyDown, true);
       listenersAttached = false;
     }
     onMouseOver = onMouseOut = onPointerMove = onPointerDown = onMouseDown = null;
-    onPointerUp = onMouseUp = onPointerCancel = onClick = onKeyDown = null;
+    onPointerUp = onMouseUp = onPointerCancel = onClick = null;
 
     // Remove highlight (the label is a child, removed with it)
     if (highlightEl) { highlightEl.remove(); highlightEl = null; }
@@ -179,7 +175,6 @@ import VibeElementContext from './element-context.js';
       target.removeEventListener('mouseup', onMouseUp, true);
       target.removeEventListener('pointercancel', onPointerCancel, true);
       target.removeEventListener('click', onClick, true);
-      target.removeEventListener('keydown', onKeyDown, true);
       listenersAttached = false;
     }
     if (highlightEl) highlightEl.style.display = 'none';
@@ -200,7 +195,6 @@ import VibeElementContext from './element-context.js';
     target.addEventListener('mouseup', onMouseUp, true);
     target.addEventListener('pointercancel', onPointerCancel, true);
     target.addEventListener('click', onClick, true);
-    target.addEventListener('keydown', onKeyDown, true);
     listenersAttached = true;
   }
 
@@ -269,7 +263,6 @@ import VibeElementContext from './element-context.js';
     eventTarget.removeEventListener('mouseover', onMouseOver, true);
     eventTarget.removeEventListener('mouseout', onMouseOut, true);
     eventTarget.removeEventListener('pointermove', onPointerMove, true);
-    eventTarget.removeEventListener('keydown', onKeyDown, true);
 
     // Keep click-sequence swallowers (mousedown, pointerup, mouseup, click) active
     // so the remainder of this click does not leak into host frameworks/dialogs!
@@ -289,20 +282,16 @@ import VibeElementContext from './element-context.js';
   }
 
   // Arrow key DOM navigation — ↑ parent, ↓ retrace path back to anchor
-  function handleKeyDown(e) {
-    if (!active) return;
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Enter') return;
-
-    // Always handle these keys in inspection mode, even if focus is on our toolbar
-    e.preventDefault();
-    e.stopPropagation();
+  function handleNavigationKey(e) {
+    if (!active) return false;
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Enter') return false;
 
     // Blur any focused toolbar element so it doesn't steal subsequent keys
     const root = VibeShadowHost.getRoot();
     if (root && root.activeElement) root.activeElement.blur();
 
     const current = hoveredElement;
-    if (!current) return;
+    if (!current) return true;
 
     // Enter — select the currently highlighted element
     if (e.key === 'Enter') {
@@ -313,26 +302,27 @@ import VibeElementContext from './element-context.js';
         clientX: rect.left + rect.width / 2,
         clientY: rect.top + rect.height / 2
       });
-      return;
+      return true;
     }
 
     let next;
     if (e.key === 'ArrowUp') {
       next = VibeShadowDOMUtils.getNavigableParent(current);
-      if (!next || !next.isConnected) return;
-      if (next === document.documentElement || next === document.body) return;
+      if (!next || !next.isConnected) return true;
+      if (next === document.documentElement || next === document.body) return true;
       // Push current onto stack so ArrowDown can retrace
       navStack.push(current);
     } else {
       // ArrowDown — retrace the path back toward the anchor element
-      if (navStack.length === 0) return;
+      if (navStack.length === 0) return true;
       next = navStack.pop();
-      if (!next || !next.isConnected) { navStack = []; return; }
+      if (!next || !next.isConnected) { navStack = []; return true; }
     }
 
     hoveredElement = next;
     navigatedByKeyboard = true;
     updateHighlight(next);
+    return true;
   }
 
   // Safety nets — swallow all remaining mouse events of the interaction
@@ -406,5 +396,5 @@ import VibeElementContext from './element-context.js';
     return out.length > 42 ? out.slice(0, 41) + '…' : out;
   }
 
-const VibeInspectionMode = { init, start, stop, isActive, tempDisable, reEnable };
+const VibeInspectionMode = { init, start, stop, isActive, tempDisable, reEnable, handleNavigationKey };
 export default VibeInspectionMode;

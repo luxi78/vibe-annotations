@@ -11,7 +11,7 @@ import VibeAnnotationPopover from '../../lib/content/annotation-popover.js';
 import VibeBridgeHandler from '../../lib/content/bridge-handler.js';
 import VibeToolbar from '../../lib/content/floating-toolbar.js';
 import VibeScreenshot from '../../lib/content/screenshot.js';
-import { shouldTriggerHotkey } from '../../lib/content/hotkey.js';
+import VibeKeyboardRouter from '../../lib/content/keyboard-router.js';
 
 // --- State ---
 let annotations = [];
@@ -33,8 +33,9 @@ function injectFontFace() {
       font-display: swap;
     }
   `;
-  document.head.appendChild(style);
-}
+    const target = document.head || document.documentElement;
+    if (target) target.appendChild(style);
+  }
 
 // --- Initialize all modules ---
 async function init() {
@@ -78,7 +79,6 @@ async function bootNormal() {
   setupMessageListener();
   setupStorageListener();
   setupRouteChangeDetection();
-  setupKeyboardShortcuts();
   setupAnnotationEvents();
 
   if (!overlayClosed) {
@@ -283,35 +283,6 @@ function setupStorageListener() {
   });
 }
 
-// --- Keyboard shortcuts ---
-function setupKeyboardShortcuts() {
-  let customShortcut = null;
-
-  VibeAPI.getCustomShortcut().then((s) => { customShortcut = s; }).catch(() => {});
-
-  chrome.storage.onChanged.addListener((changes, ns) => {
-    if (ns === 'local' && changes.vibeCustomShortcut) {
-      customShortcut = changes.vibeCustomShortcut.newValue || null;
-    }
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && VibeInspectionMode.isActive()) {
-      VibeEvents.emit('inspection:stop');
-      return;
-    }
-
-    if (shouldTriggerHotkey(e, customShortcut)) {
-      e.preventDefault();
-      if (VibeInspectionMode.isActive()) {
-        VibeEvents.emit('inspection:stop');
-      } else {
-        VibeEvents.emit('inspection:start');
-      }
-    }
-  });
-}
-
 // --- Annotation lifecycle ---
 function setupAnnotationEvents() {
   VibeEvents.on('annotation:saved', ({ annotation }) => {
@@ -441,6 +412,29 @@ function startLazyElementObserver() {
   }, 30000);
 }
 
+function onDOMReady(callback) {
+  if (document.body) {
+    callback();
+    return;
+  }
+
+  const onReady = () => {
+    if (document.body) {
+      callback();
+    } else {
+      const observer = new MutationObserver(() => {
+        if (document.body) {
+          observer.disconnect();
+          callback();
+        }
+      });
+      observer.observe(document.documentElement || document, { childList: true, subtree: true });
+    }
+  };
+
+  document.addEventListener('DOMContentLoaded', onReady, { once: true });
+}
+
 export default defineContentScript({
   matches: [
     'http://localhost/*',
@@ -458,9 +452,15 @@ export default defineContentScript({
     'file:///*',
   ],
   allFrames: true,
-  runAt: 'document_idle',
+  runAt: 'document_start',
   cssInjectionMode: 'manual',
   main() {
-    init().catch((err) => console.error('[Vibe] Init failed:', err));
+    // Install lightweight early synchronous capture router immediately
+    VibeKeyboardRouter.init();
+
+    // Initialize body-dependent UI when DOM is ready
+    onDOMReady(() => {
+      init().catch((err) => console.error('[Vibe] Init failed:', err));
+    });
   },
 });
