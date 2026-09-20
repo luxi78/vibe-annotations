@@ -36,6 +36,10 @@ bridge-handler → content.js
 | `element-context.js` | ~940 | Selector generation (8-tier fallback), source mapping |
 | `api-bridge.js` | ~300 | All chrome.runtime.sendMessage + chrome.storage calls |
 
+### Keyboard entry point & injection paths
+
+`entrypoints/content/index.js` installs the window-capture keyboard router synchronously at `document_start`, before page scripts register their own listeners. Dynamic site registrations (`entrypoints/background.js` → `enableSite`) use the same `runAt`. A runtime injection (`chrome.scripting.executeScript` into an already-loaded page) cannot precede those listeners, so the background marks it (`__VIBE_LATE_INJECTION`), the router records install evidence (`VibeKeyboardRouter.getInstallEvidence()`), and the toolbar shows a persistent "reload for full keyboard protection" banner instead of claiming full isolation.
+
 ### Storage
 
 - **All mutations** go through `background.js` via `sendMessage()` (serialized with storage lock).

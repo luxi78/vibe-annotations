@@ -6,6 +6,7 @@ import VibeAPI from './api-bridge.js';
 import VibeElementContext from './element-context.js';
 import VibeEvents, { vibeLocationPath } from './event-bus.js';
 import VibeShadowHost from './shadow-host.js';
+import VibeKeyboardRouter from './keyboard-router.js';
 import VibeToolbarDocs from './toolbar-docs.js';
 import { renderAnnotationsMarkdown } from './export-markdown.js';
 import { isRecordableHotkey } from './hotkey.js';
@@ -175,6 +176,33 @@ import { isRecordableHotkey } from './hotkey.js';
     setupDrag();
     updateUI();
     injectUpdateBanner();
+    injectRefreshBanner();
+  }
+
+  // --- Late-injection banner (runtime injection cannot precede host listeners) ---
+  // Shown until the page is reloaded: without a reload the keyboard router runs
+  // after the page's own parse-time listeners, so shortcuts can still reach the
+  // host during Annotate. Never claim complete isolation silently.
+  function injectRefreshBanner() {
+    const evidence = VibeKeyboardRouter.getInstallEvidence();
+    if (!evidence || evidence.earlyCapture || !toolbarEl) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'vibe-update-banner vibe-refresh-banner';
+    banner.innerHTML = `
+      <span class="vibe-update-text">
+        <strong>Reload for full keyboard protection.</strong>
+        Vibe Annotations loaded after this page, so page shortcuts can still fire until you reload.
+      </span>
+      <button class="vibe-refresh-action" type="button">Reload page</button>
+    `;
+
+    banner.querySelector('.vibe-refresh-action').addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.location.reload();
+    });
+
+    toolbarEl.appendChild(banner);
   }
 
   // --- Release banner (shown once after an update, until dismissed) ---

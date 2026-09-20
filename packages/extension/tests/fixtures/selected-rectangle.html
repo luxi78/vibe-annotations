@@ -249,6 +249,10 @@
       recordEvent('window-property', e);
     };
 
+    // Timing evidence for the injection-path checks (A16): the extension's keyboard
+    // router must install before this parse-time registration to own capture events.
+    window.__FIXTURE_STATE.earlyListenersRegisteredAt = performance.now();
+
     // 6. Mouse activity counters — prove the extension never simulates clicks on
     // the host page (extension UI events are retargeted to its shadow host).
     function isExtensionUI(e) {

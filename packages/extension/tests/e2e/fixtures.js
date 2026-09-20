@@ -204,3 +204,77 @@ export async function readImeLog(page) {
 }
 
 export { expect };
+
+// --- Injection-path harness (A16) ---
+
+// Serve the selected-rectangle fixture from a controlled origin (fulfilled by the
+// test runner, so no DNS is needed) and give every injection-path test its own
+// isolated origin and profile. The host is inside the extension's declared
+// test/localhost host permissions — the only origins a test profile can reach without
+// answering the native permission bubble (see docs/e2e-testing.md).
+export async function routeControlledOrigin(context, origin) {
+  const fixtureHtml = fs.readFileSync(
+    path.join(__dirname, '..', 'fixtures', 'selected-rectangle.html'),
+    'utf-8'
+  );
+
+  await context.route(`${origin}/**`, async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === '/' || pathname.endsWith('/selected-rectangle.html')) {
+      await route.fulfill({ status: 200, contentType: 'text/html; charset=UTF-8', body: fixtureHtml });
+    } else {
+      await route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not Found' });
+    }
+  });
+}
+
+// The toolbar-icon click is browser UI and cannot be driven from a page, so tests
+// perform the injection that chrome.action.onClicked performs on the active tab:
+// seed a boot intent, mark the runtime injection, then inject the production content
+// scripts. Everything after that (permission modal, grant handling, dynamic
+// registration) is production. The tab is found through its id only — an extension
+// without the "tabs" permission cannot read tab URLs.
+export async function injectContentScriptsAsToolbarIcon(backgroundWorker, { bootIntent, bootData } = {}) {
+  return backgroundWorker.evaluate(async ({ bootIntent, bootData }) => {
+    const tabs = await chrome.tabs.query({});
+    const tab = tabs.find((t) => t.active) || tabs[0];
+    if (!tab) throw new Error('No tab available for content-script injection');
+
+    if (bootIntent) {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: (i, d) => { window.__VIBE_BOOT_INTENT = i; window.__VIBE_BOOT_DATA = d; },
+        args: [bootIntent, bootData],
+      });
+    }
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id, allFrames: true },
+      func: () => { window.__VIBE_LATE_INJECTION = true; },
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id, allFrames: true },
+      files: ['content-scripts/content.js'],
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content-scripts/bridge.js'],
+      world: 'MAIN',
+    });
+    return tab.id;
+  }, { bootIntent, bootData });
+}
+
+// Keyboard install evidence published by the content script on its shadow host.
+export async function readKeyboardEvidence(page) {
+  return page.evaluate(() => {
+    const host = document.querySelector('#vibe-annotations-root');
+    if (!host) return null;
+    return {
+      world: host.getAttribute('data-vibe-keyboard-world'),
+      runAt: host.getAttribute('data-vibe-keyboard-run-at'),
+      installedAt: Number(host.getAttribute('data-vibe-keyboard-installed-at')),
+      earlyCapture: host.getAttribute('data-vibe-keyboard-early-capture') === 'true',
+      lateInjection: host.getAttribute('data-vibe-keyboard-late-injection') === 'true',
+    };
+  });
+}

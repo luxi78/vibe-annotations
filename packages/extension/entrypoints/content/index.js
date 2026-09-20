@@ -38,6 +38,22 @@ function injectFontFace() {
     if (target) target.appendChild(style);
   }
 
+// --- Injection evidence ---
+// The shadow host is the one DOM node both the content-script world and the page
+// world can read, so the router's install evidence is published there for the E2E
+// suite and for anyone inspecting why keyboard protection is limited.
+function publishKeyboardEvidence() {
+  const host = VibeShadowHost.getHost();
+  const evidence = VibeKeyboardRouter.getInstallEvidence();
+  if (!host || !evidence) return;
+
+  host.setAttribute('data-vibe-keyboard-world', evidence.world);
+  host.setAttribute('data-vibe-keyboard-run-at', evidence.runAt);
+  host.setAttribute('data-vibe-keyboard-installed-at', String(evidence.installedAt));
+  host.setAttribute('data-vibe-keyboard-early-capture', String(evidence.earlyCapture));
+  host.setAttribute('data-vibe-keyboard-late-injection', String(evidence.lateInjection));
+}
+
 // --- Initialize all modules ---
 async function init() {
   // Controlled fault injection for the E2E suite (tests/fixtures/selected-rectangle.html
@@ -48,6 +64,7 @@ async function init() {
 
   injectFontFace();
   VibeShadowHost.init();
+  publishKeyboardEvidence();
 
   // Boot intent set by the background when it injected us for a one-off reason
   // (currently: permission prompt on a non-auto-enabled site). Consumed and cleared.
