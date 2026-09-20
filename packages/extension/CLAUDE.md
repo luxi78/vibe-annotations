@@ -40,6 +40,10 @@ bridge-handler → content.js
 
 `entrypoints/content/index.js` installs the window-capture keyboard router synchronously at `document_start`, before page scripts register their own listeners. Dynamic site registrations (`entrypoints/background.js` → `enableSite`) use the same `runAt`. A runtime injection (`chrome.scripting.executeScript` into an already-loaded page) cannot precede those listeners, so the background marks it (`__VIBE_LATE_INJECTION`), the router records install evidence (`VibeKeyboardRouter.getInstallEvidence()`), and the toolbar shows a persistent "reload for full keyboard protection" banner instead of claiming full isolation.
 
+### Cross-frame Annotate session
+
+The manifest content script (and the dynamic registration) run in all frames, so an Annotate session is shared by every frame the extension may control. `lib/content/keyboard-router.js` is the frame half of the protocol: it asks the tab's coordinator which session exists when it boots, publishes its own transitions, mirrors remote ones (owning the keyboard from `document_start`, driving its overlay once `onUiReady()` runs), and reports a release when the document that owns the session goes away. `lib/background/session-coordinator.js` is the tab-level half: it keeps the per-tab record and relays states through `chrome.tabs.sendMessage`, which reaches only injected frames. Each frame publishes `data-vibe-session-state` / `data-vibe-session-mirror` on its shadow host as evidence. See `docs/e2e-testing.md` §10 for the contract and its coverage boundaries.
+
 ### Storage
 
 - **All mutations** go through `background.js` via `sendMessage()` (serialized with storage lock).

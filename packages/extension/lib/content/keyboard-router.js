@@ -3,25 +3,39 @@
 // owns keyboard routing by annotation-session lifecycle, and drains exit-key sequences.
 // Session cleanup (blur, page hiding, overlay closure, initialization failure,
 // destruction) is idempotent and never leaves the page with stale key ownership.
+// One Annotate session is shared by every controllable frame of a tab: the frame
+// whose user action starts a state owns the local state machine, peers mirror the
+// session so keyboard ownership follows focus into them, and any exit releases all.
 
 import VibeEvents from './event-bus.js';
 import VibeAPI from './api-bridge.js';
 import VibeShadowHost from './shadow-host.js';
 import VibeInspectionMode from './inspection-mode.js';
 import { shouldTriggerHotkey } from './hotkey.js';
+import { SESSION_SYNC, SESSION_STATES, ACTIVE_SESSION_STATES } from '../session-protocol.js';
 
-export const SessionState = {
-  IDLE: 'idle',
-  SELECTION: 'selection',
-  WAITING: 'waiting',
-  EDITING: 'editing',
-};
+export const SessionState = SESSION_STATES;
 
 let currentState = SessionState.IDLE;
 let customShortcut = null;
 let initialized = false;
 let isRecordingShortcut = false;
 let activePopoverForTesting = null;
+
+// --- Cross-frame session sync state ---
+// Identifies this document to the background so a hello can tell "the frame that
+// owned the session is still alive" apart from "its document was replaced".
+const sessionNonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
+// This frame mirrors a session whose state machine lives in another frame of the tab.
+let mirroredSession = false;
+// True while a remote state is being applied: applying it must never be reported
+// back as a local transition (that would clobber the owning frame's state).
+let applyingRemoteState = false;
+let sessionMessageListener = null;
+// This frame's own UI exists (entrypoints/content/index.js finished booting). A
+// session mirrored at document_start owns the keyboard immediately but can only
+// drive the overlay once there is an overlay to drive.
+let uiReady = false;
 
 const isMac = typeof navigator !== 'undefined' && navigator.platform?.toUpperCase().indexOf('MAC') >= 0;
 const DEFAULT_SHORTCUT = {
@@ -85,35 +99,35 @@ function onShortcutStorageChanged(changes, ns) {
 }
 
 function onInspectionStart() {
-  currentState = SessionState.SELECTION;
+  setSessionState(SessionState.SELECTION);
 }
 
 function onInspectionStop() {
-  currentState = SessionState.IDLE;
+  setSessionState(SessionState.IDLE);
 }
 
 function onElementSelected() {
-  currentState = SessionState.WAITING;
+  setSessionState(SessionState.WAITING);
 }
 
 function onAnnotationEdit() {
   if (VibeInspectionMode.isActive()) {
-    currentState = SessionState.WAITING;
+    setSessionState(SessionState.WAITING);
   }
 }
 
 function onPopoverOpened() {
   if (currentState === SessionState.WAITING) {
-    currentState = SessionState.EDITING;
+    setSessionState(SessionState.EDITING);
   }
 }
 
 function onPopoverDismissed({ reEnableInspection } = {}) {
-  currentState = reEnableInspection ? SessionState.SELECTION : SessionState.IDLE;
+  setSessionState(reEnableInspection ? SessionState.SELECTION : SessionState.IDLE);
 }
 
 function onPopoverCancelled() {
-  currentState = VibeInspectionMode.isActive() ? SessionState.SELECTION : SessionState.IDLE;
+  setSessionState(VibeInspectionMode.isActive() ? SessionState.SELECTION : SessionState.IDLE);
 }
 
 function onShortcutRecordingStart() {
@@ -239,6 +253,15 @@ function init() {
 
   // Synchronize state with annotation lifecycle events
   subscribeSessionEvents();
+
+  // Cross-frame session coordination. The listener must exist before the hello
+  // resolves, so a session that is already active in the tab reaches this frame
+  // even if it loads in the middle of one.
+  if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+    sessionMessageListener = onSessionSyncMessage;
+    chrome.runtime.onMessage.addListener(sessionMessageListener);
+  }
+  requestSessionSync();
 }
 
 // Release every key the session still believes is held or owned. Used when an
@@ -270,8 +293,13 @@ function onFocusLoss() {
   composingTarget = null;
 }
 
+// The document is going away. A frame that owns the tab's session has to report it,
+// because nothing else can observe that its state machine disappeared; a frame that
+// only mirrors another frame's session drops its own copy silently, so a subframe
+// navigating or being removed cannot end a session the rest of the tab is using (A15).
 function onPageHide() {
-  terminateSession();
+  if (isSessionOwner()) terminateSession();
+  else applyAsRemote(() => terminateSession());
   clearHeldKeyData();
 }
 
@@ -283,14 +311,21 @@ function isSessionActive() {
   return currentState !== SessionState.IDLE || VibeInspectionMode.isActive();
 }
 
+// This frame's transitions are the authoritative ones: it is in an active state
+// without mirroring a state machine that lives in another frame.
+function isSessionOwner() {
+  return isActiveState(currentState) && !mirroredSession;
+}
+
 // End the Annotate session: close any open editor, hand DOM focus back to the
 // page, stop inspection and release keyboard ownership. Idempotent, and safe to
-// call from any state.
+// call from any state. Ends the tab's shared session everywhere it applies: the
+// transition is published, so peer frames release their mirrored protection too.
 function terminateSession() {
   if (!isSessionActive()) return false;
 
   VibeEvents.emit('popover:requestDismiss', { reEnableInspection: false });
-  currentState = SessionState.IDLE;
+  setSessionState(SessionState.IDLE);
 
   // Focus inside a (possibly hidden) extension UI would keep swallowing keys,
   // so hand it back before the session's ownership is released.
@@ -306,7 +341,9 @@ function terminateSession() {
 // Detach everything and forget all session state. Idempotent; init() can run
 // again afterwards without duplicating listeners or commands.
 function teardown() {
-  terminateSession();
+  // A frame that fails to boot must release only itself: its own failure is no
+  // reason to end the session the rest of the tab is sharing.
+  applyAsRemote(() => terminateSession());
   unsubscribeSessionEvents();
 
   const target = getEventTarget();
@@ -320,17 +357,133 @@ function teardown() {
   if (shortcutStorageListener && typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
     chrome.storage.onChanged.removeListener(shortcutStorageListener);
   }
+  if (sessionMessageListener && typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+    chrome.runtime.onMessage.removeListener(sessionMessageListener);
+  }
 
   initialized = false;
   shortcutStorageListener = null;
+  sessionMessageListener = null;
   customShortcut = null;
   isRecordingShortcut = false;
   activePopoverForTesting = null;
   currentState = SessionState.IDLE;
+  mirroredSession = false;
+  uiReady = false;
   clearHeldKeyData();
 }
 
+// --- Cross-frame session coordination ---
 
+function isActiveState(state) {
+  return ACTIVE_SESSION_STATES.includes(state);
+}
+
+function sendRuntimeMessage(message) {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return Promise.resolve(null);
+  try {
+    return chrome.runtime.sendMessage(message).catch(() => null);
+  } catch (_) {
+    return Promise.resolve(null);
+  }
+}
+
+// Publish the session evidence on the shadow host: the one node the page world and
+// the E2E suite can read, and the honest record of whether this frame is protected.
+function publishSessionEvidence() {
+  const host = VibeShadowHost.getHost?.();
+  if (!host || typeof host.setAttribute !== 'function') return;
+  host.setAttribute('data-vibe-session-state', currentState);
+  host.setAttribute('data-vibe-session-mirror', String(mirroredSession));
+}
+
+// The single place that changes ownership. A local transition is announced to the
+// coordinator, which relays it to the other frames of the tab; a remote state is
+// applied inside applyAsRemote() and therefore never announced back.
+function setSessionState(next) {
+  const changed = currentState !== next;
+  currentState = next;
+  if (next === SessionState.IDLE) mirroredSession = false;
+  if (!changed) return;
+  publishSessionEvidence();
+  if (!applyingRemoteState) {
+    sendRuntimeMessage({ action: SESSION_SYNC.STATE, state: next, nonce: sessionNonce });
+  }
+}
+
+function applyAsRemote(fn) {
+  applyingRemoteState = true;
+  try {
+    fn();
+  } finally {
+    applyingRemoteState = false;
+  }
+}
+
+// A session is active in another frame: own the keyboard here as well, so moving
+// focus into this frame cannot leak shortcuts. Isolation starts immediately (the
+// frame consumes keys from this moment); the overlay it should be annotating with
+// follows once this frame's UI has booted.
+function applyRemoteSessionState(remoteState, ownerNonce = null) {
+  if (!initialized) return;
+  // The coordinator echoes a transition back to the tab; the frame that produced it
+  // runs the authoritative state machine and must not treat its own echo as remote.
+  if (ownerNonce && ownerNonce === sessionNonce) return;
+
+  if (!isActiveState(remoteState)) {
+    mirroredSession = false;
+    if (currentState === SessionState.IDLE) return;
+    applyAsRemote(() => terminateSession());
+    publishSessionEvidence();
+    return;
+  }
+
+  mirroredSession = true;
+  activateMirroredSession();
+}
+
+// Mirror an active session into this frame. The mirrored state is assignment rather
+// than a transition: it is applied silently and never announced back (that would
+// make two frames fight over the tab's session), which is also why the state is
+// written here directly instead of through setSessionState.
+function activateMirroredSession() {
+  if (!initialized || !mirroredSession) return;
+
+  // This frame's own transient state survives: the remote signal only says that a
+  // session exists, and an editor open in another frame is not this frame's editor.
+  if (currentState === SessionState.IDLE) currentState = SessionState.SELECTION;
+  publishSessionEvidence();
+
+  // Without a UI there is nothing to drive yet; onUiReady() finishes the mirror.
+  if (!uiReady || VibeInspectionMode.isActive()) return;
+  applyAsRemote(() => VibeEvents.emit('inspection:start'));
+}
+
+// This frame's UI exists now (entrypoints/content/index.js → bootNormal). A session
+// mirrored at document_start still has to activate the local overlay — cursor,
+// hover and click-to-annotate — so the user can annotate from this frame too.
+// Frames without a UI publish nothing, which keeps "no shadow host" an honest
+// record that this frame is not represented as protected.
+function onUiReady() {
+  uiReady = true;
+  if (!initialized) return;
+  if (mirroredSession) activateMirroredSession();
+  else publishSessionEvidence();
+}
+
+function onSessionSyncMessage(request) {
+  if (!request || request.action !== SESSION_SYNC.REMOTE_STATE) return;
+  applyRemoteSessionState(request.state, request.ownerNonce);
+}
+
+// Ask the background which session the tab is in, so a frame that loads while a
+// session is active joins it instead of leaking shortcuts.
+function requestSessionSync() {
+  sendRuntimeMessage({ action: SESSION_SYNC.HELLO, nonce: sessionNonce }).then((response) => {
+    if (!response || !response.state) return;
+    applyRemoteSessionState(response.state, response.ownerNonce);
+  });
+}
 
 function isOurUI(e) {
   const path = e.composedPath ? e.composedPath() : [];
@@ -586,7 +739,7 @@ function handleIdle(e) {
   if (shouldTriggerHotkey(e, getActiveShortcut())) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    currentState = SessionState.SELECTION;
+    setSessionState(SessionState.SELECTION);
     VibeEvents.emit('inspection:start');
   }
 }
@@ -594,7 +747,9 @@ function handleIdle(e) {
 function exitSelectionMode(e) {
   if (currentState === SessionState.IDLE) return;
 
-  currentState = SessionState.IDLE;
+  // Publishing the transition is what releases the tab's other frames: an exit from
+  // any frame ends the shared session, not just the protection in this one.
+  setSessionState(SessionState.IDLE);
   beginDrain(e);
 
   // Blur any focused element inside extension Shadow DOM so focus doesn't stay trapped
@@ -790,6 +945,8 @@ function getInstallEvidence() {
   return installationEvidence ? { ...installationEvidence } : null;
 }
 
+// Test hook: put this frame into a state without running the transition, so a
+// scenario can start from an already-running local state machine.
 function setState(state) {
   currentState = state;
 }
@@ -815,6 +972,9 @@ function resetForTesting() {
   isRecordingShortcut = false;
   activePopoverForTesting = null;
   installationEvidence = null;
+  mirroredSession = false;
+  applyingRemoteState = false;
+  uiReady = false;
 }
 
 const VibeKeyboardRouter = {
@@ -824,6 +984,7 @@ const VibeKeyboardRouter = {
   getInstallEvidence,
   setState,
   terminateSession,
+  onUiReady,
   setCustomShortcutForTesting,
   setActivePopoverForTesting,
   resetForTesting,

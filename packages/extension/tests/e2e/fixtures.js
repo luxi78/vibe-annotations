@@ -207,24 +207,33 @@ export { expect };
 
 // --- Injection-path harness (A16) ---
 
-// Serve the selected-rectangle fixture from a controlled origin (fulfilled by the
-// test runner, so no DNS is needed) and give every injection-path test its own
-// isolated origin and profile. The host is inside the extension's declared
-// test/localhost host permissions — the only origins a test profile can reach without
-// answering the native permission bubble (see docs/e2e-testing.md).
-export async function routeControlledOrigin(context, origin) {
-  const fixtureHtml = fs.readFileSync(
-    path.join(__dirname, '..', 'fixtures', 'selected-rectangle.html'),
-    'utf-8'
-  );
+const FIXTURE_DIR = path.join(__dirname, '..', 'fixtures');
 
+// Serve the repository fixtures from a controlled origin (fulfilled by the test
+// runner, so no DNS is needed) and give every injection-path test its own isolated
+// origin and profile. Any file in tests/fixtures is reachable by name, which lets a
+// single origin serve both the standalone page and the framed page with its frames.
+// The host is inside the extension's declared test/localhost host permissions — the
+// only origins a test profile can reach without answering the native permission
+// bubble (see docs/e2e-testing.md).
+export async function routeControlledOrigin(context, origin) {
   await context.route(`${origin}/**`, async (route) => {
     const pathname = new URL(route.request().url()).pathname;
-    if (pathname === '/' || pathname.endsWith('/selected-rectangle.html')) {
-      await route.fulfill({ status: 200, contentType: 'text/html; charset=UTF-8', body: fixtureHtml });
-    } else {
+    const name = pathname === '/' ? 'selected-rectangle.html' : path.basename(pathname);
+    const filePath = path.join(FIXTURE_DIR, name);
+
+    if (!filePath.startsWith(FIXTURE_DIR) || !fs.existsSync(filePath)) {
       await route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not Found' });
+      return;
     }
+
+    await route.fulfill({
+      status: 200,
+      contentType: path.extname(filePath).toLowerCase() === '.js'
+        ? 'application/javascript; charset=UTF-8'
+        : 'text/html; charset=UTF-8',
+      body: fs.readFileSync(filePath, 'utf-8'),
+    });
   });
 }
 
@@ -278,3 +287,74 @@ export async function readKeyboardEvidence(page) {
     };
   });
 }
+
+// --- Frame-session harness (A15) ---
+
+export const CROSS_ORIGIN = 'http://localhost:3005';
+// Outside every declared host permission, so no content script is ever injected
+// there: the frame the extension must NOT represent as protected.
+export const UNLISTED_ORIGIN = 'http://vibe-unlisted.invalid:3005';
+
+// The session evidence each frame publishes on its own shadow host: whether the
+// frame participates in an Annotate session, and whether its state machine is the
+// authoritative one or mirrors another frame's.
+export async function readSessionEvidence(target) {
+  return target.evaluate(() => {
+    const host = document.querySelector('#vibe-annotations-root');
+    if (!host) return null;
+    return {
+      state: host.getAttribute('data-vibe-session-state'),
+      mirror: host.getAttribute('data-vibe-session-mirror') === 'true',
+      cursor: !!document.querySelector('style[data-vibe-cursor]'),
+      overlay: !!document.querySelector('#vibe-annotations-root'),
+    };
+  });
+}
+
+// Route the framed fixture (and its child frames) for one top origin, including the
+// authorized cross-origin host and the unlisted host. Frame origins are passed to the
+// fixture so the same file can serve any controlled top origin.
+export async function routeFramedFixture(context, topOrigin, {
+  sameOrigin = '',
+  crossOrigin = CROSS_ORIGIN,
+  unlistedOrigin = UNLISTED_ORIGIN,
+} = {}) {
+  await routeControlledOrigin(context, topOrigin);
+  if (crossOrigin) await routeControlledOrigin(context, crossOrigin);
+  if (unlistedOrigin) await routeControlledOrigin(context, unlistedOrigin);
+}
+
+export function framedFixtureUrl(topOrigin, origins = {}) {
+  const params = new URLSearchParams();
+  if (origins.sameOrigin) params.set('sameOrigin', origins.sameOrigin);
+  if (origins.crossOrigin) params.set('crossOrigin', origins.crossOrigin);
+  if (origins.unlistedOrigin) params.set('unlistedOrigin', origins.unlistedOrigin);
+  const query = params.toString();
+  return `${topOrigin}/framed-annotate.html${query ? `?${query}` : ''}`;
+}
+
+// The named child frames of the framed fixture, once each of them has parsed its own
+// document. Playwright addresses frames by the iframe `name` attribute.
+export async function waitForFixtureFrames(page) {
+  const frames = {};
+  const names = { 'same-origin': 'sameOrigin', 'cross-origin': 'crossOrigin', unlisted: 'unlisted' };
+
+  for (const [name, key] of Object.entries(names)) {
+    await page.frameLocator(`iframe[name="${name}"]`).locator('#canvas-rect')
+      .waitFor({ state: 'attached', timeout: 15000 });
+    const frame = page.frame({ name });
+    if (!frame) throw new Error(`Fixture frame "${name}" did not attach`);
+    frames[key] = frame;
+  }
+  return frames;
+}
+
+// Per-frame host observables: the counters and full event journal the fixture
+// records, so isolation can be asserted inside the frame that has focus.
+export async function readFrameFixtureState(frame) {
+  return frame.evaluate(() => ({
+    state: window.__FIXTURE_STATE,
+    log: window.__EVENT_LOG,
+  }));
+}
+
