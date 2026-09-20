@@ -149,4 +149,55 @@ export async function dispatchKeyWithRepeat(page, key, code, windowsVirtualKeyCo
   });
 }
 
+// Helper: Start browsing an IME composition through the browser's own input
+// protocol (CDP), which inserts composition text in the renderer without
+// fabricating DOM events. Returns the CDP session for later commit/abort.
+export async function startComposition(page, text) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.imeSetComposition', {
+    text,
+    selectionStart: text.length,
+    selectionEnd: text.length,
+  });
+  return cdp;
+}
+
+// Helper: Update the active composition string (candidate list navigation)
+export async function updateComposition(cdp, text) {
+  await cdp.send('Input.imeSetComposition', {
+    text,
+    selectionStart: text.length,
+    selectionEnd: text.length,
+  });
+}
+
+// Helper: Confirm the active composition (candidate window confirmation)
+export async function commitComposition(cdp, text) {
+  await cdp.send('Input.insertText', { text });
+}
+
+// Helper: Record the composition/input pipeline events the annotation editor
+// receives into window.__IME_LOG so tests can prove they stay native.
+export async function instrumentEditor(page) {
+  await page.evaluate(() => {
+    const root = document.querySelector('#vibe-annotations-root').shadowRoot;
+    const ta = root.querySelector('.vibe-textarea');
+    window.__IME_LOG = [];
+    const record = (e) => window.__IME_LOG.push({
+      type: e.type,
+      data: e.data ?? null,
+      inputType: e.inputType || null,
+      isComposing: e.isComposing ?? null,
+      isTrusted: e.isTrusted,
+    });
+    for (const type of ['compositionstart', 'compositionupdate', 'compositionend', 'beforeinput', 'input']) {
+      ta.addEventListener(type, record);
+    }
+  });
+}
+
+export async function readImeLog(page) {
+  return page.evaluate(() => window.__IME_LOG);
+}
+
 export { expect };

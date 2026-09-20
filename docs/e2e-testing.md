@@ -1,6 +1,6 @@
 # Extension E2E Test Harness & Keyboard Conflict Baselines
 
-This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, CI display configuration, failure artifact inspection, and baseline conflict documentation against extension build `2.0.2`.
+This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, CI display configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, and the automated IME composition coverage for A7.
 
 ---
 
@@ -91,6 +91,7 @@ Playwright is configured (`packages/extension/playwright.config.js`) to retain d
 - **Screenshots**: Saved to `test-results/<test-folder>/test-failed-1.png`.
 - **Error Context & Logs**: Saved in `test-results/<test-folder>/error-context.md`.
 - **Fixture Event Journal**: Host fixture records all DOM and window event phases (`window-capture`, `document-capture`, `target-capture`, `document-bubble`, `window-bubble`, `window-property`) in `window.__EVENT_LOG` and observable state in `window.__FIXTURE_STATE`.
+- **Editor IME Journal**: The A7 spec additionally instruments the extension's editor textarea (`fixtures.js` → `instrumentEditor`) and records its composition/`beforeinput`/`input` events in `window.__IME_LOG`.
 
 ---
 
@@ -139,3 +140,67 @@ Because implementation tickets #6 and #7 are pending, the conflict tests assert 
 | **Early Capture** | Window capture receives keystrokes during Annotate | **FAILS (leaks to host)** | Host early window capture listeners receive `ArrowDown` and other navigation keys during Annotate mode because extension does not intercept window capture early. | **#6 & #7** |
 
 When subsequent implementation tickets are completed (e.g. #6, #7), these baseline tests will pass without modification, serving as regression assertions.
+
+---
+
+## 7. A7 IME Composition Coverage (Ticket #9)
+
+Spec file: `packages/extension/tests/e2e/ime-composition.spec.js` (part of the standard `pnpm test:extension:e2e` command).
+
+### 7.1 What is automated
+
+Composition is driven through the browser's own input protocol via CDP (`Input.imeSetComposition`, `Input.insertText`), which performs real composition insertion in the renderer. The tests assert visible editor text, composition/input event records, host counters and host event logs:
+
+| Test | Asserted behavior |
+| :--- | :--- |
+| Composition text stays native and commits | The uncommitted composition string appears in the editor; `compositionstart`/`compositionupdate` and `beforeinput`/`input` with `inputType: 'insertCompositionText'` are trusted native events; the browser-protocol commit ends the composition once, keeps the committed text, and native editing continues afterwards; host receives zero keyboard events. |
+| Enter/Esc during composition | Candidate confirmation (Enter, including a held down/repeat/up sequence) and cancellation (Escape) while a composition is active do not save, close the editor, or exit Annotate; focus stays in the editor; the composition stays active (`compositionend` count 0, text unchanged) and further composition updates still flow through the editor afterwards; the host receives zero keyboard events and host commands/counters do not run. After the browser-protocol commit, Esc closes the editor, the next Esc exits Annotate, and a fresh Esc reaches the host again (A1/A2 contract). |
+| Aborted composition and save | An empty candidate string ends the composition without committing text; the editor stays open; afterwards the save shortcut saves exactly once (one annotation, one badge, still in selection mode) with zero host leakage. |
+| Standalone badge editor | The same composition protection holds for the editor opened from a badge in IDLE: Enter/Esc during composition do not dismiss it, committing keeps the composed text, Esc closes it without entering Annotate mode, and the host is reachable again afterwards. |
+
+Implemented contract (production `lib/content/keyboard-router.js`): while a composition is active in an extension editor, unmodified keys (candidate confirm/cancel/navigate) are isolated from the host, run no session command, and their default action is consumed so they cannot alter the editor text. Explicit modifier commands (save shortcut, mode toggle hotkey) still run. Ownership ends on `compositionend` or window blur, after which normal commands resume.
+
+Consuming the default action is deliberate and load-bearing: the automated path delivers candidate keys as regular DOM key events whose only default action would be a stray text edit (Enter inserts a newline), whereas with a real IME the candidate window consumes those keys before the page sees them and the composition is driven by the IME, not by the key event. Leaving the default intact makes the editor text diverge from the real-IME outcome (`にほん\n` instead of `にほん`).
+
+### 7.2 Coverage boundary versus a real operating-system candidate window
+
+- With a real OS IME, candidate confirm/cancel keystrokes are normally consumed by the IME before the page ever sees them, so the browser never dispatches a DOM key event for them. The automated path cannot reproduce that: Chromium delivers the `Enter`/`Escape` we send as regular trusted DOM key events that carry `isComposing: true` while the composition is active. The tests therefore prove the extension's handling of composition-tagged key events, not the OS-level candidate-window interaction.
+- The automated commits/cancellations are browser-protocol operations, not real candidate-window selections: no candidate list is built, no transliteration is performed, and `Input.insertText` commits text directly. The spec asserts that the composition stays active after the guarded keys (no `compositionend`, text unchanged) *and* that further composition updates still flow through the editor afterwards; whether the extension's key handling interferes with a real IME's candidate handling can only be confirmed by the supplemental manual check in 7.3.
+- Keyboard-event isolation is what A7 asserts. Composition, `beforeinput` and `input` events are deliberately left unblocked so the browser text pipeline stays native; they are not keyboard events and are outside the isolation contract.
+- Composition in host-page fields while Annotate selection mode is active keeps the existing selection semantics (all keys consumed, host editable content not modified). The composition paths protected and covered here are the extension's editors: the Annotate editor and the standalone badge editor.
+
+### 7.3 Supplemental manual check (real OS candidate window)
+
+Status: **not executed / untested.** No operating-system IME or candidate window was driven while implementing this ticket (environment: Windows 10.0.26200, Chromium 153.0.8010.12 launched by Playwright 1.63.0, extension build 2.0.2 + this change). Automated evidence covers only the browser-protocol path described above.
+
+Reproducible steps for a human with a system IME (e.g. Microsoft Pinyin, Japanese IME, Korean IME):
+
+1. `pnpm test:extension:e2e` prerequisites are not required for this check; build and load the extension with `pnpm --filter vibe-annotations-extension build` and load `packages/extension/.output/chrome-mv3` as an unpacked extension in desktop Chrome.
+2. Open the fixture page (`node packages/extension/tests/fixtures/server.js`, then `http://127.0.0.1:3005/selected-rectangle.html`).
+3. Enable the system IME, click **Annotate**, click the rectangle to open the editor.
+4. Type a pinyin/kana/hangul sequence so the composition string appears in the annotation textarea, and leave the candidate window open. Check that the underlined composition keeps updating as you type (the extension's key handling must not freeze the IME).
+5. Candidate confirmation: press `Enter` (or `Space`, depending on the IME) to confirm the candidate. Expected: the confirmed text appears in the editor, the editor stays open, Annotate stays active, nothing is saved, and the host rectangle stays selected with its counters unchanged.
+6. Candidate cancellation: repeat step 4, then press `Esc` to cancel the candidate window. Expected: the composition is discarded, the editor stays open, Annotate stays active, and the host rectangle stays selected.
+7. After the composition ends, verify normal commands resumed: `Esc` closes the editor back to selection, `Ctrl/Cmd+Enter` saves exactly once.
+8. Observe the host page: no host shortcut should fire while the IME is composing in the extension editor.
+
+Report the OS/browser/IME versions, the confirmed/cancelled candidate results, and any deviation from the expectations above.
+
+### 7.4 Failure-to-pass evidence (Ticket #9)
+
+Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, headed), extension built from `packages/extension` source.
+
+- Before the fix. Production router without composition handling, extension rebuilt from unmodified source (the fix is confined to `lib/content/keyboard-router.js`, so reverting that one file reproduces the baseline):
+  ```bash
+  git stash push -- packages/extension/lib/content/keyboard-router.js
+  npx wxt build && npx playwright test tests/e2e/ime-composition.spec.js
+  git stash pop
+  ```
+  Result: `1 passed, 3 failed`. Escape during an active composition closed the editor — in the two Annotate-editor tests the popover is gone right after Enter/Esc (`expect(popover).toBeAttached()` fails, and the follow-up textarea assertion fails because the editor was already detached), and the standalone badge editor was dismissed the same way. The native composition/commit test passed before and after, and remains a regression assertion. Traces, screenshots, error context and the fixture journals from those failures are kept by the Playwright config in `packages/extension/test-results/` (gitignored).
+- Consuming the default action of composition keys was verified to be load-bearing: with `preventDefault()` removed from the router guard and everything else unchanged, the same spec fails on the editor text (`にほん\n` instead of `にほん` after candidate confirmation).
+- After the fix (current source):
+  ```bash
+  pnpm test:extension:e2e          # 30 passed, includes the 4 A7 tests and A1-A6, A8-A11, A14 regressions
+  pnpm --filter vibe-annotations-extension test:baseline   # 6 passed
+  pnpm test:extension              # 41 passed (unit)
+  ```
