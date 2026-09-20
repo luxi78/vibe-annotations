@@ -21,6 +21,12 @@ import VibeShadowHost from './shadow-host.js';
   let activeOriginalCssText = null;
   let activeCssRulesStyleEl = null;
   let activePendingAttachments = null;
+  let currentGenerationId = 0;
+  let activeSaveHandler = null;
+
+  function cancelPendingGeneration() {
+    currentGenerationId++;
+  }
 
   const P = VibePopoverPanels; // shorthand
 
@@ -53,16 +59,35 @@ import VibeShadowHost from './shadow-host.js';
   function init() {
     VibeEvents.on('inspection:elementClicked', onElementClicked);
     VibeEvents.on('annotation:edit', onEditRequested);
+    VibeEvents.on('inspection:stop', cancelPendingGeneration);
+    VibeEvents.on('inspection:stopped', cancelPendingGeneration);
+    VibeEvents.on('popover:requestSave', () => {
+      if (activeSaveHandler) activeSaveHandler();
+    });
+    VibeEvents.on('popover:requestDismiss', ({ reEnableInspection = true } = {}) => {
+      dismiss(reEnableInspection);
+    });
+  }
+
+  async function generateContextFor(element) {
+    const genId = ++currentGenerationId;
+    const context = await VibeElementContext.generate(element);
+    if (genId !== currentGenerationId) {
+      return null;
+    }
+    return context;
   }
 
   async function onElementClicked({ element, clientX, clientY }) {
-    const context = await VibeElementContext.generate(element);
+    const context = await generateContextFor(element);
+    if (!context) return;
     show(element, context, null, clientX, clientY);
   }
 
   async function onEditRequested({ annotation, element }) {
     VibeInspectionMode.tempDisable();
-    const context = await VibeElementContext.generate(element);
+    const context = await generateContextFor(element);
+    if (!context) return;
     show(element, context, annotation);
   }
 
@@ -237,6 +262,11 @@ import VibeShadowHost from './shadow-host.js';
     const cancelBtn = popover.querySelector('.vibe-cancel-btn');
     const deleteBtn = popover.querySelector('.vibe-delete-btn');
     const resetBtn = popover.querySelector('.vibe-design-reset');
+
+    activeSaveHandler = () => {
+      if (saveBtn && !saveBtn.disabled) saveBtn.click();
+    };
+    VibeEvents.emit('popover:opened');
 
     // Auto-grow the comment field with its content, capped at 180px (then it
     // scrolls). Dragging the grip sets a manual height that sticks and turns
@@ -884,6 +914,8 @@ import VibeShadowHost from './shadow-host.js';
       anchor.addEventListener('pointerdown', (e) => { if (e.target === anchor) close(); });
       escHandler = (e) => { if (e.key === 'Escape') close(); };
       bindPopoverKeyListeners(anchor, escHandler);
+      activeSaveHandler = null;
+      VibeEvents.emit('popover:opened');
       return;
     }
 
@@ -940,6 +972,11 @@ import VibeShadowHost from './shadow-host.js';
 
     const chooseBtn = popover.querySelector('.vibe-variants-choose');
     const hint = popover.querySelector('.vibe-variants-hint');
+
+    activeSaveHandler = () => {
+      if (chooseBtn && !chooseBtn.disabled) chooseBtn.click();
+    };
+    VibeEvents.emit('popover:opened');
 
     // The CTA reflects whether the selected radio matches the persisted choice:
     // same → "Chosen ✓" (disabled); different (or none yet) → an actionable button.
@@ -998,6 +1035,8 @@ import VibeShadowHost from './shadow-host.js';
 
   function dismiss(reEnableInspection = false, saved = false) {
     const hadPopover = !!currentPopover;
+    activeSaveHandler = null;
+    currentGenerationId++;
 
     if (hadPopover && !saved && activeElement && activeOriginalCssText !== null) {
       activeElement.style.cssText = activeOriginalCssText;
@@ -1033,6 +1072,7 @@ import VibeShadowHost from './shadow-host.js';
     activeTextDirty = false;
     activeOriginalCssText = null;
     if (hadPopover && !saved) VibeEvents.emit('popover:cancelled');
+    if (hadPopover) VibeEvents.emit('popover:dismissed', { reEnableInspection, saved });
     if (reEnableInspection) VibeInspectionMode.reEnable();
   }
 
@@ -1221,5 +1261,11 @@ import VibeShadowHost from './shadow-host.js';
     return `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>`;
   }
 
-const VibeAnnotationPopover = { init, dismiss, bindPopoverKeyListeners, unbindPopoverKeyListeners };
+const VibeAnnotationPopover = {
+  init,
+  show,
+  dismiss,
+  bindPopoverKeyListeners,
+  unbindPopoverKeyListeners,
+};
 export default VibeAnnotationPopover;
