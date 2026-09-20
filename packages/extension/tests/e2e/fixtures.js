@@ -87,7 +87,16 @@ export const test = base.extend({
     const manifest = JSON.parse(fs.readFileSync(path.join(EXTENSION_PATH, 'manifest.json'), 'utf-8'));
     await use(manifest.version);
   },
+
+  backgroundWorker: async ({ context }, use) => {
+    let [worker] = context.serviceWorkers();
+    if (!worker) {
+      worker = await context.waitForEvent('serviceworker');
+    }
+    await use(worker);
+  },
 });
+
 
 // Helper: Enter Annotate mode via toolbar button
 export async function enterAnnotateMode(page) {

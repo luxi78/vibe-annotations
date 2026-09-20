@@ -18,6 +18,40 @@ export const SessionState = {
 let currentState = SessionState.IDLE;
 let customShortcut = null;
 let initialized = false;
+let isRecordingShortcut = false;
+let activePopoverForTesting = null;
+
+const isMac = typeof navigator !== 'undefined' && navigator.platform?.toUpperCase().indexOf('MAC') >= 0;
+const DEFAULT_SHORTCUT = {
+  key: ',',
+  ctrlKey: !isMac,
+  metaKey: isMac,
+  shiftKey: true,
+  altKey: false,
+};
+
+function getActiveShortcut() {
+  return customShortcut || DEFAULT_SHORTCUT;
+}
+
+function dispatchInternalUIEvent(e, target) {
+  if (!e.isTrusted || e._isVibeInternal || !target || typeof target.dispatchEvent !== 'function') return;
+  try {
+    const synthetic = new KeyboardEvent(e.type, {
+      key: e.key,
+      code: e.code,
+      repeat: e.repeat,
+      shiftKey: e.shiftKey,
+      ctrlKey: e.ctrlKey,
+      altKey: e.altKey,
+      metaKey: e.metaKey,
+      bubbles: true,
+      composed: false,
+    });
+    synthetic._isVibeInternal = true;
+    target.dispatchEvent(synthetic);
+  } catch (_) {}
+}
 
 // Tracking sets for physically pressed keys and drained exit sequences
 const pressedCodes = new Set();
@@ -71,10 +105,14 @@ function init() {
     currentState = SessionState.WAITING;
   });
   VibeEvents.on('annotation:edit', () => {
-    currentState = SessionState.WAITING;
+    if (VibeInspectionMode.isActive()) {
+      currentState = SessionState.WAITING;
+    }
   });
   VibeEvents.on('popover:opened', () => {
-    currentState = SessionState.EDITING;
+    if (currentState === SessionState.WAITING) {
+      currentState = SessionState.EDITING;
+    }
   });
   VibeEvents.on('popover:dismissed', ({ reEnableInspection } = {}) => {
     currentState = reEnableInspection ? SessionState.SELECTION : SessionState.IDLE;
@@ -82,7 +120,14 @@ function init() {
   VibeEvents.on('popover:cancelled', () => {
     currentState = VibeInspectionMode.isActive() ? SessionState.SELECTION : SessionState.IDLE;
   });
+  VibeEvents.on('shortcut:recording:start', () => {
+    isRecordingShortcut = true;
+  });
+  VibeEvents.on('shortcut:recording:stop', () => {
+    isRecordingShortcut = false;
+  });
 }
+
 
 function isOurUI(e) {
   const path = e.composedPath ? e.composedPath() : [];
@@ -204,16 +249,55 @@ function dispatchKeyboardEvent(e) {
 }
 
 function handleIdle(e) {
+  if (isRecordingShortcut) {
+    return;
+  }
+
   // Preserve UI event protection for independent edit entry points without assigning them unsupported whole-page session semantics
   if (isOurUI(e)) {
+    if (e.type !== 'keydown') {
+      e.stopImmediatePropagation();
+      return;
+    }
+
+    // 1. Escape: dismiss popover without returning to selection mode
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      beginDrain(e);
+      VibeEvents.emit('popover:requestDismiss', { reEnableInspection: false });
+      return;
+    }
+
+    // 2. Save shortcut: Cmd/Ctrl + Enter
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      beginDrain(e);
+      VibeEvents.emit('popover:requestSave');
+      return;
+    }
+
+    // 3. Tab / Shift+Tab focus trap within popover
+    if (e.key === 'Tab') {
+      if (handleTabTrap(e)) {
+        return;
+      }
+    }
+
+    // 4. Other keys inside our UI (typing, arrows, steppers)
     e.stopImmediatePropagation();
+    const path = e.composedPath ? e.composedPath() : [];
+    const root = VibeShadowHost.getRoot?.();
+    const target = path[0] || (root ? root.activeElement : null) || e.target;
+    dispatchInternalUIEvent(e, target);
     return;
   }
 
   if (e.type !== 'keydown') return;
 
   // Check for global toggle shortcut
-  if (shouldTriggerHotkey(e, customShortcut)) {
+  if (shouldTriggerHotkey(e, getActiveShortcut())) {
     e.preventDefault();
     e.stopImmediatePropagation();
     currentState = SessionState.SELECTION;
@@ -250,7 +334,7 @@ function handleSelection(e) {
   }
 
   // 2. Toggle hotkey exits Annotate selection mode
-  if (shouldTriggerHotkey(e, customShortcut)) {
+  if (shouldTriggerHotkey(e, getActiveShortcut())) {
     exitSelectionMode(e);
     return;
   }
@@ -273,9 +357,59 @@ function handleWaiting(e) {
   e.stopImmediatePropagation();
 
   if (e.type === 'keydown') {
-    if (e.key === 'Escape' || shouldTriggerHotkey(e, customShortcut)) {
+    if (e.key === 'Escape' || shouldTriggerHotkey(e, getActiveShortcut())) {
       exitSelectionMode(e);
     }
+  }
+}
+
+function getActivePopover() {
+  if (activePopoverForTesting) return activePopoverForTesting;
+  const root = VibeShadowHost.getRoot?.();
+  return root?.querySelector?.('.vibe-popover') || null;
+}
+
+function handleTabTrap(e) {
+  const popover = getActivePopover();
+  if (!popover) return false;
+
+  const selector = 'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const allFocusables = Array.from(popover.querySelectorAll(selector));
+  const focusables = allFocusables.filter((el) => {
+    if (typeof el.getClientRects === 'function') {
+      return el.getClientRects().length > 0;
+    }
+    return el.offsetParent !== null;
+  });
+
+  if (focusables.length === 0) return false;
+
+  const path = e.composedPath ? e.composedPath() : [];
+  const root = VibeShadowHost.getRoot?.();
+  const current = path[0] || (root ? root.activeElement : e.target);
+  let index = focusables.indexOf(current);
+  if (index === -1 && current) {
+    index = focusables.findIndex((el) => el.contains?.(current));
+  }
+
+  if (e.shiftKey) {
+    if (index <= 0) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      focusables[focusables.length - 1].focus();
+      return true;
+    }
+    e.stopImmediatePropagation();
+    return true;
+  } else {
+    if (index === focusables.length - 1 || index === -1) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      focusables[0].focus();
+      return true;
+    }
+    e.stopImmediatePropagation();
+    return true;
   }
 }
 
@@ -292,7 +426,7 @@ function handleEditing(e) {
   }
 
   // 1. Toggle hotkey exits Annotate mode completely
-  if (shouldTriggerHotkey(e, customShortcut)) {
+  if (shouldTriggerHotkey(e, getActiveShortcut())) {
     e.preventDefault();
     e.stopImmediatePropagation();
     VibeAnnotationPopover.dismiss?.(false);
@@ -319,17 +453,28 @@ function handleEditing(e) {
     return;
   }
 
+  // 3.5. Tab / Shift+Tab focus trap within editing UI
+  if (e.key === 'Tab') {
+    if (handleTabTrap(e)) {
+      return;
+    }
+  }
+
   // 4. Target is an editable element inside extension UI (e.g. comment textarea, raw css, css rules)
   if (isOurEditable(e)) {
     // Separate propagation blocking from default cancellation!
     // Block host listeners by stopping immediate propagation, but allow native editing by NOT preventing default.
     e.stopImmediatePropagation();
+    const path = e.composedPath ? e.composedPath() : [];
+    dispatchInternalUIEvent(e, path[0] || e.target);
     return;
   }
 
   // 6. Target is other extension UI element
   if (isOurUI(e)) {
     e.stopImmediatePropagation();
+    const path = e.composedPath ? e.composedPath() : [];
+    dispatchInternalUIEvent(e, path[0] || e.target);
     return;
   }
 
@@ -337,6 +482,7 @@ function handleEditing(e) {
   e.preventDefault();
   e.stopImmediatePropagation();
 }
+
 
 function getState() {
   return currentState;
@@ -350,6 +496,10 @@ function setCustomShortcutForTesting(shortcut) {
   customShortcut = shortcut;
 }
 
+function setActivePopoverForTesting(popover) {
+  activePopoverForTesting = popover;
+}
+
 function resetForTesting() {
   currentState = SessionState.IDLE;
   pressedCodes.clear();
@@ -357,6 +507,8 @@ function resetForTesting() {
   drainingCodes.clear();
   drainingKeys.clear();
   customShortcut = null;
+  isRecordingShortcut = false;
+  activePopoverForTesting = null;
 }
 
 const VibeKeyboardRouter = {
@@ -364,6 +516,7 @@ const VibeKeyboardRouter = {
   getState,
   setState,
   setCustomShortcutForTesting,
+  setActivePopoverForTesting,
   resetForTesting,
   onKeyDown,
   onKeyUp,
@@ -373,3 +526,4 @@ const VibeKeyboardRouter = {
 };
 
 export default VibeKeyboardRouter;
+
