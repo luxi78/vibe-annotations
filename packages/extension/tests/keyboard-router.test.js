@@ -361,4 +361,107 @@ test('VibeKeyboardRouter unit tests', async (t) => {
 
     VibeShadowHost.getHost = origGetHost;
   });
+
+  await t.test('Independent edit lifecycle: annotation:edit when inspection inactive stays IDLE and does not transition to SELECTION on dismiss', () => {
+    VibeKeyboardRouter.resetForTesting();
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+
+    const origIsActive = VibeInspectionMode.isActive;
+    VibeInspectionMode.isActive = () => false;
+
+    // Trigger independent edit (e.g. badge click in IDLE)
+    VibeEvents.emit('annotation:edit', { annotation: { id: 'test_1' } });
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE, 'Must not transition to WAITING when inspection inactive');
+
+    // Popover opens
+    VibeEvents.emit('popover:opened');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE, 'Must remain IDLE for independent edit');
+
+    // Popover dismissed with reEnableInspection: false (as annotation-popover will emit)
+    VibeEvents.emit('popover:dismissed', { reEnableInspection: false });
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE, 'Must remain IDLE when dismissed without active inspection');
+
+    VibeInspectionMode.isActive = origIsActive;
+  });
+
+  await t.test('Shortcut recording suppresses global hotkey preemption', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setCustomShortcutForTesting({ key: 'k', ctrlKey: true, shiftKey: true });
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+
+    let startedCount = 0;
+    const onStart = () => { startedCount++; };
+    VibeEvents.on('inspection:start', onStart);
+
+    // Enter shortcut recording mode
+    VibeEvents.emit('shortcut:recording:start');
+
+    // Pressing the configured hotkey during recording must NOT start inspection!
+    const hotkeyEv = createSimulatedEvent({ key: 'k', ctrlKey: true, shiftKey: true });
+    dispatch(hotkeyEv);
+
+    assert.strictEqual(startedCount, 0, 'Global hotkey must NOT preempt shortcut recording');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+
+    // Stop shortcut recording mode
+    VibeEvents.emit('shortcut:recording:stop');
+
+    // Pressing the configured hotkey now triggers inspection
+    const hotkeyEv2 = createSimulatedEvent({ key: 'k', ctrlKey: true, shiftKey: true });
+    dispatch(hotkeyEv2);
+
+    assert.strictEqual(startedCount, 1, 'Global hotkey must trigger inspection after recording stops');
+    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION);
+
+    VibeEvents.off('inspection:start', onStart);
+  });
+
+  await t.test('EDITING state: Tab and Shift+Tab wrap within popover focusables and do not leak to host', () => {
+    VibeKeyboardRouter.resetForTesting();
+    VibeKeyboardRouter.setState(SessionState.EDITING);
+
+    const mockHost = { tagName: 'DIV', id: 'vibe-annotations-root' };
+    const origGetHost = VibeShadowHost.getHost;
+    VibeShadowHost.getHost = () => mockHost;
+
+    const firstBtn = { tagName: 'BUTTON', focusCount: 0, focus() { this.focusCount++; } };
+    const lastBtn = { tagName: 'BUTTON', focusCount: 0, focus() { this.focusCount++; } };
+
+    const mockPopover = {
+      querySelectorAll(selector) {
+        return [firstBtn, lastBtn];
+      }
+    };
+    VibeKeyboardRouter.setActivePopoverForTesting?.(mockPopover);
+
+    // Tab on last element wraps to first element
+    const tabEv = createSimulatedEvent({
+      key: 'Tab',
+      shiftKey: false,
+      target: lastBtn,
+      composedPath: [lastBtn, mockPopover, mockHost],
+    });
+    dispatch(tabEv);
+
+    assert.strictEqual(tabEv.defaultPrevented, true, 'Tab wrap must prevent default');
+    assert.strictEqual(tabEv.immediatePropagationStopped, true, 'Tab wrap must stop propagation');
+    assert.strictEqual(firstBtn.focusCount, 1, 'Tab on last element must focus first element');
+
+    // Shift+Tab on first element wraps to last element
+    const shiftTabEv = createSimulatedEvent({
+      key: 'Tab',
+      shiftKey: true,
+      target: firstBtn,
+      composedPath: [firstBtn, mockPopover, mockHost],
+    });
+    dispatch(shiftTabEv);
+
+    assert.strictEqual(shiftTabEv.defaultPrevented, true, 'Shift+Tab wrap must prevent default');
+    assert.strictEqual(shiftTabEv.immediatePropagationStopped, true, 'Shift+Tab wrap must stop propagation');
+    assert.strictEqual(lastBtn.focusCount, 1, 'Shift+Tab on first element must focus last element');
+
+    VibeKeyboardRouter.setActivePopoverForTesting?.(null);
+    VibeShadowHost.getHost = origGetHost;
+  });
 });
+

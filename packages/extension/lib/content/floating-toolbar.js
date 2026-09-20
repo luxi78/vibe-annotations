@@ -695,6 +695,7 @@ import { isRecordableHotkey } from './hotkey.js';
       recording = true;
       shortcutBtn.textContent = 'Press keys\u2026';
       shortcutBtn.classList.add('recording');
+      VibeEvents.emit('shortcut:recording:start');
 
       function onKey(e) {
         // Ignore lone modifier keys — keep waiting for the actual key.
@@ -710,6 +711,7 @@ import { isRecordableHotkey } from './hotkey.js';
 
         e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation?.();
 
         const sc = {
           key: e.key,
@@ -724,8 +726,10 @@ import { isRecordableHotkey } from './hotkey.js';
         shortcutBtn.textContent = shortcutHint;
         shortcutBtn.classList.remove('recording');
         recording = false;
+        window.removeEventListener('keydown', onKey, true);
         document.removeEventListener('keydown', onKey, true);
         activeRecordingCleanup = null;
+        VibeEvents.emit('shortcut:recording:stop');
         VibeAPI.saveCustomShortcut(sc);
       }
 
@@ -733,12 +737,15 @@ import { isRecordableHotkey } from './hotkey.js';
         recording = false;
         shortcutBtn.textContent = shortcutHint;
         shortcutBtn.classList.remove('recording');
+        window.removeEventListener('keydown', onKey, true);
         document.removeEventListener('keydown', onKey, true);
         activeRecordingCleanup = null;
+        VibeEvents.emit('shortcut:recording:stop');
       }
 
+      window.addEventListener('keydown', onKey, true);
       document.addEventListener('keydown', onKey, true);
-      activeRecordingCleanup = () => document.removeEventListener('keydown', onKey, true);
+      activeRecordingCleanup = cancelRecording;
     });
 
     // Badge color picker
