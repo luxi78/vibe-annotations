@@ -77,10 +77,19 @@ Tools: `read_annotations`, `delete_annotation`, `watch_annotations`, `get_projec
 ### Automated tests
 
 ```bash
-npm test
+# Unit tests (mock DOM)
+pnpm test:unit
 # or
 node --test tests/**/*.test.js
+
+# E2E tests (Playwright with loaded extension in Chromium)
+pnpm test:e2e
+
+# Keyboard conflict baseline scenarios
+pnpm test:baseline
 ```
+
+See `docs/e2e-testing.md` for environment details, headed-mode requirements, and CI xvfb configuration.
 
 ### Manual testing
 
