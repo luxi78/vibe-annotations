@@ -34,6 +34,10 @@ The extension has no build step — load `packages/extension/` as an unpacked ex
 
 Each package has its own CLAUDE.md with detailed architecture, file layout, and dev commands. Start there when working on a specific package.
 
+## Engineering documentation language
+
+Write all engineering documentation and Git commit messages for this project in English, including specifications, issue and ticket titles and bodies, pull request titles and descriptions, ADRs, and repository technical documentation. Apply this rule when creating or updating these artifacts, regardless of the language used in the conversation. Preserve code identifiers, literal UI strings, and quoted diagnostic evidence in their original form when needed for accuracy.
+
 ## Agent skills
 
 ### Issue tracker
