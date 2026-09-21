@@ -1,6 +1,6 @@
 # Cross-site annotation management discovery
 
-Status: interaction decisions confirmed by the user; implementation has not started.
+Status: implemented; interaction decisions reflect the latest user feedback.
 
 ## Verified current behavior
 
@@ -26,6 +26,6 @@ Cross-device synchronization, historical retention, and standalone comment editi
 1. Initial selection and an empty current site: select the current site on opening and retain it as an empty option. Show the selector whenever another site is available. Reuse the existing `No annotations yet` empty state.
 2. Header actions and counts: scope panel copy, export, and deletion to the selected site, while retaining the toolbar badge as the current site's count.
 3. Row activation: do not open pages or tabs when clicking annotations. Existing current-page behavior scrolls to an element and targets its badge; preserve that behavior only for annotations belonging to the current page. Other-page annotations must not target coincidentally matching selectors in the current document.
-4. Deletion aftermath: keep the selected site visible with `No annotations yet` after deleting its last annotation until switching or reopening. Remove empty non-current sites from subsequent choices after leaving them. Always retain the current site. Confirm whole-site deletion with site identity and affected count.
+4. Deletion aftermath: when deletion leaves a selected non-current site with no annotations, immediately switch back to the current site. This applies to deleting the last card, clearing the last route, whole-site deletion, and Clear on copy. Always retain the current site. Confirm whole-site deletion with site identity and affected count.
 
 The user accepted decisions 1, 2, and 4 and explicitly rejected navigation in decision 3. No ADR is warranted for these reversible UI decisions.

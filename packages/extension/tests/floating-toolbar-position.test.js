@@ -52,9 +52,13 @@ class MockElement {
   }
 
   closest(sel) {
-    if (sel.startsWith('.')) {
-      const cls = sel.slice(1);
-      if (this.classList && this.classList.contains(cls)) return this;
+    for (const part of sel.split(',').map(value => value.trim())) {
+      if (part.startsWith('.')) {
+        const cls = part.slice(1);
+        if (this.classList && this.classList.contains(cls)) return this;
+      } else if (/^[a-z]+$/i.test(part) && this.tagName === part.toUpperCase()) {
+        return this;
+      }
     }
     return this.parentNode?.closest ? this.parentNode.closest(sel) : null;
   }
@@ -276,6 +280,27 @@ test('floating toolbar position lifecycle', async (t) => {
     assert.ok(mockStorage.vibeToolbarPos, 'Position should be saved to storage');
     assert.strictEqual(toolbar.style.right, mockStorage.vibeToolbarPos.right);
     assert.strictEqual(toolbar.style.top, mockStorage.vibeToolbarPos.top);
+  });
+
+  await t.test('site selector mousedown is not captured as toolbar dragging', async () => {
+    const toolbar = getToolbar();
+    assert.ok(toolbar, 'Toolbar element exists');
+
+    const selector = new MockElement('select');
+    selector.classList.add('vibe-viewall-site-select');
+    toolbar.appendChild(selector);
+
+    let defaultPrevented = false;
+    toolbar.dispatchEvent({
+      type: 'mousedown',
+      target: selector,
+      clientX: 120,
+      clientY: 120,
+      preventDefault: () => { defaultPrevented = true; }
+    });
+
+    assert.strictEqual(defaultPrevented, false, 'Native select behavior must not be prevented');
+    assert.strictEqual(toolbar.classList.contains('dragging'), false, 'Selecting a site must not start toolbar dragging');
   });
 
   await t.test('refreshing page preserves toolbar position from storage', async () => {

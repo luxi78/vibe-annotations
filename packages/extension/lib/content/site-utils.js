@@ -1,6 +1,6 @@
 // Utilities for discovering, disambiguating, and formatting site origins in View all
 
-export function getAvailableSiteOrigins(allAnnotations, currentOrigin, keptEmptyOrigin = null) {
+export function getAvailableSiteOrigins(allAnnotations, currentOrigin) {
   const eligible = (allAnnotations || []).filter(a => a && a.status !== 'resolved');
   const origins = new Set();
 
@@ -16,10 +16,6 @@ export function getAvailableSiteOrigins(allAnnotations, currentOrigin, keptEmpty
 
   if (currentOrigin) {
     origins.add(currentOrigin);
-  }
-
-  if (keptEmptyOrigin) {
-    origins.add(keptEmptyOrigin);
   }
 
   return Array.from(origins);
@@ -50,8 +46,5 @@ export function formatSiteLabel(origin, allOrigins = []) {
 
 export function formatSiteOptionText(origin, currentOrigin, allOrigins = []) {
   const label = formatSiteLabel(origin, allOrigins);
-  if (origin === currentOrigin) {
-    return `${label} (current site)`;
-  }
-  return label;
+  return origin === currentOrigin ? `${label} ✅` : label;
 }

@@ -381,9 +381,24 @@ test('View all cross-site lifecycle and UI', async (t) => {
 
     const selector = panel.querySelector('.vibe-viewall-site-select');
     assert.strictEqual(selector, null, 'No site selector when only current site is available');
+    assert.strictEqual(panel.querySelector('.vibe-viewall-route-clear'), null, 'A one-item route must not duplicate the card delete action');
+    assert.ok(panel.querySelector('.vibe-viewall-card-delete'), 'The annotation keeps its individual delete action');
   });
 
-  await t.test('multiple sites displays site selector with current site icon and accessible label', async () => {
+  await t.test('route clear is available only when a route contains multiple annotations', async () => {
+    mockStorage.annotations = [
+      { id: '1', url: 'http://localhost:3000/page1', comment: 'First note', status: 'open' },
+      { id: '2', url: 'http://localhost:3000/page1', comment: 'Second note', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll();
+    const panel = VibeToolbar.getViewAllPanel();
+
+    assert.ok(panel.querySelector('.vibe-viewall-route-clear'), 'A multi-item route offers one group delete action');
+    assert.strictEqual(panel.querySelectorAll('.vibe-viewall-card-delete').length, 2, 'Each annotation remains individually deletable');
+  });
+
+  await t.test('multiple sites marks the current site option with a green check and accessible label', async () => {
     mockStorage.annotations = [
       { id: '1', url: 'http://localhost:3000/page1', comment: 'Current site note', status: 'open' },
       { id: '2', url: 'http://localhost:5173/page1', comment: 'Other site note', status: 'open' }
@@ -397,15 +412,15 @@ test('View all cross-site lifecycle and UI', async (t) => {
     assert.ok(selector, 'Site selector must be displayed when multiple sites exist');
 
     const indicator = panel.querySelector('.vibe-viewall-current-site-indicator');
-    assert.ok(indicator, 'Current site distinguishing indicator must be present');
-    assert.ok(indicator.getAttribute('aria-label').includes('Current site'), 'Indicator must have accessible label');
+    assert.strictEqual(indicator, null, 'No separate current-site icon should consume header space');
 
     // Options check
     const options = selector.options;
     assert.strictEqual(options.length, 2);
     const currentOpt = options.find(o => o.value === 'http://localhost:3000');
     assert.ok(currentOpt, 'Current site option must be present');
-    assert.ok(currentOpt.textContent.includes('(current site)'), 'Current site option must be labeled');
+    assert.strictEqual(currentOpt.textContent, 'localhost:3000 ✅', 'Current site option uses a compact green check');
+    assert.ok(currentOpt.getAttribute('aria-label').includes('current site'), 'Current site option keeps an accessible label');
 
     assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000', 'Current site selected on open');
   });
@@ -484,7 +499,7 @@ test('View all cross-site lifecycle and UI', async (t) => {
     assert.strictEqual(targetBadgeEmitted, true, 'Must emit badge:target for current page');
   });
 
-  await t.test('single card deletion affects only that card and retains site if last item', async () => {
+  await t.test('deleting the last annotation on another site switches back to the current site', async () => {
     mockStorage.annotations = [
       { id: '1', url: 'http://localhost:5173/page1', comment: 'Only note on 5173', status: 'open' },
       { id: '2', url: 'http://localhost:3000/page1', comment: 'Note on 3000', status: 'open' }
@@ -502,22 +517,11 @@ test('View all cross-site lifecycle and UI', async (t) => {
     await new Promise(r => setTimeout(r, 450));
 
     panel = VibeToolbar.getViewAllPanel();
-    // After last item deleted on 5173, 5173 stays selected with empty state
-    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:5173');
-    assert.ok(panel.querySelector('.vibe-viewall-empty'), 'Empty state shown after deleting last item');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
+    assert.ok(panel.querySelector('[data-id="2"]'), 'Current site annotations are shown after switching back');
     assert.strictEqual(mockStorage.annotations.length, 1);
     assert.strictEqual(mockStorage.annotations[0].id, '2', 'Other site annotation untouched');
-
-    // Switching away to 3000 drops 5173
-    const selector = panel.querySelector('.vibe-viewall-site-select');
-    selector.value = 'http://localhost:3000';
-    selector.dispatchEvent({ type: 'change', target: { value: 'http://localhost:3000' } });
-    await new Promise(r => setTimeout(r, 20));
-
-    panel = VibeToolbar.getViewAllPanel();
-    // Now only 3000 is left in storage, so selector reverts to simple heading!
-    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
-    assert.ok(panel.querySelector('.vibe-viewall-url'), 'Reverts to simple heading once empty site is left');
+    assert.ok(panel.querySelector('.vibe-viewall-url'), 'Reverts to simple heading when only the current site remains');
   });
 
   await t.test('whole-site delete requires confirmation identifying site and count; cancelling makes no change', async () => {
@@ -563,6 +567,7 @@ test('View all cross-site lifecycle and UI', async (t) => {
     // Site B annotations deleted, Site A remains
     assert.strictEqual(mockStorage.annotations.length, 1);
     assert.strictEqual(mockStorage.annotations[0].id, '3', 'Other site annotations remain unchanged');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000', 'Returns to current site after whole-site deletion');
   });
 
   await t.test('copy all is scoped to selected site', async () => {
@@ -582,7 +587,7 @@ test('View all cross-site lifecycle and UI', async (t) => {
     assert.ok(!globalThis.__copiedText.includes('Site A comment'), 'Should NOT copy Site A');
   });
 
-  await t.test('clear on copy clears only selected site annotations and keeps empty state', async () => {
+  await t.test('clear on copy clears only selected site annotations and returns to the current site', async () => {
     mockStorage.annotations = [
       { id: '1', url: 'http://localhost:5173/page', comment: 'Site B comment', status: 'open' },
       { id: '2', url: 'http://localhost:3000/page', comment: 'Site A comment', status: 'open' }
@@ -609,10 +614,10 @@ test('View all cross-site lifecycle and UI', async (t) => {
     assert.strictEqual(mockStorage.annotations[0].id, '2');
     assert.strictEqual(mockStorage.annotations[0].url, 'http://localhost:3000/page');
 
-    // Panel remains on Site B showing empty state
+    // Panel returns to the current site
     panel = VibeToolbar.getViewAllPanel();
-    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:5173');
-    assert.ok(panel.querySelector('.vibe-viewall-empty'), 'Empty state shown after clear-on-copy');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
+    assert.ok(panel.querySelector('[data-id="2"]'), 'Current site annotation is shown after clear-on-copy');
 
     // Turn toggle back off
     clearOnCopyToggle.click();
@@ -692,12 +697,8 @@ test('View all cross-site lifecycle and UI', async (t) => {
     // Toolbar count pill is still 2!
     assert.strictEqual(pill.textContent, '2', 'Toolbar count pill remains 2 after foreign site deletion');
 
-    // Now switch to current site and delete card 1
-    const currentPanel = VibeToolbar.getViewAllPanel();
-    const selector = currentPanel.querySelector('.vibe-viewall-site-select');
-    selector.value = 'http://localhost:3000';
-    selector.dispatchEvent({ type: 'change', target: { value: 'http://localhost:3000' } });
-    await new Promise(r => setTimeout(r, 20));
+    // Deleting the foreign site's last annotation returns to the current site automatically
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
 
     const updatedPanel = VibeToolbar.getViewAllPanel();
     const currentCardDeleteBtn = updatedPanel.querySelector('[data-id="1"].vibe-viewall-card-delete');
@@ -775,5 +776,3 @@ test('View all cross-site lifecycle and UI', async (t) => {
     }
   });
 });
-
-

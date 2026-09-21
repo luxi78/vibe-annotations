@@ -88,18 +88,6 @@ test('Site discovery and disambiguation helpers', async (t) => {
     assert.ok(!sites.includes('http://localhost:8080'), 'Site with only resolved annotations must be excluded');
   });
 
-  await t.test('getAvailableSiteOrigins retains keptEmptyOrigin if specified', () => {
-    const currentOrigin = 'http://localhost:3000';
-    const annotations = [
-      { id: '1', url: 'http://localhost:3000/page', status: 'open' }
-    ];
-
-    // keptEmptyOrigin is kept visible after last item deleted
-    const sites = getAvailableSiteOrigins(annotations, currentOrigin, 'http://localhost:5173');
-    assert.ok(sites.includes('http://localhost:5173'), 'keptEmptyOrigin must be included');
-    assert.ok(sites.includes('http://localhost:3000'));
-  });
-
   await t.test('formatSiteLabel distinguishes different ports on same host', () => {
     const origins = ['http://localhost:3000', 'http://localhost:5173'];
     assert.strictEqual(formatSiteLabel('http://localhost:3000', origins), 'localhost:3000');
@@ -112,12 +100,12 @@ test('Site discovery and disambiguation helpers', async (t) => {
     assert.strictEqual(formatSiteLabel('https://example.com', origins), 'https://example.com');
   });
 
-  await t.test('formatSiteOptionText marks current site with accessible label', () => {
+  await t.test('formatSiteOptionText marks the current site with a green check', () => {
     const currentOrigin = 'http://localhost:3000';
     const origins = ['http://localhost:3000', 'http://localhost:5173'];
     assert.strictEqual(
       formatSiteOptionText('http://localhost:3000', currentOrigin, origins),
-      'localhost:3000 (current site)'
+      'localhost:3000 ✅'
     );
     assert.strictEqual(
       formatSiteOptionText('http://localhost:5173', currentOrigin, origins),
@@ -125,4 +113,3 @@ test('Site discovery and disambiguation helpers', async (t) => {
     );
   });
 });
-

@@ -14,7 +14,6 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
   let toolbarEl = null;
   let viewAllSelectedOrigin = null;
-  let viewAllKeptEmptyOrigin = null;
   let settingsDropdown = null;
   let activeRecordingCleanup = null;
   let isAnnotating = false;
@@ -329,7 +328,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const allStored = await VibeAPI.loadAllStoredAnnotations();
     const allEligible = (allStored || []).filter(a => a && a.status !== 'resolved');
 
-    const availableOrigins = getAvailableSiteOrigins(allEligible, currentOrigin, viewAllKeptEmptyOrigin);
+    const availableOrigins = getAvailableSiteOrigins(allEligible, currentOrigin);
     if (!availableOrigins.includes(viewAllSelectedOrigin)) {
       viewAllSelectedOrigin = currentOrigin;
     }
@@ -362,7 +361,6 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const shareIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>';
     const smallTrash = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
     const sparkleIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
-    const homeIcon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>';
 
     // Build routes HTML
     let routesHTML = '';
@@ -419,6 +417,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
           </div>
         `;
       }).join('');
+      const routeClearHTML = items.length > 1
+        ? `<button class="vibe-viewall-route-clear" data-path="${escapeHTML(path)}" title="Clear route">${smallTrash}</button>`
+        : '';
 
       routesHTML += `
         <div class="vibe-viewall-route" data-path="${escapeHTML(path)}">
@@ -427,7 +428,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
               <span class="vibe-viewall-route-path">${escapeHTML(path)}</span>
               <span class="vibe-viewall-route-count">${items.length}</span>
             </div>
-            <button class="vibe-viewall-route-clear" data-path="${escapeHTML(path)}" title="Clear route">${smallTrash}</button>
+            ${routeClearHTML}
           </div>
           ${cardsHTML}
         </div>
@@ -443,16 +444,16 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       const hostname = window.location.host || window.location.hostname;
       headerLeftHTML = `<span class="vibe-viewall-url">${escapeHTML(hostname)}</span>`;
     } else {
-      const currentSiteLabel = formatSiteLabel(currentOrigin, availableOrigins);
       const optionsHTML = availableOrigins.map(orig => {
         const isSel = orig === viewAllSelectedOrigin;
+        const isCurrent = orig === currentOrigin;
         const optText = formatSiteOptionText(orig, currentOrigin, availableOrigins);
-        return `<option value="${escapeHTML(orig)}"${isSel ? ' selected' : ''}>${escapeHTML(optText)}</option>`;
+        const ariaLabel = isCurrent ? ` aria-label="${escapeHTML(formatSiteLabel(orig, availableOrigins))}, current site"` : '';
+        return `<option value="${escapeHTML(orig)}"${isSel ? ' selected' : ''}${ariaLabel}>${escapeHTML(optText)}</option>`;
       }).join('');
       headerLeftHTML = `
         <div class="vibe-viewall-site-picker">
-          <span class="vibe-viewall-current-site-indicator" title="Current site: ${escapeHTML(currentSiteLabel)}" aria-label="Current site: ${escapeHTML(currentSiteLabel)}">${homeIcon}</span>
-          <select class="vibe-viewall-site-select" aria-label="Select site">
+          <select class="vibe-viewall-site-select" aria-label="Select site; green check marks the current site">
             ${optionsHTML}
           </select>
         </div>
@@ -480,22 +481,24 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     if (siteSelect) {
       siteSelect.addEventListener('change', (e) => {
         const newOrigin = e.target.value;
-        viewAllKeptEmptyOrigin = null;
         viewAllSelectedOrigin = newOrigin;
         openViewAll(newOrigin);
       });
     }
 
     const syncAfterDeletion = async (deletedCount) => {
+      const deletedOrigin = viewAllSelectedOrigin;
       const stored = (await VibeAPI.loadAllStoredAnnotations()) || [];
       const remaining = stored.filter(a => {
         if (!a || a.status === 'resolved') return false;
-        try { return new URL(a.url).origin === viewAllSelectedOrigin; } catch { return false; }
+        try { return new URL(a.url).origin === deletedOrigin; } catch { return false; }
       });
-      if (remaining.length === 0 && viewAllSelectedOrigin !== currentOrigin) {
-        viewAllKeptEmptyOrigin = viewAllSelectedOrigin;
+      if (remaining.length === 0 && deletedOrigin !== currentOrigin) {
+        viewAllSelectedOrigin = currentOrigin;
+        openViewAll(currentOrigin);
+        return;
       }
-      if (viewAllSelectedOrigin === currentOrigin) {
+      if (deletedOrigin === currentOrigin) {
         annotationCount = remaining.length;
         updateUI();
         VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
@@ -503,7 +506,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
           VibeEvents.emit('annotations:cleared', { count: deletedCount });
         }
       }
-      openViewAll(viewAllSelectedOrigin);
+      openViewAll(deletedOrigin);
     };
 
     // Copy all (selected site)
@@ -685,7 +688,6 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       viewAllPanel = null;
     }
     viewAllSelectedOrigin = null;
-    viewAllKeptEmptyOrigin = null;
     const btn = toolbarEl.querySelector('.vibe-tb-viewall');
     if (btn) btn.classList.remove('active');
   }
@@ -1102,7 +1104,8 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const DRAG_THRESHOLD = 4;
 
     toolbarEl.addEventListener('mousedown', (e) => {
-      if (e.target.closest('.vibe-toolbar-btn') || e.target.closest('.vibe-toolbar-close') || e.target.closest('.vibe-toolbar-status') || e.target.closest('.vibe-toolbar-kbd')) return;
+      const interactiveTarget = e.target.closest('button, select, input, textarea, a');
+      if (interactiveTarget || e.target.closest('.vibe-toolbar-status') || e.target.closest('.vibe-toolbar-kbd')) return;
 
       isDragging = true;
       didDrag = false;

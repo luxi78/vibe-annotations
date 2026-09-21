@@ -1419,19 +1419,6 @@ export const VIBE_STYLES = `
   margin-right: 8px;
 }
 
-.vibe-viewall-current-site-indicator {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--v-accent, #d97757);
-  flex-shrink: 0;
-}
-
-.vibe-viewall-current-site-indicator svg {
-  width: 14px;
-  height: 14px;
-}
-
 .vibe-viewall-site-select {
   background: var(--v-surface-1, rgba(255, 255, 255, 0.06));
   color: var(--v-toolbar-text-active);
