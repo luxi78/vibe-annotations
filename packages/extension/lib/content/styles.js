@@ -1410,6 +1410,51 @@ export const VIBE_STYLES = `
   font: 500 12px/1 var(--v-font-mono);
 }
 
+.vibe-viewall-site-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.vibe-viewall-current-site-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--v-accent, #d97757);
+  flex-shrink: 0;
+}
+
+.vibe-viewall-current-site-indicator svg {
+  width: 14px;
+  height: 14px;
+}
+
+.vibe-viewall-site-select {
+  background: var(--v-surface-1, rgba(255, 255, 255, 0.06));
+  color: var(--v-toolbar-text-active);
+  border: 1px solid var(--v-toolbar-border, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  padding: 3px 6px;
+  font: 500 12px/1.2 var(--v-font-mono);
+  cursor: pointer;
+  outline: none;
+  max-width: 220px;
+  text-overflow: ellipsis;
+}
+
+.vibe-viewall-site-select:focus-visible {
+  border-color: var(--v-accent, #d97757);
+  box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.2);
+}
+
+.vibe-viewall-site-select option {
+  background: var(--v-panel-bg, #1a1a1a);
+  color: var(--v-toolbar-text, #e0e0e0);
+}
+
 .vibe-viewall-actions {
   display: flex;
   align-items: center;
@@ -1500,6 +1545,13 @@ export const VIBE_STYLES = `
 .vibe-viewall-route-clear svg {
   width: 12px;
   height: 12px;
+}
+
+.vibe-viewall-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--v-instruction-text);
+  font-size: 13px;
 }
 
 /* Annotation card */

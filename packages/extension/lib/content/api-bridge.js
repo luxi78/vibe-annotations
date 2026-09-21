@@ -83,27 +83,26 @@ function isServerOutdated(version) {
 
   // --- Annotations CRUD ---
 
-  async function loadAnnotations() {
+  async function loadAllStoredAnnotations() {
     try {
       const result = await chrome.storage.local.get(['annotations']);
-      const all = result.annotations || [];
-      return all.filter(a => a.url === window.location.href);
+      return result.annotations || [];
     } catch {
       return [];
     }
   }
 
-  async function loadProjectAnnotations() {
-    try {
-      const result = await chrome.storage.local.get(['annotations']);
-      const all = result.annotations || [];
-      const origin = window.location.origin;
-      return all.filter(a => {
-        try { return new URL(a.url).origin === origin; } catch { return false; }
-      });
-    } catch {
-      return [];
-    }
+  async function loadAnnotations() {
+    const all = await loadAllStoredAnnotations();
+    return all.filter(a => a.url === window.location.href);
+  }
+
+  async function loadProjectAnnotations(targetOrigin) {
+    const all = await loadAllStoredAnnotations();
+    const origin = targetOrigin || window.location.origin;
+    return all.filter(a => {
+      try { return new URL(a.url).origin === origin; } catch { return false; }
+    });
   }
 
   async function saveAnnotation(annotation) {
@@ -389,6 +388,7 @@ const VibeAPI = {
   isFileProtocol,
   isLocalOrigin,
   loadAnnotations,
+  loadAllStoredAnnotations,
   loadProjectAnnotations,
   saveAnnotation,
   updateAnnotation,

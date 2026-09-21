@@ -10,8 +10,11 @@ import VibeKeyboardRouter from './keyboard-router.js';
 import VibeToolbarDocs from './toolbar-docs.js';
 import { renderAnnotationsMarkdown } from './export-markdown.js';
 import { isRecordableHotkey } from './hotkey.js';
+import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from './site-utils.js';
 
   let toolbarEl = null;
+  let viewAllSelectedOrigin = null;
+  let viewAllKeptEmptyOrigin = null;
   let settingsDropdown = null;
   let activeRecordingCleanup = null;
   let isAnnotating = false;
@@ -308,16 +311,32 @@ import { isRecordableHotkey } from './hotkey.js';
     }
   }
 
-  async function openViewAll() {
-    closeViewAll();
+  async function openViewAll(targetOrigin) {
+    if (viewAllPanel) {
+      if (viewAllPanel._cleanupEvents) viewAllPanel._cleanupEvents();
+      viewAllPanel.remove();
+      viewAllPanel = null;
+    }
 
     const btn = toolbarEl.querySelector('.vibe-tb-viewall');
     if (btn) btn.classList.add('active');
 
+    const currentOrigin = window.location.origin;
+    viewAllSelectedOrigin = targetOrigin || currentOrigin;
+
     // Exclude resolved (agent finalized/cleaned them — done). variants-discarded and
     // variant-chosen stay, shown with a "pending agent" label; the count pill matches.
-    const annotations = (await VibeAPI.loadProjectAnnotations()).filter(a => a.status !== 'resolved');
-    const hostname = window.location.host || window.location.hostname;
+    const allStored = await VibeAPI.loadAllStoredAnnotations();
+    const allEligible = (allStored || []).filter(a => a && a.status !== 'resolved');
+
+    const availableOrigins = getAvailableSiteOrigins(allEligible, currentOrigin, viewAllKeptEmptyOrigin);
+    if (!availableOrigins.includes(viewAllSelectedOrigin)) {
+      viewAllSelectedOrigin = currentOrigin;
+    }
+
+    const annotations = allEligible.filter(a => {
+      try { return new URL(a.url).origin === viewAllSelectedOrigin; } catch { return false; }
+    });
 
     // Group by route (path)
     const routeGroups = {};
@@ -343,6 +362,7 @@ import { isRecordableHotkey } from './hotkey.js';
     const shareIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>';
     const smallTrash = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
     const sparkleIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
+    const homeIcon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>';
 
     // Build routes HTML
     let routesHTML = '';
@@ -355,6 +375,7 @@ import { isRecordableHotkey } from './hotkey.js';
         const hasPendingChanges = a.pending_changes && Object.keys(a.pending_changes).length > 0;
         const changeCount = hasPendingChanges ? Object.keys(a.pending_changes).length : 0;
         const comment = a.comment || '';
+        const isCurrentPage = a.url === window.location.href;
 
         let headerHTML;
         if (isStylesheet) {
@@ -388,7 +409,7 @@ import { isRecordableHotkey } from './hotkey.js';
           : `<button class="vibe-viewall-card-delete" data-id="${a.id}" title="Delete">${trashIcon}</button>`;
 
         return `
-          <div class="vibe-viewall-card" data-id="${a.id}">
+          <div class="vibe-viewall-card${isCurrentPage ? ' current-page' : ''}" data-id="${a.id}" data-current-page="${isCurrentPage}">
             <div class="vibe-viewall-card-content">
               ${headerHTML}
               ${bodyHTML}
@@ -414,12 +435,33 @@ import { isRecordableHotkey } from './hotkey.js';
     }
 
     if (annotations.length === 0) {
-      routesHTML = '<div style="padding:24px 16px;text-align:center;color:var(--v-instruction-text);font-size:13px;">No annotations yet</div>';
+      routesHTML = '<div class="vibe-viewall-empty">No annotations yet</div>';
+    }
+
+    let headerLeftHTML;
+    if (availableOrigins.length <= 1) {
+      const hostname = window.location.host || window.location.hostname;
+      headerLeftHTML = `<span class="vibe-viewall-url">${escapeHTML(hostname)}</span>`;
+    } else {
+      const currentSiteLabel = formatSiteLabel(currentOrigin, availableOrigins);
+      const optionsHTML = availableOrigins.map(orig => {
+        const isSel = orig === viewAllSelectedOrigin;
+        const optText = formatSiteOptionText(orig, currentOrigin, availableOrigins);
+        return `<option value="${escapeHTML(orig)}"${isSel ? ' selected' : ''}>${escapeHTML(optText)}</option>`;
+      }).join('');
+      headerLeftHTML = `
+        <div class="vibe-viewall-site-picker">
+          <span class="vibe-viewall-current-site-indicator" title="Current site: ${escapeHTML(currentSiteLabel)}" aria-label="Current site: ${escapeHTML(currentSiteLabel)}">${homeIcon}</span>
+          <select class="vibe-viewall-site-select" aria-label="Select site">
+            ${optionsHTML}
+          </select>
+        </div>
+      `;
     }
 
     viewAllPanel.innerHTML = `
       <div class="vibe-viewall-header">
-        <span class="vibe-viewall-url">${escapeHTML(hostname)}</span>
+        ${headerLeftHTML}
         <div class="vibe-viewall-actions">
           <button class="vibe-viewall-copy" title="Copy all">${copyIcon}</button>
           <button class="vibe-viewall-export" title="Share / Export">${shareIcon}</button>
@@ -433,12 +475,44 @@ import { isRecordableHotkey } from './hotkey.js';
 
     // --- Wire View All actions ---
 
-    // Copy all (project-wide)
+    // Site selector change listener
+    const siteSelect = viewAllPanel.querySelector('.vibe-viewall-site-select');
+    if (siteSelect) {
+      siteSelect.addEventListener('change', (e) => {
+        const newOrigin = e.target.value;
+        viewAllKeptEmptyOrigin = null;
+        viewAllSelectedOrigin = newOrigin;
+        openViewAll(newOrigin);
+      });
+    }
+
+    const syncAfterDeletion = async (deletedCount) => {
+      const stored = (await VibeAPI.loadAllStoredAnnotations()) || [];
+      const remaining = stored.filter(a => {
+        if (!a || a.status === 'resolved') return false;
+        try { return new URL(a.url).origin === viewAllSelectedOrigin; } catch { return false; }
+      });
+      if (remaining.length === 0 && viewAllSelectedOrigin !== currentOrigin) {
+        viewAllKeptEmptyOrigin = viewAllSelectedOrigin;
+      }
+      if (viewAllSelectedOrigin === currentOrigin) {
+        annotationCount = remaining.length;
+        updateUI();
+        VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
+        if (remaining.length === 0) {
+          VibeEvents.emit('annotations:cleared', { count: deletedCount });
+        }
+      }
+      openViewAll(viewAllSelectedOrigin);
+    };
+
+    // Copy all (selected site)
     const copyBtn = viewAllPanel.querySelector('.vibe-viewall-copy');
     copyBtn.addEventListener('click', async () => {
-      const all = (await VibeAPI.loadProjectAnnotations()).filter(a => a.status !== 'resolved');
-      if (!all.length) return;
-      const text = renderAnnotationsMarkdown(all, window.location.host);
+      if (!annotations.length) return;
+      let siteHost;
+      try { siteHost = new URL(viewAllSelectedOrigin).host; } catch { siteHost = window.location.host; }
+      const text = renderAnnotationsMarkdown(annotations, siteHost);
       try { await navigator.clipboard.writeText(text); } catch {
         const ta = document.createElement('textarea'); ta.value = text;
         document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
@@ -450,10 +524,8 @@ import { isRecordableHotkey } from './hotkey.js';
       setTimeout(() => { copyBtn.innerHTML = origHTML; copyBtn.style.color = ''; }, 1500);
 
       if (clearOnCopy) {
-        for (const a of all) await VibeAPI.deleteAnnotation(a.id);
-        annotationCount = 0;
-        VibeEvents.emit('annotations:cleared', { count: all.length });
-        openViewAll(); // refresh
+        for (const a of annotations) await VibeAPI.deleteAnnotation(a.id);
+        await syncAfterDeletion(annotations.length);
       }
     });
 
@@ -485,7 +557,7 @@ import { isRecordableHotkey } from './hotkey.js';
           ev.stopPropagation();
           const fmt = opt.dataset.format;
           closeShareMenu();
-          await downloadShare(fmt);
+          await downloadShare(fmt, viewAllSelectedOrigin, annotations);
         });
       });
     });
@@ -496,26 +568,28 @@ import { isRecordableHotkey } from './hotkey.js';
 
     // Delete all (animate all cards out with stagger, then delete)
     viewAllPanel.querySelector('.vibe-viewall-deleteall').addEventListener('click', async () => {
+      if (!annotations.length) return;
       const root = VibeShadowHost.getRoot();
       if (!root) return;
-      const skip = await VibeAPI.getSkipDeleteConfirm();
-      if (!skip) {
-        const confirmed = await showDeleteConfirm(root);
-        if (!confirmed) return;
-      }
+      const siteLabel = formatSiteLabel(viewAllSelectedOrigin, availableOrigins);
+      const confirmed = await showDeleteConfirm(root, { siteName: siteLabel, count: annotations.length });
+      if (!confirmed) return;
       const allCards = viewAllPanel.querySelectorAll('.vibe-viewall-card');
       allCards.forEach((card, i) => {
         setTimeout(() => card.classList.add('deleting'), i * 40);
       });
       await new Promise(r => setTimeout(r, allCards.length * 40 + 300));
       if (viewAllPanel) viewAllPanel._suppressRefresh = true;
-      for (const a of annotations) {
-        await VibeAPI.deleteAnnotation(a.id);
+      try {
+        for (const a of annotations) {
+          await VibeAPI.deleteAnnotation(a.id);
+        }
+        await syncAfterDeletion(annotations.length);
+      } catch (err) {
+        if (viewAllPanel) viewAllPanel._suppressRefresh = false;
+        console.error('[Vibe] delete all failed:', err);
+        openViewAll(viewAllSelectedOrigin);
       }
-      // Re-render so the count pill recomputes immediately (deletes happen in the
-      // background service worker, which doesn't push a render to this page).
-      VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
-      openViewAll();
     });
 
     // Per-route clear (animate each card out with stagger, then delete)
@@ -532,11 +606,16 @@ import { isRecordableHotkey } from './hotkey.js';
           await new Promise(r => setTimeout(r, cards.length * 50 + 300));
         }
         if (viewAllPanel) viewAllPanel._suppressRefresh = true;
-        for (const a of routeAnnotations) {
-          await VibeAPI.deleteAnnotation(a.id);
+        try {
+          for (const a of routeAnnotations) {
+            await VibeAPI.deleteAnnotation(a.id);
+          }
+          await syncAfterDeletion(routeAnnotations.length);
+        } catch (err) {
+          if (viewAllPanel) viewAllPanel._suppressRefresh = false;
+          console.error('[Vibe] clear route failed:', err);
+          openViewAll(viewAllSelectedOrigin);
         }
-        VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
-        openViewAll();
       });
     });
 
@@ -551,19 +630,24 @@ import { isRecordableHotkey } from './hotkey.js';
           await new Promise(r => setTimeout(r, 300));
         }
         if (viewAllPanel) viewAllPanel._suppressRefresh = true;
-        await VibeAPI.deleteAnnotation(id);
-        VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
-        openViewAll();
+        try {
+          await VibeAPI.deleteAnnotation(id);
+          await syncAfterDeletion(1);
+        } catch (err) {
+          if (card) card.classList.remove('deleting');
+          if (viewAllPanel) viewAllPanel._suppressRefresh = false;
+          console.error('[Vibe] deleteAnnotation failed:', err);
+        }
       });
     });
 
-    // Click card to scroll to element
+    // Click card to scroll to element (current page only!)
     viewAllPanel.querySelectorAll('.vibe-viewall-card').forEach(card => {
       card.addEventListener('click', (e) => {
         if (e.target.closest('.vibe-viewall-card-delete')) return;
         const id = card.dataset.id;
         const a = annotations.find(x => x.id === id);
-        if (a && a.selector) {
+        if (a && a.url === window.location.href && a.selector) {
           try {
             const el = document.querySelector(a.selector);
             if (el) {
@@ -581,7 +665,7 @@ import { isRecordableHotkey } from './hotkey.js';
     const refreshHandler = () => {
       if (!viewAllPanel || refreshPending || viewAllPanel._suppressRefresh) return;
       refreshPending = true;
-      setTimeout(() => { refreshPending = false; if (viewAllPanel && !viewAllPanel._suppressRefresh) openViewAll(); }, 600);
+      setTimeout(() => { refreshPending = false; if (viewAllPanel && !viewAllPanel._suppressRefresh) openViewAll(viewAllSelectedOrigin); }, 600);
     };
     VibeEvents.on('badges:rendered', refreshHandler);
 
@@ -600,6 +684,8 @@ import { isRecordableHotkey } from './hotkey.js';
       viewAllPanel.remove();
       viewAllPanel = null;
     }
+    viewAllSelectedOrigin = null;
+    viewAllKeptEmptyOrigin = null;
     const btn = toolbarEl.querySelector('.vibe-tb-viewall');
     if (btn) btn.classList.remove('active');
   }
@@ -1131,18 +1217,17 @@ import { isRecordableHotkey } from './hotkey.js';
 
   // --- Delete confirm ---
 
-  function showDeleteConfirm(root) {
+  function showDeleteConfirm(root, options = {}) {
+    const siteName = options.siteName || 'this site';
+    const count = options.count ?? 0;
+    const countStr = count === 1 ? '1 annotation' : `${count} annotations`;
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
       backdrop.className = 'vibe-confirm-backdrop';
       backdrop.innerHTML = `
         <div class="vibe-confirm">
           <div class="vibe-confirm-title">Delete all annotations?</div>
-          <div class="vibe-confirm-msg">All annotations on this page will be permanently deleted.</div>
-          <label class="vibe-confirm-skip" style="display:flex;align-items:center;gap:6px;margin:8px 0 4px;font-size:12px;color:var(--v-text-secondary,#6b7280);cursor:pointer;user-select:none;">
-            <input type="checkbox" class="vibe-confirm-skip-cb" style="margin:0;">
-            Don't ask again
-          </label>
+          <div class="vibe-confirm-msg">All ${countStr} on ${escapeHTML(siteName)} will be permanently deleted.</div>
           <div class="vibe-confirm-actions">
             <button class="vibe-btn vibe-btn-secondary vibe-confirm-no">Cancel</button>
             <button class="vibe-btn vibe-btn-danger vibe-confirm-yes">Delete All</button>
@@ -1153,10 +1238,6 @@ import { isRecordableHotkey } from './hotkey.js';
 
       backdrop.querySelector('.vibe-confirm-no').addEventListener('click', () => { backdrop.remove(); resolve(false); });
       backdrop.querySelector('.vibe-confirm-yes').addEventListener('click', () => {
-        const skipCb = backdrop.querySelector('.vibe-confirm-skip-cb');
-        if (skipCb && skipCb.checked) {
-          VibeAPI.saveSkipDeleteConfirm(true);
-        }
         backdrop.remove();
         resolve(true);
       });
@@ -1168,26 +1249,32 @@ import { isRecordableHotkey } from './hotkey.js';
 
   // Fetch a shareable export from the server and trigger a file download.
   // format: 'md' (agent, local image paths) or 'html' (self-contained, base64 images).
-  async function downloadShare(format) {
+  async function downloadShare(format, targetOrigin = window.location.origin, targetAnnotations = null) {
     // Exclude resolved so exports match the "View all" list (no finalized variant artifacts).
-    const all = (await VibeAPI.loadProjectAnnotations()).filter(a => a.status !== 'resolved');
+    let all = targetAnnotations;
+    if (!all) {
+      const stored = (await VibeAPI.loadAllStoredAnnotations()).filter(a => a && a.status !== 'resolved');
+      all = stored.filter(a => { try { return new URL(a.url).origin === targetOrigin; } catch { return false; } });
+    }
     if (!all.length) { showInfoModal('Nothing to export', 'No annotations for this site yet.'); return; }
-    const host = window.location.host.replace(/[^a-z0-9.-]/gi, '_') || 'annotations';
+    let u;
+    try { u = new URL(targetOrigin); } catch { u = window.location; }
+    const host = (u.host || 'annotations').replace(/[^a-z0-9.-]/gi, '_');
     try {
       let content, mime;
       if (format === 'md') {
         // Same renderer as the clipboard — client-side, works with no server.
-        content = renderAnnotationsMarkdown(all, window.location.host);
+        content = renderAnnotationsMarkdown(all, u.host);
         mime = 'text/markdown';
       } else if (format === 'json') {
         // The stored annotation objects in a re-importable envelope (see
         // processImport). Client-side, works with no server. Round-trips onto
         // another localhost via the settings-menu Import.
-        content = buildExportEnvelope(all);
+        content = buildExportEnvelope(all, u);
         mime = 'application/json';
       } else {
         // HTML embeds the images as base64, which needs the server to read them.
-        ({ content, mime } = await VibeAPI.getShareExport(`${window.location.origin}/*`, 'html'));
+        ({ content, mime } = await VibeAPI.getShareExport(`${targetOrigin}/*`, 'html'));
       }
       const blob = new Blob([content], { type: mime || 'text/plain' });
       const a = document.createElement('a');
@@ -1213,8 +1300,8 @@ import { isRecordableHotkey } from './hotkey.js';
   // Wrap the stored annotation objects in the re-importable envelope processImport
   // expects. The `source.origin` lets Import offer a cross-origin remap; `screenshot`
   // is stripped (attachments travel by reference, not inline). Returns a JSON string.
-  function buildExportEnvelope(annotations) {
-    const loc = window.location;
+  function buildExportEnvelope(annotations, targetUrlObj) {
+    const loc = targetUrlObj || window.location;
     return JSON.stringify({
       vibe_annotations_export: true,
       version: '1.0',
@@ -1606,5 +1693,13 @@ import { isRecordableHotkey } from './hotkey.js';
     return clean.substring(0, max) + '\u2026';
   }
 
-const VibeToolbar = { init, animateOut: animateToolbarOut };
+const VibeToolbar = {
+  init,
+  animateOut: animateToolbarOut,
+  openViewAll,
+  closeViewAll,
+  toggleViewAll,
+  getViewAllPanel: () => viewAllPanel,
+  getSelectedOrigin: () => viewAllSelectedOrigin,
+};
 export default VibeToolbar;
