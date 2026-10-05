@@ -359,6 +359,10 @@ const { default: VibeToolbar } = await import('../lib/content/floating-toolbar.j
 test('View all cross-site lifecycle and UI', async (t) => {
   await VibeToolbar.init();
 
+  t.after(() => {
+    VibeEvents.emit('overlay:closed');
+  });
+
   t.beforeEach(() => {
     VibeToolbar.closeViewAll();
     mockStorage.annotations = [];
