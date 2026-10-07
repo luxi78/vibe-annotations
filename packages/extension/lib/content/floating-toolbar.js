@@ -332,15 +332,14 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       }
       closeViewAll();
       closeSettings();
-      openSettings();
-      // Navigate into Documentation, then MCP setup
-      requestAnimationFrame(() => {
-        showDocumentation();
-        requestAnimationFrame(() => {
-          const mcpBtn = settingsDropdown?.querySelector('.vibe-mcp-server-btn');
-          if (mcpBtn) mcpBtn.click();
-        });
-      });
+      ensureSettingsShell();
+      settingsNavStack = [
+        { view: 'root', scrollTop: 0, focusSelector: '.vibe-get-started-btn' },
+        { view: 'docs', scrollTop: 0, focusSelector: '.vibe-mcp-server-btn' }
+      ];
+      VibeToolbarDocs.showWorkflow(settingsDropdown, 'mcp-setup', ICONS, _docsCallbacks);
+      const newBody = settingsDropdown?.querySelector('.vibe-settings-body');
+      if (newBody) newBody.scrollTop = 0;
     });
   }
 
@@ -937,86 +936,100 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
   // --- Settings dropdown ---
 
-  function toggleSettings() {
-    if (settingsDropdown) {
-      closeSettings();
-    } else {
-      closeViewAll();
-      openSettings();
-    }
-  }
+  // --- Settings dropdown ---
 
-  function openSettings() {
-    closeSettings();
+  let settingsNavStack = [];
+
+  function ensureSettingsShell() {
+    if (settingsDropdown) return;
 
     const btn = toolbarEl.querySelector('.vibe-tb-settings');
     if (btn) btn.classList.add('active');
-
-    const version = chrome.runtime.getManifest().version;
 
     settingsDropdown = document.createElement('div');
     const rect = toolbarEl.getBoundingClientRect();
     const inLowerHalf = rect.top > window.innerHeight / 2;
     settingsDropdown.className = 'vibe-settings-dropdown' + (inLowerHalf ? ' above' : '');
 
+    settingsDropdown.innerHTML = `
+      <div class="vibe-settings-header"></div>
+      <div class="vibe-settings-body"></div>
+    `;
+
+    settingsDropdown.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    toolbarEl.appendChild(settingsDropdown);
+
+    setTimeout(() => {
+      document.addEventListener('click', onOutsideClick);
+    }, 0);
+  }
+
+  function renderSettingsRootView() {
+    if (!settingsDropdown) return;
+
+    const header = settingsDropdown.querySelector('.vibe-settings-header');
+    const body = settingsDropdown.querySelector('.vibe-settings-body');
+    if (!header || !body) return;
+
+    const version = chrome.runtime.getManifest().version;
     const route = vibeLocationPath(window.location);
 
-    settingsDropdown.innerHTML = `
-      <div class="vibe-settings-header">
-        <div>
-          <span class="vibe-settings-title">${escapeHTML(route)}</span>
-          <a href="https://github.com/RaphaelRegnier/vibe-annotations/releases/tag/v${escapeHTML(version)}" target="_blank" rel="noopener" class="vibe-settings-version">v${escapeHTML(version)}</a>
-        </div>
-      </div>
-      <div class="vibe-settings-body">
-        <button class="vibe-settings-link vibe-get-started-btn" type="button">
-          ${ICONS.book}
-          <span>Documentation</span>
-          <span style="margin-left:auto;color:var(--v-text-secondary);">${ICONS.chevronRight}</span>
-        </button>
-        <div class="vibe-settings-separator"></div>
-        <div class="vibe-settings-item">
-          <div class="vibe-settings-item-left">
-            ${ICONS.palette}
-            <span>Pin color</span>
-          </div>
-          <div class="vibe-color-picker" style="display:flex;gap:6px;">
-            ${BADGE_COLORS.map(c => `<button class="vibe-color-dot${c === badgeColor ? ' active' : ''}" data-color="${c}" style="background:${c};" type="button"></button>`).join('')}
-          </div>
-        </div>
-        <div class="vibe-settings-item">
-          <div class="vibe-settings-item-left">
-            ${ICONS.copy}
-            <span>Clear after copy</span>
-          </div>
-          <button class="vibe-toggle vibe-clear-on-copy-toggle ${clearOnCopy ? 'on' : ''}" type="button"></button>
-        </div>
-        <div class="vibe-settings-item">
-          <div class="vibe-settings-item-left">
-            ${ICONS.camera}
-            <div>
-              <span>Screenshots</span>
-              <div style="font-size:11px;color:var(--v-text-secondary);margin-top:1px;">Only used via MCP server, not clipboard</div>
-            </div>
-          </div>
-          <button class="vibe-toggle vibe-screenshot-toggle ${screenshotEnabled ? 'on' : ''}" type="button"></button>
-        </div>
-        <div class="vibe-settings-item">
-          <div class="vibe-settings-item-left">
-            ${ICONS.keyboard}
-            <span>Trigger hotkey</span>
-          </div>
-          <button class="vibe-shortcut-btn" type="button">${escapeHTML(shortcutHint)}</button>
-        </div>
-        <div class="vibe-settings-separator"></div>
-        <button class="vibe-settings-link vibe-import-btn" type="button">
-          ${ICONS.download}
-          <span>Import annotations</span>
-        </button>
+    header.innerHTML = `
+      <div>
+        <span class="vibe-settings-title">${escapeHTML(route)}</span>
+        <a href="https://github.com/RaphaelRegnier/vibe-annotations/releases/tag/v${escapeHTML(version)}" target="_blank" rel="noopener" class="vibe-settings-version">v${escapeHTML(version)}</a>
       </div>
     `;
 
-    toolbarEl.appendChild(settingsDropdown);
+    body.innerHTML = `
+      <button class="vibe-settings-link vibe-get-started-btn" type="button">
+        ${ICONS.book}
+        <span>Documentation</span>
+        <span style="margin-left:auto;color:var(--v-text-secondary);">${ICONS.chevronRight}</span>
+      </button>
+      <div class="vibe-settings-separator"></div>
+      <div class="vibe-settings-item">
+        <div class="vibe-settings-item-left">
+          ${ICONS.palette}
+          <span>Pin color</span>
+        </div>
+        <div class="vibe-color-picker" style="display:flex;gap:6px;">
+          ${BADGE_COLORS.map(c => `<button class="vibe-color-dot${c === badgeColor ? ' active' : ''}" data-color="${c}" style="background:${c};" type="button"></button>`).join('')}
+        </div>
+      </div>
+      <div class="vibe-settings-item">
+        <div class="vibe-settings-item-left">
+          ${ICONS.copy}
+          <span>Clear after copy</span>
+        </div>
+        <button class="vibe-toggle vibe-clear-on-copy-toggle ${clearOnCopy ? 'on' : ''}" type="button"></button>
+      </div>
+      <div class="vibe-settings-item">
+        <div class="vibe-settings-item-left">
+          ${ICONS.camera}
+          <div>
+            <span>Screenshots</span>
+            <div style="font-size:11px;color:var(--v-text-secondary);margin-top:1px;">Only used via MCP server, not clipboard</div>
+          </div>
+        </div>
+        <button class="vibe-toggle vibe-screenshot-toggle ${screenshotEnabled ? 'on' : ''}" type="button"></button>
+      </div>
+      <div class="vibe-settings-item">
+        <div class="vibe-settings-item-left">
+          ${ICONS.keyboard}
+          <span>Trigger hotkey</span>
+        </div>
+        <button class="vibe-shortcut-btn" type="button">${escapeHTML(shortcutHint)}</button>
+      </div>
+      <div class="vibe-settings-separator"></div>
+      <button class="vibe-settings-link vibe-import-btn" type="button">
+        ${ICONS.download}
+        <span>Import annotations</span>
+      </button>
+    `;
 
     // Clear on copy toggle
     settingsDropdown.querySelector('.vibe-clear-on-copy-toggle').addEventListener('click', async (e) => {
@@ -1025,14 +1038,12 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       await VibeAPI.saveClearOnCopy(clearOnCopy);
     });
 
-    // Screenshot toggle — turning ON requires the broad host permission that
-    // captureVisibleTab needs, so request it first (within this click gesture).
-    // If the user declines, leave the toggle off.
+    // Screenshot toggle
     settingsDropdown.querySelector('.vibe-screenshot-toggle').addEventListener('click', async (e) => {
       const toggle = e.currentTarget;
       if (!screenshotEnabled) {
         const granted = await VibeAPI.requestScreenshotPermission();
-        if (!granted) return; // stay off — no permission, capture can't work
+        if (!granted) return;
       }
       screenshotEnabled = !screenshotEnabled;
       toggle.classList.toggle('on', screenshotEnabled);
@@ -1044,7 +1055,6 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     let recording = false;
     shortcutBtn.addEventListener('click', () => {
       if (recording) {
-        // Cancel recording
         cancelRecording();
         return;
       }
@@ -1054,12 +1064,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       VibeEvents.emit('shortcut:recording:start');
 
       function onKey(e) {
-        // Ignore lone modifier keys — keep waiting for the actual key.
         if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
-
-        // Reject hotkeys that would hijack typing (no modifier, or an editing
-        // key) and cancel recording instead of swallowing the next keystroke,
-        // so the user can try again. See hotkey.js for the exact rules.
         if (!isRecordableHotkey(e)) {
           cancelRecording();
           return;
@@ -1117,7 +1122,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     // Documentation
     settingsDropdown.querySelector('.vibe-get-started-btn').addEventListener('click', () => {
-      showDocumentation();
+      navigateToDocs();
     });
 
     // Import
@@ -1125,28 +1130,102 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       closeSettings();
       triggerImport();
     });
+  }
 
-    // Prevent clicks inside dropdown from triggering outside-click close
-    settingsDropdown.addEventListener('click', (e) => {
-      e.stopPropagation();
+  function toggleSettings() {
+    if (settingsDropdown) {
+      closeSettings();
+    } else {
+      closeViewAll();
+      openSettings();
+    }
+  }
+
+  function openSettings() {
+    closeSettings();
+    ensureSettingsShell();
+    settingsNavStack = [];
+    renderSettingsRootView();
+  }
+
+  function navigateToDocs() {
+    if (!settingsDropdown) return;
+    const body = settingsDropdown.querySelector('.vibe-settings-body');
+    const scrollTop = body ? (body.scrollTop || 0) : 0;
+    settingsNavStack.push({
+      view: 'root',
+      scrollTop,
+      focusSelector: '.vibe-get-started-btn'
     });
+    VibeToolbarDocs.showDocumentation(settingsDropdown, ICONS, _docsCallbacks);
+    const newBody = settingsDropdown.querySelector('.vibe-settings-body');
+    if (newBody) newBody.scrollTop = 0;
+  }
 
-    // Close on outside click (next tick to avoid immediate close)
-    setTimeout(() => {
-      document.addEventListener('click', onOutsideClick);
-    }, 0);
+  function restoreViewScrollAndFocus(prev) {
+    if (!settingsDropdown || !prev) return;
+    const body = settingsDropdown.querySelector('.vibe-settings-body');
+    if (body && typeof prev.scrollTop === 'number') {
+      const maxScroll = Math.max(0, (body.scrollHeight || 0) - (body.clientHeight || 0));
+      body.scrollTop = Math.min(prev.scrollTop, maxScroll);
+    }
+    if (prev.focusSelector) {
+      const el = settingsDropdown.querySelector(prev.focusSelector);
+      if (el && typeof el.focus === 'function') {
+        el.focus();
+      }
+    }
+  }
+
+  function navigateBack() {
+    if (activeRecordingCleanup) { activeRecordingCleanup(); activeRecordingCleanup = null; }
+    if (!settingsDropdown) return;
+    const prev = settingsNavStack.pop();
+    if (!prev || prev.view === 'root') {
+      renderSettingsRootView();
+      restoreViewScrollAndFocus(prev);
+    } else if (prev.view === 'docs') {
+      VibeToolbarDocs.showDocumentation(settingsDropdown, ICONS, _docsCallbacks);
+      restoreViewScrollAndFocus(prev);
+    }
   }
 
   // Documentation/guide pages are in toolbar-docs.js (VibeToolbarDocs)
   const _docsCallbacks = {
-    onBack: () => { closeSettings(); openSettings(); }
+    onBack: () => {
+      navigateBack();
+    },
+    onNavigate: (type, target, _sourceEl) => {
+      if (!settingsDropdown) return;
+      const body = settingsDropdown.querySelector('.vibe-settings-body');
+      const scrollTop = body ? (body.scrollTop || 0) : 0;
+      let focusSelector = null;
+      if (type === 'get-started') {
+        focusSelector = '.vibe-get-started-guide-btn';
+      } else if (type === 'workflow') {
+        if (target === 'mcp-setup') {
+          focusSelector = '.vibe-mcp-server-btn';
+        } else {
+          focusSelector = `.vibe-workflow-btn[data-workflow="${target}"]`;
+        }
+      }
+      settingsNavStack.push({
+        view: 'docs',
+        scrollTop,
+        focusSelector
+      });
+      if (type === 'get-started') {
+        VibeToolbarDocs.showGetStartedGuide(settingsDropdown, ICONS, _docsCallbacks);
+      } else if (type === 'workflow') {
+        VibeToolbarDocs.showWorkflow(settingsDropdown, target, ICONS, _docsCallbacks);
+      }
+      const newBody = settingsDropdown.querySelector('.vibe-settings-body');
+      if (newBody) newBody.scrollTop = 0;
+    }
   };
 
-  function showDocumentation() {
-    VibeToolbarDocs.showDocumentation(settingsDropdown, ICONS, _docsCallbacks);
-  }
-
   function closeSettings() {
+    settingsNavStack = [];
     if (activeRecordingCleanup) { activeRecordingCleanup(); activeRecordingCleanup = null; }
     if (settingsDropdown) {
       settingsDropdown.remove();
@@ -1811,5 +1890,8 @@ const VibeToolbar = {
   toggleViewAll,
   getViewAllPanel: () => viewAllPanel,
   getSelectedOrigin: () => viewAllSelectedOrigin,
+  openSettings,
+  closeSettings,
+  getSettingsDropdown: () => settingsDropdown,
 };
 export default VibeToolbar;
