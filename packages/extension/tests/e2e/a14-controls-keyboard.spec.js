@@ -413,4 +413,88 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     expect(stateAfterFreshEsc.cancelCount, 'Fresh Esc after independent edit close must reach host').toBe(1);
     expect(stateAfterFreshEsc.selected, 'Fresh Esc must deselect host rectangle').toBe(false);
   });
+
+  test('A14 Design alignment matrix: In-place direction updates preserve controls, keyboard focus, and apply live preview across toggles and reset', async ({
+    page,
+  }) => {
+    await enterAnnotateMode(page);
+    const vibeRoot = page.locator('#vibe-annotations-root');
+
+    // Click canvas-rect at an offset (x: 10, y: 10) to annotate the container itself
+    const canvasRect = page.locator('#canvas-rect');
+    await canvasRect.click({ position: { x: 10, y: 10 } });
+
+    const popover = vibeRoot.locator('.vibe-popover');
+    await expect(popover).toBeVisible({ timeout: 5000 });
+
+    // Switch to Design tab
+    const designTab = popover.locator('.vibe-mode-tab[data-mode="design"]');
+    await designTab.click();
+
+    const designPanel = popover.locator('.vibe-mode-panel[data-mode="design"]');
+    await expect(designPanel).toBeVisible();
+
+    // Confirm Layout section is open and alignment matrix is visible
+    const matrix = popover.locator('.vibe-align-matrix');
+    await expect(matrix).toBeVisible();
+    const cells = matrix.locator('.vibe-matrix-cell');
+    await expect(cells).toHaveCount(9);
+
+    // Initial mode is vflex (since canvas-rect is flex-direction: column)
+    await expect(matrix).toHaveAttribute('data-direction', 'vflex');
+
+    // Keyboard focus the center cell (index 4)
+    const centerCell = cells.nth(4);
+    await centerCell.focus();
+    await expect(centerCell).toBeFocused();
+
+    // Switch layout direction to Horizontal flex (hflex)
+    const hflexBtn = popover.locator('.vibe-flow-group [data-mode="hflex"]');
+    await hflexBtn.click();
+
+    // Verify matrix container updated direction in place
+    await expect(matrix).toHaveAttribute('data-direction', 'hflex');
+
+    // Verify cell continuity: cell at index 2 has updated aria-label and attributes in place
+    const topRightCell = cells.nth(2);
+    await expect(topRightCell).toHaveAttribute('data-jc', 'flex-end');
+    await expect(topRightCell).toHaveAttribute('data-ai', 'flex-start');
+    await expect(topRightCell).toHaveAttribute('aria-label', 'Align top right');
+
+    // Repeated direction toggles to verify handlers do not duplicate
+    const vflexBtn = popover.locator('.vibe-flow-group [data-mode="vflex"]');
+    await vflexBtn.click();
+    await hflexBtn.click();
+    await vflexBtn.click();
+    await hflexBtn.click();
+
+    // In hflex: activate top-right cell (index 2: jc=flex-end, ai=flex-start)
+    await topRightCell.click();
+    await expect(topRightCell).toHaveClass(/active/);
+
+    // Verify live preview style updated on host canvas-rect
+    await expect(canvasRect).toHaveCSS('justify-content', 'flex-end');
+    await expect(canvasRect).toHaveCSS('align-items', 'flex-start');
+
+    // Switch direction to vflex: in vflex, cell 2 means jc=flex-start, ai=flex-end
+    await vflexBtn.click();
+    await expect(matrix).toHaveAttribute('data-direction', 'vflex');
+    await expect(topRightCell).toHaveAttribute('data-jc', 'flex-start');
+    await expect(topRightCell).toHaveAttribute('data-ai', 'flex-end');
+
+    // Activate cell 2 in vflex
+    await topRightCell.click();
+    await expect(canvasRect).toHaveCSS('justify-content', 'flex-start');
+    await expect(canvasRect).toHaveCSS('align-items', 'flex-end');
+
+    // Test Reset: resets alignment back to original (canvas-rect was column, center, center)
+    const resetBtn = popover.locator('.vibe-design-reset');
+    await resetBtn.click();
+    await expect(canvasRect).toHaveCSS('justify-content', 'center');
+    await expect(canvasRect).toHaveCSS('align-items', 'center');
+
+    // Dismiss popover via Escape and ensure cleanup
+    await page.keyboard.press('Escape');
+    await expect(popover).not.toBeAttached({ timeout: 3000 });
+  });
 });
