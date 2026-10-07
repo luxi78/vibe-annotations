@@ -41,3 +41,8 @@ docs/prd_document.md
 .superset/
 
 .scratch/
+
+.local/
+
+.worktrees/
+
