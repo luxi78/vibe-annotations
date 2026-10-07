@@ -6,6 +6,7 @@ import VibeAPI from './api-bridge.js';
 import VibeElementContext from './element-context.js';
 import VibeEvents from './event-bus.js';
 import VibeShadowHost from './shadow-host.js';
+import { filterEligibleElementAnnotations } from './pin-discovery.js';
 
   const DESIGN_PROPS = [
     'fontSize','fontWeight','lineHeight','textAlign',
@@ -110,7 +111,7 @@ import VibeShadowHost from './shadow-host.js';
   let lastProjectTotal = 0;
   let domObserver = null;
   let rematchDebounceTimer = null;
-  let lastTotal = 0; // total annotations (including unanchored)
+  let _lastTotal = 0; // total annotations (including unanchored)
   let watchMode = false;
   let renderSeq = 0; // guards against out-of-order async renders (see render())
 
@@ -298,12 +299,12 @@ import VibeShadowHost from './shadow-host.js';
     } catch {
       // Overlapping asynchronous renders cannot apply stale results. Failed reads
       // do not clear displayed feedback as though they were successful empty results.
-      return;
+      return { count: badges.length, error: true };
     }
 
     // A newer render started while we awaited — bail so we don't emit a stale
     // total (e.g. leaving the "View all" count at 1 after deleting everything).
-    if (myGen !== renderSeq) return;
+    if (myGen !== renderSeq) return { superseded: true, count: badges.length };
     const projectSorted = [...projectAnnotations].sort((a, b) =>
       new Date(a.created_at) - new Date(b.created_at)
     );
@@ -391,9 +392,25 @@ import VibeShadowHost from './shadow-host.js';
     if (!badges.length) stopRAF();
     else if (!rafId) startRAF();
 
-    lastTotal = annotations.length;
+    const eligibleElementAnnotations = filterEligibleElementAnnotations(annotations);
+    const renderedIds = badges.map(b => b.annotation.id);
+    const renderedSet = new Set(renderedIds);
+    const unresolvedAnnotations = eligibleElementAnnotations.filter(a => !renderedSet.has(a.id));
+    const unresolvedIds = unresolvedAnnotations.map(a => a.id);
+
+    _lastTotal = annotations.length;
     lastProjectTotal = projectAnnotations.length;
-    VibeEvents.emit('badges:rendered', { count: badges.length, total: projectAnnotations.length, styleCount: styleInjections.filter(s => s.annotation.type === 'stylesheet').length });
+    const result = {
+      count: badges.length,
+      total: projectAnnotations.length,
+      styleCount: styleInjections.filter(s => s.annotation.type === 'stylesheet').length,
+      renderedIds,
+      unresolvedAnnotations,
+      unresolvedIds,
+      generation: myGen,
+    };
+    VibeEvents.emit('badges:rendered', result);
+    return result;
   }
 
   function reconcileBadge(targetElement, annotation, badgeNum, variant = null) {
@@ -593,7 +610,13 @@ import VibeShadowHost from './shadow-host.js';
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   }
 
+  function cancelPendingRenders() {
+    renderSeq++;
+    removeProvisional();
+  }
+
   function clearAll(annotations, { skipRevert = false } = {}) {
+    cancelPendingRenders();
     // Clear injected stylesheets
     for (const entry of styleInjections) entry.styleEl.remove();
     styleInjections = [];
@@ -609,7 +632,7 @@ import VibeShadowHost from './shadow-host.js';
       entry.el.remove();
     }
     badges = [];
-    lastTotal = 0;
+    _lastTotal = 0;
     stopRAF();
     clearTimeout(rematchDebounceTimer);
 
@@ -732,5 +755,23 @@ import VibeShadowHost from './shadow-host.js';
     return badges.length;
   }
 
-const VibeBadgeManager = { init, render, clearAll, targetBadge, highlightElement, getCount };
+  function getRenderedBadgeIds() {
+    return badges.map(b => b.annotation.id);
+  }
+
+  function hasBadge(annotationId) {
+    return badges.some(b => b.annotation.id === annotationId);
+  }
+
+const VibeBadgeManager = {
+  init,
+  render,
+  clearAll,
+  cancelPendingRenders,
+  targetBadge,
+  highlightElement,
+  getCount,
+  getRenderedBadgeIds,
+  hasBadge,
+};
 export default VibeBadgeManager;

@@ -13,12 +13,12 @@ import VibeToolbar from '../../lib/content/floating-toolbar.js';
 import VibeScreenshot from '../../lib/content/screenshot.js';
 import VibeKeyboardRouter from '../../lib/content/keyboard-router.js';
 import VibeSessionFocus from '../../lib/content/session-focus.js';
+import VibePinDiscovery from '../../lib/content/pin-discovery.js';
 
 // --- State ---
 let annotations = [];
 let localSaveCount = 0;
 let badgesShown = false;
-let lazyObserver = null;
 
 // --- Font injection (on main document — fonts cascade into shadow DOM) ---
 function injectFontFace() {
@@ -286,6 +286,8 @@ function setupRouteChangeDetection() {
 }
 
 async function reloadAnnotationsForCurrentRoute() {
+  cancelStabilityWait();
+  VibePinDiscovery.cancelDiscovery('route-change');
   annotations = await VibeAPI.loadAnnotations();
   badgesShown = false;
   if (VibeShadowHost.isVisible()) {
@@ -341,6 +343,8 @@ function setupAnnotationEvents() {
   });
 
   VibeEvents.on('overlay:closed', () => {
+    cancelStabilityWait();
+    VibePinDiscovery.cancelDiscovery('overlay-closed');
     VibeBadgeManager.clearAll(annotations);
   });
 
@@ -351,6 +355,8 @@ function setupAnnotationEvents() {
 
   VibeEvents.on('annotations:cleared', ({ count } = {}) => {
     localSaveCount += count || annotations.length || 1;
+    cancelStabilityWait();
+    VibePinDiscovery.cancelDiscovery('annotations-cleared');
     VibeBadgeManager.clearAll(annotations);
     annotations = [];
     VibeEvents.emit('badges:rendered', { count: 0, total: 0 });
@@ -358,6 +364,25 @@ function setupAnnotationEvents() {
 }
 
 // --- Hydration waiting (framework support) ---
+let activeStabilityObserver = null;
+let activeStabilityTimer = null;
+let hydrationTimeout = null;
+
+function cancelStabilityWait() {
+  if (activeStabilityObserver) {
+    activeStabilityObserver.disconnect();
+    activeStabilityObserver = null;
+  }
+  if (activeStabilityTimer) {
+    clearTimeout(activeStabilityTimer);
+    activeStabilityTimer = null;
+  }
+  if (hydrationTimeout) {
+    clearTimeout(hydrationTimeout);
+    hydrationTimeout = null;
+  }
+}
+
 function waitForHydrationAndShowAnnotations() {
   const showBadges = () => {
     if (badgesShown) return;
@@ -371,75 +396,62 @@ function waitForHydrationAndShowAnnotations() {
     window.addEventListener('load', () => waitForDOMStability(showBadges), { once: true });
   }
 
-  setTimeout(showBadges, 8000);
+  hydrationTimeout = setTimeout(showBadges, 8000);
 }
 
 function waitForDOMStability(callback) {
-  let stabilityTimer;
+  cancelStabilityWait();
+
   let mutationCount = 0;
   const maxMutations = 10;
   const stabilityDelay = 1500;
 
-  const observer = new MutationObserver(() => {
+  activeStabilityObserver = new MutationObserver(() => {
     mutationCount++;
-    clearTimeout(stabilityTimer);
+    clearTimeout(activeStabilityTimer);
     if (mutationCount > maxMutations) {
-      observer.disconnect();
-      setTimeout(callback, 500);
+      if (activeStabilityObserver) {
+        activeStabilityObserver.disconnect();
+        activeStabilityObserver = null;
+      }
+      activeStabilityTimer = setTimeout(() => {
+        activeStabilityTimer = null;
+        callback();
+      }, 500);
       return;
     }
-    stabilityTimer = setTimeout(() => { observer.disconnect(); callback(); }, stabilityDelay);
+    activeStabilityTimer = setTimeout(() => {
+      if (activeStabilityObserver) {
+        activeStabilityObserver.disconnect();
+        activeStabilityObserver = null;
+      }
+      activeStabilityTimer = null;
+      callback();
+    }, stabilityDelay);
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
-  stabilityTimer = setTimeout(() => { observer.disconnect(); callback(); }, stabilityDelay);
+  if (document.body) {
+    activeStabilityObserver.observe(document.body, { childList: true, subtree: true });
+  }
+  activeStabilityTimer = setTimeout(() => {
+    if (activeStabilityObserver) {
+      activeStabilityObserver.disconnect();
+      activeStabilityObserver = null;
+    }
+    activeStabilityTimer = null;
+    callback();
+  }, stabilityDelay);
 }
 
 function showAnnotationsWithRetry(maxAttempts = 5, delay = 500) {
-  if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
+  if (!VibeShadowHost.isVisible()) return;
 
-  const elementAnnotations = annotations.filter((a) => a.type !== 'stylesheet');
-  let attempts = 0;
-  const tryShow = () => {
-    attempts++;
-    VibeEvents.emit('annotations:render', annotations);
-    const found = VibeBadgeManager.getCount();
-    if (found < elementAnnotations.length && attempts < maxAttempts) {
-      setTimeout(tryShow, delay);
-    }
-    if (attempts >= maxAttempts && found < elementAnnotations.length) {
-      startLazyElementObserver();
-    }
-  };
-  tryShow();
-}
-
-// Persistent observer for code-split / lazy-loaded components that arrive late
-function startLazyElementObserver() {
-  if (lazyObserver) lazyObserver.disconnect();
-
-  let debounceTimer = null;
-  const elementCount = annotations.filter((a) => a.type !== 'stylesheet').length;
-  lazyObserver = new MutationObserver(() => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      VibeEvents.emit('annotations:render', annotations);
-      const found = VibeBadgeManager.getCount();
-      if (found >= elementCount) {
-        lazyObserver.disconnect();
-        lazyObserver = null;
-      }
-    }, 300);
+  VibePinDiscovery.startDiscovery({
+    annotations,
+    maxAttempts,
+    delay,
+    coalesce: true,
   });
-
-  lazyObserver.observe(document.body, { childList: true, subtree: true });
-
-  setTimeout(() => {
-    if (lazyObserver) {
-      lazyObserver.disconnect();
-      lazyObserver = null;
-    }
-  }, 30000);
 }
 
 function onDOMReady(callback) {

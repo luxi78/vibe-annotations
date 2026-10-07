@@ -33,6 +33,7 @@ bridge-handler → content.js
 | `floating-toolbar.js` | ~1370 | Toolbar UI, settings, view-all panel, clipboard, import/export, polling |
 | `toolbar-docs.js` | ~420 | Documentation/guide templates for settings dropdown |
 | `badge-manager.js` | ~450 | Pin rendering, DOM observer, style injection |
+| `pin-discovery.js` | ~160 | Asynchronous pin rendering orchestrator, retries, late-element discovery, cancellation |
 | `element-context.js` | ~940 | Selector generation (8-tier fallback), source mapping |
 | `api-bridge.js` | ~300 | All chrome.runtime.sendMessage + chrome.storage calls |
 
