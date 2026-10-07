@@ -215,6 +215,7 @@ class MockElement {
   }
 
   appendChild(child) {
+    if (child.parentNode) child.parentNode.removeChild(child);
     this.children.push(child);
     child.parentNode = this;
     return child;
@@ -299,6 +300,9 @@ class MockElement {
   set textContent(val) {
     this._textContent = String(val);
     this._innerHTML = String(val);
+    for (const c of this.children) {
+      c.parentNode = null;
+    }
     this.children = [];
   }
 
@@ -640,7 +644,7 @@ test('View all cross-site lifecycle and UI', async (t) => {
     assert.strictEqual(targetBadgeEmitted, true, 'Must emit badge:target for current page');
   });
 
-  await t.test('deleting the last annotation on another site switches back to the current site', async () => {
+  await t.test('deleting the last annotation on another site keeps that site selected and selectable with an empty state without remounting', async () => {
     mockStorage.annotations = [
       { id: '1', url: 'http://localhost:5173/page1', comment: 'Only note on 5173', status: 'open' },
       { id: '2', url: 'http://localhost:3000/page1', comment: 'Note on 3000', status: 'open' }
@@ -648,6 +652,7 @@ test('View all cross-site lifecycle and UI', async (t) => {
 
     await VibeToolbar.openViewAll('http://localhost:5173');
     let panel = VibeToolbar.getViewAllPanel();
+    const initialPanelNode = panel;
     assert.ok(panel.querySelector('[data-id="1"]'));
 
     // Delete card 1
@@ -658,11 +663,20 @@ test('View all cross-site lifecycle and UI', async (t) => {
     await new Promise(r => setTimeout(r, 450));
 
     panel = VibeToolbar.getViewAllPanel();
-    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
-    assert.ok(panel.querySelector('[data-id="2"]'), 'Current site annotations are shown after switching back');
+    assert.strictEqual(panel, initialPanelNode, 'Panel shell must not remount');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:5173', 'Emptied site must stay selected');
+    assert.ok(panel.querySelector('.vibe-viewall-empty'), 'Empty notice must be shown for emptied site');
+    assert.strictEqual(panel.querySelectorAll('.vibe-viewall-card').length, 0, 'No cards displayed');
     assert.strictEqual(mockStorage.annotations.length, 1);
     assert.strictEqual(mockStorage.annotations[0].id, '2', 'Other site annotation untouched');
-    assert.ok(panel.querySelector('.vibe-viewall-url'), 'Reverts to simple heading when only the current site remains');
+
+    // Site select still exists and includes 5173 as selectable option
+    const siteSelect = panel.querySelector('.vibe-viewall-site-select');
+    assert.ok(siteSelect, 'Site select must remain available in the open session');
+    assert.strictEqual(siteSelect.value, 'http://localhost:5173');
+    const options = Array.from(siteSelect.options || []).map(o => o.value);
+    assert.ok(options.includes('http://localhost:5173'), 'Emptied site must remain selectable');
+    assert.ok(options.includes('http://localhost:3000'), 'Current site must remain selectable');
   });
 
   await t.test('whole-site delete requires confirmation identifying site and count; cancelling makes no change', async () => {
@@ -708,7 +722,11 @@ test('View all cross-site lifecycle and UI', async (t) => {
     // Site B annotations deleted, Site A remains
     assert.strictEqual(mockStorage.annotations.length, 1);
     assert.strictEqual(mockStorage.annotations[0].id, '3', 'Other site annotations remain unchanged');
-    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000', 'Returns to current site after whole-site deletion');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:5173', 'Retains selected site after whole-site deletion');
+    assert.ok(panel.querySelector('.vibe-viewall-empty'), 'Empty notice shown on emptied site');
+    const selectEl = panel.querySelector('.vibe-viewall-site-select');
+    assert.ok(selectEl, 'Site selector preserved');
+    assert.strictEqual(selectEl.value, 'http://localhost:5173');
   });
 
   await t.test('copy all is scoped to selected site', async () => {
@@ -728,7 +746,7 @@ test('View all cross-site lifecycle and UI', async (t) => {
     assert.ok(!globalThis.__copiedText.includes('Site A comment'), 'Should NOT copy Site A');
   });
 
-  await t.test('clear on copy clears only selected site annotations and returns to the current site', async () => {
+  await t.test('clear on copy clears only selected site annotations and keeps selected site in place', async () => {
     mockStorage.annotations = [
       { id: '1', url: 'http://localhost:5173/page', comment: 'Site B comment', status: 'open' },
       { id: '2', url: 'http://localhost:3000/page', comment: 'Site A comment', status: 'open' }
@@ -740,28 +758,36 @@ test('View all cross-site lifecycle and UI', async (t) => {
     const clearOnCopyToggle = shadowRootMock.querySelector('.vibe-clear-on-copy-toggle');
     clearOnCopyToggle.click(); // turned ON
 
-    await VibeToolbar.openViewAll('http://localhost:5173');
-    let panel = VibeToolbar.getViewAllPanel();
+    try {
+      await VibeToolbar.openViewAll('http://localhost:5173');
+      let panel = VibeToolbar.getViewAllPanel();
+      const initialPanelNode = panel;
 
-    const copyBtn = panel.querySelector('.vibe-viewall-copy');
-    copyBtn.click();
+      const copyBtn = panel.querySelector('.vibe-viewall-copy');
+      copyBtn.click();
 
-    await new Promise(r => setTimeout(r, 50));
+      await new Promise(r => setTimeout(r, 60));
 
-    // Copied text verified
-    assert.ok(globalThis.__copiedText.includes('Site B comment'));
-    // Site B annotation deleted, Site A untouched
-    assert.strictEqual(mockStorage.annotations.length, 1);
-    assert.strictEqual(mockStorage.annotations[0].id, '2');
-    assert.strictEqual(mockStorage.annotations[0].url, 'http://localhost:3000/page');
+      // Copied text verified
+      assert.ok(globalThis.__copiedText.includes('Site B comment'));
+      // Site B annotation deleted, Site A untouched
+      assert.strictEqual(mockStorage.annotations.length, 1);
+      assert.strictEqual(mockStorage.annotations[0].id, '2');
+      assert.strictEqual(mockStorage.annotations[0].url, 'http://localhost:3000/page');
 
-    // Panel returns to the current site
-    panel = VibeToolbar.getViewAllPanel();
-    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
-    assert.ok(panel.querySelector('[data-id="2"]'), 'Current site annotation is shown after clear-on-copy');
-
-    // Turn toggle back off
-    clearOnCopyToggle.click();
+      // Panel remains mounted without entrance animation
+      panel = VibeToolbar.getViewAllPanel();
+      assert.strictEqual(panel, initialPanelNode, 'Panel shell must not remount on clear-after-copy');
+      // Panel retains selected site and shows empty state
+      assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:5173', 'Selected site remains active');
+      assert.ok(panel.querySelector('.vibe-viewall-empty'), 'Empty notice shown');
+      const siteSelect = panel.querySelector('.vibe-viewall-site-select');
+      assert.ok(siteSelect, 'Site select remains available');
+      assert.strictEqual(siteSelect.value, 'http://localhost:5173');
+    } finally {
+      // Turn toggle back off
+      clearOnCopyToggle.click();
+    }
   });
 
   await t.test('export share menu renders options and downloads selected site', async () => {
@@ -839,8 +865,16 @@ test('View all cross-site lifecycle and UI', async (t) => {
     // Deleting a foreign-site annotation decreases the global count.
     assert.strictEqual(pill.textContent, '2', 'Global count decreases after foreign site deletion');
 
-    // Deleting the foreign site's last annotation returns to the current site automatically
-    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
+    // Deleting the foreign site's last annotation leaves that site selected with an empty state
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:5173');
+    assert.ok(panel.querySelector('.vibe-viewall-empty'), 'Shows empty state on emptied foreign site');
+
+    // Switch to current site via site selector
+    const siteSelect = panel.querySelector('.vibe-viewall-site-select');
+    assert.ok(siteSelect, 'Site selector preserved');
+    siteSelect.value = 'http://localhost:3000';
+    siteSelect.dispatchEvent({ type: 'change', target: { value: 'http://localhost:3000' } });
+    await new Promise(r => setTimeout(r, 60));
 
     const updatedPanel = VibeToolbar.getViewAllPanel();
     const currentCardDeleteBtn = updatedPanel.querySelector('[data-id="1"].vibe-viewall-card-delete');
@@ -1555,7 +1589,8 @@ test('View all cross-site lifecycle and UI', async (t) => {
       { id: 'variant', url: 'http://localhost:5173/v', mode: 'variants', variantsPayload: {}, status: 'variants-discarded' },
     ];
     await VibeToolbar.openViewAll('https://example.com', 'current');
-    const button = VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-delete-global');
+    const initialPanel = VibeToolbar.getViewAllPanel();
+    const button = initialPanel.querySelector('.vibe-viewall-delete-global');
     assert.ok(button);
     button.click();
     await new Promise(resolve => setImmediate(resolve));
@@ -1567,6 +1602,14 @@ test('View all cross-site lifecycle and UI', async (t) => {
     await new Promise(resolve => setTimeout(resolve, 30));
     assert.deepStrictEqual(mockStorage.annotations.map(a => a.id), ['later']);
     assert.strictEqual(shadowRootMock.querySelector('.vibe-toolbar-pill').textContent, '1');
+
+    // Panel shell preserved, selected site and filter retained
+    const panelAfter = VibeToolbar.getViewAllPanel();
+    assert.strictEqual(panelAfter, initialPanel, 'Panel shell must not remount on global delete');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'https://example.com', 'Retains selected site');
+    const currentTab = panelAfter.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    assert.ok(currentTab.classList.contains('active'), 'Retains active filter current');
+    assert.ok(panelAfter.querySelector('.vibe-viewall-empty'), 'Empty notice displayed');
   });
 
   await t.test('external storage changes trigger coalesced View all refresh and do not rebuild unchanged cards on other-site changes', async () => {
@@ -1702,6 +1745,177 @@ test('View all cross-site lifecycle and UI', async (t) => {
     // Explicit close resets the session
     VibeToolbar.closeViewAll();
     assert.strictEqual(VibeToolbar.getSelectedOrigin(), null);
+  });
+
+  await t.test('deleting focused card, route, or final card returns focus to active filter tab, and unaffected controls retain focus', async () => {
+    mockStorage.annotations = [
+      { id: 'focus-1', url: 'http://localhost:3000/route1', comment: 'Card 1', status: 'open' },
+      { id: 'focus-2', url: 'http://localhost:3000/route1', comment: 'Card 2', status: 'open' },
+      { id: 'focus-3', url: 'http://localhost:3000/route2', comment: 'Card 3', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+    const activeTab = panel.querySelector('.vibe-viewall-tab.active');
+
+    // Case 1: Focus is on card-1 delete button. Deleting it returns focus to active filter tab, not card-2 delete
+    const card1 = panel.querySelector('[data-id="focus-1"]');
+    const card1Del = card1.querySelector('.vibe-viewall-card-delete');
+    card1Del.focus();
+    assert.strictEqual(document.activeElement, card1Del);
+
+    card1Del.click();
+    await new Promise(r => setTimeout(r, 450));
+
+    assert.strictEqual(panel.querySelector('[data-id="focus-1"]'), null, 'focus-1 deleted');
+    assert.strictEqual(document.activeElement, activeTab, 'Focus moved to active filter tab, not card-2 delete');
+
+    // Case 2: Unaffected control (copy button) retains focus when another card is deleted
+    const copyBtn = panel.querySelector('.vibe-viewall-copy');
+    copyBtn.focus();
+    assert.strictEqual(document.activeElement, copyBtn);
+
+    const card2 = panel.querySelector('[data-id="focus-2"]');
+    const card2Del = card2.querySelector('.vibe-viewall-card-delete');
+    card2Del.click();
+    await new Promise(r => setTimeout(r, 450));
+
+    assert.strictEqual(panel.querySelector('[data-id="focus-2"]'), null, 'focus-2 deleted');
+    assert.strictEqual(document.activeElement, copyBtn, 'Copy button retained focus');
+
+    // Case 3: Deleting the final card (focus-3) returns focus to active filter tab
+    const card3 = panel.querySelector('[data-id="focus-3"]');
+    const card3Del = card3.querySelector('.vibe-viewall-card-delete');
+    card3Del.focus();
+    assert.strictEqual(document.activeElement, card3Del);
+
+    card3Del.click();
+    await new Promise(r => setTimeout(r, 450));
+
+    assert.ok(panel.querySelector('.vibe-viewall-empty'), 'Empty state shown for final card deletion');
+    assert.strictEqual(document.activeElement, activeTab, 'Focus returned to active filter tab on final card deletion');
+  });
+
+  await t.test('post-mutation read failure does not masquerade as empty result, retains last-good content and recovers in-place via retry without destructive retry', async () => {
+    mockStorage.annotations = [
+      { id: 'survive-1', url: 'http://localhost:3000/page1', comment: 'Keep this note', status: 'open' },
+      { id: 'del-1', url: 'http://localhost:3000/page1', comment: 'Delete this note', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+    const initialPanelNode = panel;
+
+    let deleteCallCount = 0;
+    const origDelete = VibeAPI.deleteAnnotation;
+    VibeAPI.deleteAnnotation = async (id) => {
+      deleteCallCount++;
+      return origDelete(id);
+    };
+
+    let failNextRead = false;
+    const origLoad = VibeAPI.loadAllStoredAnnotations;
+    VibeAPI.loadAllStoredAnnotations = async () => {
+      if (failNextRead) {
+        throw new Error('Simulated post-mutation read failure');
+      }
+      return origLoad();
+    };
+
+    try {
+      // Trigger delete on del-1
+      const delBtn = panel.querySelector('[data-id="del-1"].vibe-viewall-card-delete');
+      assert.ok(delBtn);
+
+      // Arm read failure specifically for the post-mutation sync
+      failNextRead = true;
+      delBtn.click();
+      await new Promise(r => setTimeout(r, 450));
+
+      // 1. Mutation succeeded in storage
+      assert.strictEqual(deleteCallCount, 1, 'Delete was called once');
+      assert.strictEqual(mockStorage.annotations.some(a => a.id === 'del-1'), false, 'del-1 deleted in storage');
+
+      // 2. Post-mutation read failure did NOT masquerade as empty result
+      assert.strictEqual(panel, initialPanelNode, 'Panel shell not remounted');
+      assert.strictEqual(panel.querySelector('.vibe-viewall-empty'), null, 'Must NOT show empty notice on read failure');
+
+      // 3. Last-good content retained and in-place error bar displayed with Retry
+      const errorEl = panel.querySelector('.vibe-viewall-error');
+      assert.ok(errorEl, 'In-place error bar displayed');
+      assert.ok(errorEl.textContent.includes('Failed to load annotations'));
+      const retryBtn = errorEl.querySelector('.vibe-viewall-retry');
+      assert.ok(retryBtn, 'Retry button available');
+
+      // 4. Disarm read failure and click Retry -> read recovery occurs in same panel without destructive retry
+      failNextRead = false;
+      retryBtn.click();
+      await new Promise(r => setTimeout(r, 50));
+
+      assert.strictEqual(deleteCallCount, 1, 'Retry did NOT execute another destructive delete');
+      assert.strictEqual(panel.querySelector('.vibe-viewall-error'), null, 'Error bar cleared upon successful retry');
+      assert.strictEqual(panel.querySelector('[data-id="del-1"]'), null, 'del-1 absent');
+      assert.ok(panel.querySelector('[data-id="survive-1"]'), 'survive-1 displayed');
+    } finally {
+      VibeAPI.deleteAnnotation = origDelete;
+      VibeAPI.loadAllStoredAnnotations = origLoad;
+    }
+  });
+
+  await t.test('closing or changing context during an action prevents completion from reopening panel or restoring obsolete selection', async () => {
+    mockStorage.annotations = [
+      { id: 'site-a-note', url: 'http://localhost:5173/page1', comment: 'Site A note', status: 'open' },
+      { id: 'site-b-note', url: 'http://localhost:3000/page1', comment: 'Site B note', status: 'open' }
+    ];
+
+    // Scenario 1: Closing panel while card deletion is in flight prevents reopening
+    await VibeToolbar.openViewAll('http://localhost:5173');
+    let panel = VibeToolbar.getViewAllPanel();
+    const cardA = panel.querySelector('[data-id="site-a-note"]');
+    const delBtnA = cardA.querySelector('.vibe-viewall-card-delete');
+
+    // Click delete
+    delBtnA.click();
+    // Mid-action (during the 300ms animation), explicitly close View all
+    await new Promise(r => setTimeout(r, 100));
+    VibeToolbar.closeViewAll();
+    assert.strictEqual(VibeToolbar.getViewAllPanel(), null, 'Panel is closed');
+
+    // Wait for the async deletion and sync to fully finish
+    await new Promise(r => setTimeout(r, 450));
+
+    // Assert: Completion did NOT reopen the panel or restore selection
+    assert.strictEqual(VibeToolbar.getViewAllPanel(), null, 'Action completion must not reopen a closed panel');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), null, 'Action completion must not restore obsolete origin on closed session');
+    assert.strictEqual(mockStorage.annotations.some(a => a.id === 'site-a-note'), false, 'Deletion still succeeded in storage');
+
+    // Scenario 2: Changing selected site while route/card deletion is in flight retains newer site selection
+    mockStorage.annotations = [
+      { id: 'site-a-2', url: 'http://localhost:5173/p', comment: 'Site A second note', status: 'open' },
+      { id: 'site-b-note', url: 'http://localhost:3000/page1', comment: 'Site B note', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:5173');
+    panel = VibeToolbar.getViewAllPanel();
+    const cardA2 = panel.querySelector('[data-id="site-a-2"]');
+    const delBtnA2 = cardA2.querySelector('.vibe-viewall-card-delete');
+
+    delBtnA2.click();
+    // Mid-action, user changes selected site to site B
+    await new Promise(r => setTimeout(r, 100));
+    const siteSelect = panel.querySelector('.vibe-viewall-site-select');
+    assert.ok(siteSelect);
+    siteSelect.value = 'http://localhost:3000';
+    siteSelect.dispatchEvent({ type: 'change', target: { value: 'http://localhost:3000' } });
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000', 'Switched to site B');
+
+    // Wait for site A's deletion and sync to fully finish
+    await new Promise(r => setTimeout(r, 450));
+
+    // Assert: Panel stayed open, but selection was NOT forced back to obsolete site A
+    assert.ok(VibeToolbar.getViewAllPanel(), 'Panel remains open');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000', 'Must retain newer selection (Site B), not revert to obsolete Site A');
+    assert.ok(VibeToolbar.getViewAllPanel().querySelector('[data-id="site-b-note"]'), 'Displays site B content');
   });
 
   await t.test('failed reads retain last-good content and expose in-place retry, which clears error on recovery', async () => {
