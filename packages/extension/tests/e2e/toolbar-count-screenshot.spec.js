@@ -359,3 +359,87 @@ test('View all maintains continuous panel mount, scroll memory, focus, and avoid
   expect(await root.locator('.vibe-viewall-tab.active').getAttribute('data-filter')).toBe('all');
   expect(await list.evaluate(el => el.scrollTop)).toBe(0);
 });
+
+test('View all refreshes incrementally on external storage changes, preserves unchanged card DOM, safely returns focus, and recovers from read failure in place', async ({ page, backgroundWorker }) => {
+  await isolateServer(backgroundWorker);
+  await backgroundWorker.evaluate(async origin => {
+    await chrome.storage.local.clear();
+    await chrome.storage.local.set({ annotations: [
+      { id: 'card-a', url: `${origin}/selected-rectangle.html`, comment: 'Card A initial note', status: 'open' },
+      { id: 'card-b', url: `${origin}/selected-rectangle.html`, comment: 'Card B initial note', status: 'open' },
+      { id: 'card-other-site', url: 'http://localhost:5173/page1', comment: 'Other site note', status: 'open' },
+    ] });
+  }, FIXTURE_ORIGIN);
+
+  await page.goto(`${FIXTURE_ORIGIN}/selected-rectangle.html`);
+  const root = page.locator('#vibe-annotations-root');
+  await root.locator('.vibe-tb-viewall').click();
+
+  const panel = root.locator('.vibe-viewall-panel');
+  await expect(panel).toBeVisible();
+
+  const cardA = panel.locator('.vibe-viewall-card[data-id="card-a"]');
+  const cardB = panel.locator('.vibe-viewall-card[data-id="card-b"]');
+  await expect(cardA).toBeVisible();
+  await expect(cardB).toBeVisible();
+
+  // Mark card-a DOM node to verify identity preservation
+  await cardA.evaluate(el => { el.dataset.stableNode = 'true'; });
+
+  // Focus card-b delete button (which will be removed externally)
+  const cardBDelete = cardB.locator('.vibe-viewall-card-delete');
+  await cardBDelete.focus();
+  expect(await root.evaluate(el => el.shadowRoot.activeElement?.getAttribute('data-id'))).toBe('card-b');
+
+  // External update: card-a remains, card-b is removed, card-c is added
+  await backgroundWorker.evaluate(async origin => {
+    await chrome.storage.local.set({ annotations: [
+      { id: 'card-a', url: `${origin}/selected-rectangle.html`, comment: 'Card A initial note', status: 'open' },
+      { id: 'card-c', url: `${origin}/selected-rectangle.html`, comment: 'Card C new note', status: 'open' },
+      { id: 'card-other-site', url: 'http://localhost:5173/page1', comment: 'Other site note', status: 'open' },
+    ] });
+  }, FIXTURE_ORIGIN);
+
+  // Card A must keep its exact DOM node
+  await expect(panel.locator('.vibe-viewall-card[data-id="card-c"]')).toBeVisible();
+  await expect(cardB).toHaveCount(0);
+  expect(await cardA.evaluate(el => el.dataset.stableNode)).toBe('true');
+
+  // Focus must have safely returned to active filter button, not a destructive button
+  await expect.poll(async () => {
+    return await root.evaluate(el => {
+      const active = el.shadowRoot.activeElement;
+      return active?.classList.contains('vibe-viewall-tab') && active?.classList.contains('active');
+    });
+  }).toBe(true);
+
+  // In-place recoverable read failure: inject controlled failure attribute
+  await page.evaluate(() => {
+    document.documentElement.setAttribute('data-vibe-storage-fail', 'true');
+  });
+
+  // External update while read is failing
+  await backgroundWorker.evaluate(async origin => {
+    await chrome.storage.local.set({ annotations: [
+      { id: 'card-a', url: `${origin}/selected-rectangle.html`, comment: 'Card A initial note', status: 'open' },
+      { id: 'card-d', url: `${origin}/selected-rectangle.html`, comment: 'Card D unseen', status: 'open' },
+    ] });
+  }, FIXTURE_ORIGIN);
+
+  // Panel must retain last-good content and display error banner with retry button
+  const errorBanner = panel.locator('.vibe-viewall-error');
+  await expect(errorBanner).toBeVisible();
+  await expect(cardA).toBeVisible();
+  const retryBtn = errorBanner.locator('.vibe-viewall-retry');
+  await expect(retryBtn).toBeVisible();
+
+  // Remove failure attribute and click retry
+  await page.evaluate(() => {
+    document.documentElement.removeAttribute('data-vibe-storage-fail');
+  });
+  await retryBtn.click();
+
+  // Error banner must disappear and new content must be rendered
+  await expect(errorBanner).toHaveCount(0);
+  await expect(panel.locator('.vibe-viewall-card[data-id="card-d"]')).toBeVisible();
+});

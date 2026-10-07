@@ -1589,6 +1589,37 @@ export const VIBE_STYLES = `
 
 .vibe-viewall-global-status:empty { display: none; }
 
+/* In-place recoverable read failure feedback */
+.vibe-viewall-error {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(239, 68, 68, 0.12);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.25);
+  color: var(--v-danger, #ef4444);
+  font: 400 12px/1.4 var(--v-font);
+}
+
+.vibe-viewall-retry {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: 500 11px/1.2 var(--v-font);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.vibe-viewall-retry:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
 /* Route group */
 .vibe-viewall-route-header {
   display: flex;

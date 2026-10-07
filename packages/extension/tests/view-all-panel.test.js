@@ -1569,6 +1569,255 @@ test('View all cross-site lifecycle and UI', async (t) => {
     assert.strictEqual(shadowRootMock.querySelector('.vibe-toolbar-pill').textContent, '1');
   });
 
+  await t.test('external storage changes trigger coalesced View all refresh and do not rebuild unchanged cards on other-site changes', async () => {
+    mockStorage.annotations = [
+      { id: 'site-a-1', url: 'http://localhost:3000/page1', comment: 'Site A initial note', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+    assert.ok(panel, 'Panel is open');
+
+    const cardInitial = panel.querySelector('[data-id="site-a-1"]');
+    assert.ok(cardInitial, 'Initial card rendered');
+
+    // 1. External change arrives for a different site (Site B)
+    // Should update applicable counts/picker but NOT destroy or rebuild Site A's card element
+    await chrome.storage.local.set({
+      annotations: [
+        { id: 'site-a-1', url: 'http://localhost:3000/page1', comment: 'Site A initial note', status: 'open' },
+        { id: 'site-b-1', url: 'http://localhost:5173/page1', comment: 'Site B note', status: 'open' }
+      ]
+    });
+    // Also simulate simultaneous badge render trigger
+    VibeEvents.emit('badges:rendered', { total: 2 });
+    await new Promise(r => setTimeout(r, 50));
+
+    const cardAfterOtherSite = panel.querySelector('[data-id="site-a-1"]');
+    assert.strictEqual(cardAfterOtherSite, cardInitial, 'Irrelevant change on other site preserves existing card DOM node');
+
+    // 2. External change adds a card on the currently selected site
+    await chrome.storage.local.set({
+      annotations: [
+        { id: 'site-a-1', url: 'http://localhost:3000/page1', comment: 'Site A initial note', status: 'open' },
+        { id: 'site-a-2', url: 'http://localhost:3000/page1', comment: 'Site A second note', status: 'open' },
+        { id: 'site-b-1', url: 'http://localhost:5173/page1', comment: 'Site B note', status: 'open' }
+      ]
+    });
+    await new Promise(r => setTimeout(r, 50));
+
+    const cardNew = panel.querySelector('[data-id="site-a-2"]');
+    assert.ok(cardNew, 'New card on selected site is rendered following external storage change');
+    const cardStillSame = panel.querySelector('[data-id="site-a-1"]');
+    assert.strictEqual(cardStillSame, cardInitial, 'Unchanged card on selected site retains its DOM identity');
+  });
+
+  await t.test('incremental DOM reconciliation updates modified cards in place, removes deleted cards, and restores focus to active filter button if focused card was externally removed', async () => {
+    mockStorage.annotations = [
+      { id: 'card-1', url: 'http://localhost:3000/page1', comment: 'Card 1 initial', status: 'open' },
+      { id: 'card-2', url: 'http://localhost:3000/page1', comment: 'Card 2 initial', status: 'open' },
+      { id: 'card-3', url: 'http://localhost:3000/page2', comment: 'Card 3 initial', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+
+    const c1El = panel.querySelector('[data-id="card-1"]');
+    const c2El = panel.querySelector('[data-id="card-2"]');
+    const c3El = panel.querySelector('[data-id="card-3"]');
+    assert.ok(c1El && c2El && c3El);
+
+    // Case A: Focus is on card-2 (which will be removed externally)
+    c2El.focus();
+    assert.strictEqual(document.activeElement, c2El, 'card-2 currently owns focus');
+
+    // External change: card-1 is modified in-place, card-2 is removed, card-3 is untouched, card-4 is added
+    await chrome.storage.local.set({
+      annotations: [
+        { id: 'card-1', url: 'http://localhost:3000/page1', comment: 'Card 1 MODIFIED', status: 'open' },
+        { id: 'card-3', url: 'http://localhost:3000/page2', comment: 'Card 3 initial', status: 'open' },
+        { id: 'card-4', url: 'http://localhost:3000/page2', comment: 'Card 4 NEW', status: 'open' }
+      ]
+    });
+    await new Promise(r => setTimeout(r, 50));
+
+    // Assert: card-1 DOM element is preserved and comment updated in place
+    const c1After = panel.querySelector('[data-id="card-1"]');
+    assert.strictEqual(c1After, c1El, 'card-1 DOM node preserved across update');
+    assert.ok(c1After.querySelector('.vibe-viewall-comment').textContent.includes('MODIFIED'), 'card-1 content updated in-place');
+
+    // Assert: card-2 is removed
+    assert.strictEqual(panel.querySelector('[data-id="card-2"]'), null, 'card-2 removed from DOM');
+
+    // Assert: card-3 DOM node is preserved untouched
+    const c3After = panel.querySelector('[data-id="card-3"]');
+    assert.strictEqual(c3After, c3El, 'card-3 DOM node preserved untouched');
+
+    // Assert: card-4 is newly inserted
+    const c4After = panel.querySelector('[data-id="card-4"]');
+    assert.ok(c4After, 'card-4 newly inserted');
+
+    // Assert: Focus returned to active filter button, NOT an adjacent destructive button
+    const activeTab = panel.querySelector('.vibe-viewall-tab.active');
+    assert.strictEqual(document.activeElement, activeTab, 'Focus safely returned to active filter button');
+    assert.ok(!document.activeElement.classList.contains('vibe-viewall-card-delete'), 'Focus did not land on destructive action');
+    assert.ok(!document.activeElement.classList.contains('vibe-viewall-deleteall'), 'Focus did not land on destructive action');
+  });
+
+  await t.test('an externally emptied selected site remains selected and selectable for the open session', async () => {
+    mockStorage.annotations = [
+      { id: 'a-1', url: 'http://localhost:3000/page1', comment: 'Site 3000 note', status: 'open' },
+      { id: 'b-1', url: 'http://localhost:5173/page1', comment: 'Site 5173 note', status: 'open' }
+    ];
+
+    // User opens View all and chooses localhost:5173
+    await VibeToolbar.openViewAll('http://localhost:5173');
+    const panel = VibeToolbar.getViewAllPanel();
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:5173');
+    assert.ok(panel.querySelector('[data-id="b-1"]'), 'Site 5173 note displayed');
+
+    // External change empties localhost:5173 completely
+    await chrome.storage.local.set({
+      annotations: [
+        { id: 'a-1', url: 'http://localhost:3000/page1', comment: 'Site 3000 note', status: 'open' }
+      ]
+    });
+    await new Promise(r => setTimeout(r, 50));
+
+    // Assert: Session still retains localhost:5173 as selected origin
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:5173', 'Emptied site remains selected origin');
+
+    // Assert: Site selector still contains localhost:5173 as a selectable option
+    const siteSelect = panel.querySelector('.vibe-viewall-site-select');
+    assert.ok(siteSelect, 'Site selector remains rendered');
+    const option5173 = siteSelect.children.find(o => o.value === 'http://localhost:5173');
+    assert.ok(option5173, 'Emptied site remains present and selectable in site options');
+    assert.strictEqual(siteSelect.value, 'http://localhost:5173');
+
+    // Assert: Panel displays empty state for this site
+    const emptyNotice = panel.querySelector('.vibe-viewall-empty');
+    assert.ok(emptyNotice, 'Empty placeholder displayed for emptied site');
+    assert.strictEqual(emptyNotice.textContent, 'No annotations yet');
+
+    // Explicit close resets the session
+    VibeToolbar.closeViewAll();
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), null);
+  });
+
+  await t.test('failed reads retain last-good content and expose in-place retry, which clears error on recovery', async () => {
+    mockStorage.annotations = [
+      { id: 'good-1', url: 'http://localhost:3000/page1', comment: 'Last-good note', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+    assert.ok(panel.querySelector('[data-id="good-1"]'));
+
+    const origLoad = VibeAPI.loadAllStoredAnnotations;
+    let shouldFail = true;
+
+    VibeAPI.loadAllStoredAnnotations = async () => {
+      if (shouldFail) {
+        throw new Error('Simulated network/storage read error');
+      }
+      return origLoad.call(VibeAPI);
+    };
+
+    try {
+      // Trigger a refresh while read is failing
+      await chrome.storage.local.set({
+        annotations: [
+          { id: 'good-1', url: 'http://localhost:3000/page1', comment: 'Last-good note', status: 'open' },
+          { id: 'new-unseen', url: 'http://localhost:3000/page1', comment: 'Should not appear yet', status: 'open' }
+        ]
+      });
+      await new Promise(r => setTimeout(r, 50));
+
+      // 1. Last-good content must be retained!
+      assert.ok(panel.querySelector('[data-id="good-1"]'), 'Last-good card is retained on read failure');
+      assert.strictEqual(panel.querySelector('[data-id="new-unseen"]'), null);
+
+      // 2. In-place lightweight error with retry button is displayed
+      const errorBanner = panel.querySelector('.vibe-viewall-error');
+      assert.ok(errorBanner, 'Error banner displayed');
+      assert.ok(errorBanner.textContent.includes('Failed to load annotations'));
+      const retryBtn = errorBanner.querySelector('.vibe-viewall-retry');
+      assert.ok(retryBtn, 'In-place retry button displayed');
+
+      // 3. Destructive confirmations remain uncorrupted and require fresh confirmation
+      const deleteAllBtn = panel.querySelector('.vibe-viewall-deleteall');
+      assert.ok(deleteAllBtn);
+
+      // 4. In-place retry execution: failure recovers
+      shouldFail = false;
+      retryBtn.click();
+      await new Promise(r => setTimeout(r, 50));
+
+      // 5. Successful retry clears error banner and reconciles new state
+      assert.strictEqual(panel.querySelector('.vibe-viewall-error'), null, 'Error banner cleared on recovery');
+      assert.ok(panel.querySelector('[data-id="good-1"]'), 'good-1 card present');
+      assert.ok(panel.querySelector('[data-id="new-unseen"]'), 'new-unseen card reconciled after recovery');
+    } finally {
+      VibeAPI.loadAllStoredAnnotations = origLoad;
+    }
+  });
+
+  await t.test('successful empty result remains distinct from failed read and shows empty notice without error banner', async () => {
+    mockStorage.annotations = [
+      { id: 'note-1', url: 'http://localhost:3000/page1', comment: 'Note 1', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+    assert.ok(panel.querySelector('[data-id="note-1"]'));
+
+    // External change clears all annotations (successful empty result)
+    await chrome.storage.local.set({ annotations: [] });
+    await new Promise(r => setTimeout(r, 50));
+
+    // Assert: No error banner rendered
+    assert.strictEqual(panel.querySelector('.vibe-viewall-error'), null, 'Successful empty result must not show error banner');
+    assert.strictEqual(panel.querySelector('.vibe-viewall-retry'), null, 'No retry button on successful empty result');
+
+    // Assert: Empty state placeholder rendered
+    const emptyNotice = panel.querySelector('.vibe-viewall-empty');
+    assert.ok(emptyNotice, 'Empty placeholder rendered');
+    assert.strictEqual(emptyNotice.textContent, 'No annotations yet');
+  });
+
+  await t.test('stale retry and deferred read completions cannot overwrite newer site choice or reopen closed panel', async () => {
+    mockStorage.annotations = [
+      { id: 'a-1', url: 'http://localhost:3000/page1', comment: 'Site A', status: 'open' },
+      { id: 'b-1', url: 'http://localhost:5173/page1', comment: 'Site B', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    assert.ok(VibeToolbar.getViewAllPanel());
+
+    const origLoad = VibeAPI.loadAllStoredAnnotations;
+    let resolveDelayedRetry = null;
+
+    VibeAPI.loadAllStoredAnnotations = async () => {
+      return new Promise(resolve => {
+        resolveDelayedRetry = () => resolve(origLoad.call(VibeAPI));
+      });
+    };
+
+    try {
+      // User closes panel before delayed read settles
+      VibeToolbar.closeViewAll();
+      assert.strictEqual(VibeToolbar.getViewAllPanel(), null, 'Panel closed');
+
+      // Now resolve hanging read
+      if (resolveDelayedRetry) resolveDelayedRetry();
+      await new Promise(r => setTimeout(r, 50));
+
+      assert.strictEqual(VibeToolbar.getViewAllPanel(), null, 'Superseded read cannot reopen closed panel');
+    } finally {
+      VibeAPI.loadAllStoredAnnotations = origLoad;
+    }
+  });
+
   await t.test('global deletion is enabled for hidden resolved records and disabled when nothing remains', async () => {
     mockStorage.annotations = [{ id: 'done', url: 'https://example.com/done', status: 'resolved' }];
     await VibeToolbar.openViewAll();

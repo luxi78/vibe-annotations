@@ -354,7 +354,62 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   let viewAllRenderSeq = 0;
   let viewAllCurrentAnnotations = [];
   let viewAllAvailableOrigins = [];
+  let viewAllLastRenderedAnnotations = null;
   const viewAllScrollPositions = new Map();
+
+  function getCardDataHash(a) {
+    return JSON.stringify([
+      a.id,
+      a.selector,
+      a.comment,
+      a.pending_changes,
+      a.type,
+      a.status,
+      a.url === (typeof window !== 'undefined' ? window.location.href : '')
+    ]);
+  }
+
+  function buildCardContentHTML(a) {
+    const isStylesheet = a.type === 'stylesheet';
+    const selector = isStylesheet ? null : (a.selector || a.element_context?.tag || '?');
+    const hasPendingChanges = a.pending_changes && Object.keys(a.pending_changes).length > 0;
+    const changeCount = hasPendingChanges ? Object.keys(a.pending_changes).length : 0;
+    const comment = a.comment || '';
+
+    let cardHeaderHTML;
+    if (isStylesheet) {
+      cardHeaderHTML = `<div class="vibe-viewall-design">${VIEWALL_SPARKLE_ICON}<span>Stylesheet change</span></div>`;
+    } else {
+      cardHeaderHTML = `<div class="vibe-viewall-selector">${escapeHTML(selector)}</div>`;
+    }
+
+    let bodyHTML;
+    if (hasPendingChanges && !comment) {
+      bodyHTML = `<div class="vibe-viewall-design">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
+    } else if (comment) {
+      bodyHTML = `<div class="vibe-viewall-comment">${escapeHTML(comment)}</div>`;
+      if (hasPendingChanges) {
+        bodyHTML += `<div class="vibe-viewall-design" style="margin-top:2px;">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
+      }
+    } else if (!isStylesheet) {
+      bodyHTML = `<div class="vibe-viewall-comment empty">No comment</div>`;
+    } else {
+      bodyHTML = '';
+    }
+
+    const variantStatus = variantStatusLabel(a);
+    const statusHTML = variantStatus ? `<div class="vibe-viewall-status ${variantStatus.cls}">${variantStatus.text}</div>` : '';
+
+    return `${cardHeaderHTML}${bodyHTML}${statusHTML}`;
+  }
+
+  function areAnnotationsEqual(listA, listB) {
+    if (!listA || !listB || listA.length !== listB.length) return false;
+    for (let i = 0; i < listA.length; i++) {
+      if (getCardDataHash(listA[i]) !== getCardDataHash(listB[i])) return false;
+    }
+    return true;
+  }
 
   function getReviewPositionKey(origin, filter) {
     return `${origin}:${filter}`;
@@ -556,17 +611,41 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     });
 
     // Listen for external annotation changes
-    let refreshPending = false;
-    const refreshHandler = () => {
-      if (!viewAllPanel || refreshPending || viewAllPanel._suppressRefresh) return;
-      refreshPending = true;
-      setTimeout(() => { refreshPending = false; if (viewAllPanel && !viewAllPanel._suppressRefresh) updateViewAll(viewAllSelectedOrigin); }, 600);
+    let refreshTimer = null;
+    const scheduleRefresh = () => {
+      if (!viewAllPanel || viewAllPanel._suppressRefresh) return;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        if (viewAllPanel && !viewAllPanel._suppressRefresh) {
+          updateViewAll(viewAllSelectedOrigin);
+        }
+      }, 25);
     };
-    VibeEvents.on('badges:rendered', refreshHandler);
+
+    const storageListener = (changes, ns) => {
+      if (ns === 'local' && changes.annotations) {
+        scheduleRefresh();
+      }
+    };
+    if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.addListener(storageListener);
+    }
+    const badgeHandler = () => {
+      scheduleRefresh();
+    };
+    VibeEvents.on('badges:rendered', badgeHandler);
 
     // Store cleanup reference
     viewAllPanel._cleanupEvents = () => {
-      VibeEvents.off('badges:rendered', refreshHandler);
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+        refreshTimer = null;
+      }
+      if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
+        chrome.storage.onChanged.removeListener(storageListener);
+      }
+      VibeEvents.off('badges:rendered', badgeHandler);
       document.removeEventListener('click', closeShareMenu);
       VibeShadowHost.getRoot()?.removeEventListener('click', onOutsideClick);
       closeShareMenu();
@@ -605,6 +684,76 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     await updateViewAll(targetOrigin, targetFilter);
   }
 
+  function bindCardEvents(cardEl) {
+    const deleteBtn = cardEl.querySelector('.vibe-viewall-card-delete');
+    if (deleteBtn) {
+      bindCardDelete(deleteBtn, cardEl);
+    }
+    cardEl.addEventListener('click', (e) => {
+      if (e.target && e.target.closest && e.target.closest('.vibe-viewall-card-delete')) return;
+      const targetId = cardEl.getAttribute('data-id') || cardEl.dataset.id;
+      const a = viewAllCurrentAnnotations.find(x => x.id === targetId);
+      if (a && a.url === window.location.href && a.selector) {
+        try {
+          const el = document.querySelector(a.selector);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            VibeEvents.emit('badge:target', { id: targetId });
+          }
+        } catch {}
+      }
+    });
+  }
+
+  function bindCardDelete(btn, cardEl) {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id') || btn.dataset.id;
+      const card = cardEl || (btn.closest ? btn.closest('.vibe-viewall-card') : null);
+      if (card) {
+        card.classList.add('deleting');
+        await new Promise(r => setTimeout(r, 300));
+      }
+      if (viewAllPanel) viewAllPanel._suppressRefresh = true;
+      try {
+        await VibeAPI.deleteAnnotation(id);
+        await syncAfterDeletion(1);
+      } catch (err) {
+        if (card) card.classList.remove('deleting');
+        if (viewAllPanel) viewAllPanel._suppressRefresh = false;
+        console.error('[Vibe] deleteAnnotation failed:', err);
+      }
+    });
+  }
+
+  function bindRouteClear(btn, path) {
+    btn.addEventListener('click', async () => {
+      const clearPath = btn.getAttribute('data-path') || path;
+      const routeAnnotations = viewAllCurrentAnnotations.filter(a => {
+        try { return new URL(a.url).pathname === clearPath; } catch { return clearPath === '/'; }
+      });
+      const routeEl = btn.closest ? btn.closest('.vibe-viewall-route') : null;
+      if (routeEl) {
+        const cards = routeEl.querySelectorAll('.vibe-viewall-card');
+        cards.forEach((card, i) => {
+          setTimeout(() => card.classList.add('deleting'), i * 50);
+        });
+        await new Promise(r => setTimeout(r, cards.length * 50 + 300));
+      }
+      if (viewAllPanel) viewAllPanel._suppressRefresh = true;
+      try {
+        for (const a of routeAnnotations) {
+          await VibeAPI.deleteAnnotation(a.id);
+        }
+        await syncAfterDeletion(routeAnnotations.length);
+      } catch (err) {
+        if (viewAllPanel) viewAllPanel._suppressRefresh = false;
+        console.error('[Vibe] clear route failed:', err);
+        updateViewAll(viewAllSelectedOrigin);
+      }
+    });
+  }
+
   async function updateViewAll(targetOrigin, targetFilter) {
     if (!viewAllPanel) return;
     const seq = ++viewAllRenderSeq;
@@ -625,16 +774,53 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const wasFilterTabFocused = !!(activeEl && activeEl.classList && activeEl.classList.contains('vibe-viewall-tab'));
     const wasSiteSelectFocused = !!(activeEl && activeEl.classList && activeEl.classList.contains('vibe-viewall-site-select'));
 
-    // Exclude resolved (agent finalized/cleaned them — done). variants-discarded and
-    // variant-chosen stay, shown with a "pending agent" label; the count pill matches.
-    const allStored = await VibeAPI.loadAllStoredAnnotations();
+    let allStored = null;
+    let readFailed = false;
+    try {
+      allStored = await VibeAPI.loadAllStoredAnnotations();
+    } catch (err) {
+      readFailed = true;
+      console.error('[Vibe] loadAllStoredAnnotations failed:', err);
+    }
+
     if (seq !== viewAllRenderSeq || !viewAllPanel) return;
 
+    if (readFailed) {
+      // In-place recoverable read failure feedback
+      let errorEl = viewAllPanel.querySelector('.vibe-viewall-error');
+      if (!errorEl) {
+        errorEl = document.createElement('div');
+        errorEl.className = 'vibe-viewall-error';
+        errorEl.setAttribute('role', 'alert');
+        // pi-lens-ignore: no-inner-html-js
+        errorEl.innerHTML = `
+          <span>Failed to load annotations</span>
+          <button class="vibe-viewall-retry" type="button">Retry</button>
+        `;
+        const routesEl = viewAllPanel.querySelector('.vibe-viewall-routes');
+        if (routesEl) viewAllPanel.insertBefore(errorEl, routesEl);
+        else viewAllPanel.appendChild(errorEl);
+
+        errorEl.querySelector('.vibe-viewall-retry')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          updateViewAll(viewAllSelectedOrigin, viewAllActiveFilter);
+        });
+      }
+      restoreScrollForCurrentView();
+      return;
+    }
+
+    // Clear error feedback if previous read had failed
+    const existingError = viewAllPanel.querySelector('.vibe-viewall-error');
+    if (existingError) existingError.remove();
+
+    // Exclude resolved (agent finalized/cleaned them — done). variants-discarded and
+    // variant-chosen stay, shown with a "pending agent" label; the count pill matches.
     const allEligible = (allStored || []).filter(a => a && a.status !== 'resolved');
 
     const availableOrigins = getAvailableSiteOrigins(allEligible, currentOrigin);
-    if (!availableOrigins.includes(viewAllSelectedOrigin)) {
-      viewAllSelectedOrigin = currentOrigin;
+    if (viewAllSelectedOrigin && !availableOrigins.includes(viewAllSelectedOrigin)) {
+      availableOrigins.push(viewAllSelectedOrigin);
     }
     viewAllAvailableOrigins = availableOrigins;
 
@@ -736,151 +922,178 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       currentTab.classList.toggle('active', viewAllActiveFilter === 'current');
     }
 
-    // 3. Build & Update Routes HTML
-    let routesHTML = '';
-    const sortedPaths = Object.keys(routeGroups).sort();
-    for (const path of sortedPaths) {
-      const items = routeGroups[path];
-      const cardsHTML = items.map(a => {
-        const isStylesheet = a.type === 'stylesheet';
-        const selector = isStylesheet ? null : (a.selector || a.element_context?.tag || '?');
-        const hasPendingChanges = a.pending_changes && Object.keys(a.pending_changes).length > 0;
-        const changeCount = hasPendingChanges ? Object.keys(a.pending_changes).length : 0;
-        const comment = a.comment || '';
-        const isCurrentPage = a.url === window.location.href;
-
-        let cardHeaderHTML;
-        if (isStylesheet) {
-          cardHeaderHTML = `<div class="vibe-viewall-design">${VIEWALL_SPARKLE_ICON}<span>Stylesheet change</span></div>`;
-        } else {
-          cardHeaderHTML = `<div class="vibe-viewall-selector">${escapeHTML(selector)}</div>`;
-        }
-
-        let bodyHTML;
-        if (hasPendingChanges && !comment) {
-          bodyHTML = `<div class="vibe-viewall-design">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
-        } else if (comment) {
-          bodyHTML = `<div class="vibe-viewall-comment">${escapeHTML(comment)}</div>`;
-          if (hasPendingChanges) {
-            bodyHTML += `<div class="vibe-viewall-design" style="margin-top:2px;">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
-          }
-        } else if (!isStylesheet) {
-          bodyHTML = `<div class="vibe-viewall-comment empty">No comment</div>`;
-        } else {
-          bodyHTML = '';
-        }
-
-        const variantStatus = variantStatusLabel(a);
-        const statusHTML = variantStatus ? `<div class="vibe-viewall-status ${variantStatus.cls}">${variantStatus.text}</div>` : '';
-        const deleteHTML = a.status === 'variants-discarded'
-          ? ''
-          : `<button class="vibe-viewall-card-delete" data-id="${escapeHTML(a.id)}" title="Delete">${VIEWALL_TRASH_ICON}</button>`;
-
-        return `
-          <div class="vibe-viewall-card${isCurrentPage ? ' current-page' : ''}" data-id="${escapeHTML(a.id)}" data-current-page="${isCurrentPage}">
-            <div class="vibe-viewall-card-content">
-              ${cardHeaderHTML}
-              ${bodyHTML}
-              ${statusHTML}
-            </div>
-            ${deleteHTML}
-          </div>
-        `;
-      }).join('');
-      const routeClearHTML = items.length > 1
-        ? `<button class="vibe-viewall-route-clear" data-path="${escapeHTML(path)}" title="Clear route">${VIEWALL_SMALL_TRASH}</button>`
-        : '';
-
-      routesHTML += `
-        <div class="vibe-viewall-route" data-path="${escapeHTML(path)}">
-          <div class="vibe-viewall-route-header">
-            <div class="vibe-viewall-route-left">
-              <span class="vibe-viewall-route-path">${escapeHTML(path)}</span>
-              <span class="vibe-viewall-route-count">${items.length}</span>
-            </div>
-            ${routeClearHTML}
-          </div>
-          ${cardsHTML}
-        </div>
-      `;
-    }
-
-    if (displayedAnnotations.length === 0) {
-      const message = viewAllActiveFilter === 'current' ? 'No annotations on this page' : 'No annotations yet';
-      routesHTML = `<div class="vibe-viewall-empty">${message}</div>`;
-    }
-
+    // 3. Reconcile Routes & Cards
+    const listUnchanged = areAnnotationsEqual(displayedAnnotations, viewAllLastRenderedAnnotations);
     const routesContainer = viewAllPanel.querySelector('.vibe-viewall-routes');
-    if (routesContainer) {
-      // pi-lens-ignore: no-inner-html-js
-      routesContainer.innerHTML = routesHTML;
+    const sortedPaths = Object.keys(routeGroups).sort();
 
-      // Per-route clear
-      routesContainer.querySelectorAll('.vibe-viewall-route-clear').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const path = btn.dataset.path;
-          const routeAnnotations = routeGroups[path] || [];
-          const routeEl = btn.closest('.vibe-viewall-route');
-          if (routeEl) {
-            const cards = routeEl.querySelectorAll('.vibe-viewall-card');
-            cards.forEach((card, i) => {
-              setTimeout(() => card.classList.add('deleting'), i * 50);
-            });
-            await new Promise(r => setTimeout(r, cards.length * 50 + 300));
-          }
-          if (viewAllPanel) viewAllPanel._suppressRefresh = true;
-          try {
-            for (const a of routeAnnotations) {
-              await VibeAPI.deleteAnnotation(a.id);
+    if (!listUnchanged && routesContainer) {
+      if (displayedAnnotations.length === 0) {
+        routesContainer.textContent = '';
+        const message = viewAllActiveFilter === 'current' ? 'No annotations on this page' : 'No annotations yet';
+        const emptyEl = document.createElement('div');
+        emptyEl.className = 'vibe-viewall-empty';
+        emptyEl.textContent = message;
+        routesContainer.appendChild(emptyEl);
+
+        if (activeEl && routesContainer.contains(activeEl)) {
+          const activeTab = viewAllActiveFilter === 'all' ? allTab : currentTab;
+          if (activeTab && typeof activeTab.focus === 'function') activeTab.focus();
+        }
+      } else {
+        const emptyNotice = routesContainer.querySelector('.vibe-viewall-empty');
+        if (emptyNotice) emptyNotice.remove();
+
+        let focusNeedsReturnToTab = false;
+        if (activeEl) {
+          const focusedCard = activeEl.closest?.('.vibe-viewall-card');
+          if (focusedCard) {
+            const cardId = focusedCard.getAttribute('data-id') || focusedCard.dataset.id;
+            const survives = displayedAnnotations.some(a => a.id === cardId);
+            if (!survives) {
+              focusNeedsReturnToTab = true;
             }
-            await syncAfterDeletion(routeAnnotations.length);
-          } catch (err) {
-            if (viewAllPanel) viewAllPanel._suppressRefresh = false;
-            console.error('[Vibe] clear route failed:', err);
-            updateViewAll(viewAllSelectedOrigin);
           }
-        });
-      });
+        }
 
-      // Per-card delete
-      routesContainer.querySelectorAll('.vibe-viewall-card-delete').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          const id = btn.dataset.id;
-          const card = btn.closest('.vibe-viewall-card');
-          if (card) {
-            card.classList.add('deleting');
-            await new Promise(r => setTimeout(r, 300));
-          }
-          if (viewAllPanel) viewAllPanel._suppressRefresh = true;
-          try {
-            await VibeAPI.deleteAnnotation(id);
-            await syncAfterDeletion(1);
-          } catch (err) {
-            if (card) card.classList.remove('deleting');
-            if (viewAllPanel) viewAllPanel._suppressRefresh = false;
-            console.error('[Vibe] deleteAnnotation failed:', err);
-          }
-        });
-      });
+        const existingRouteEls = Array.from(routesContainer.children).filter(el => el.classList && el.classList.contains('vibe-viewall-route'));
+        const existingRouteMap = new Map();
+        for (const el of existingRouteEls) {
+          const routePath = el.getAttribute('data-path') || el.dataset.path;
+          existingRouteMap.set(routePath, el);
+        }
 
-      // Click card to scroll
-      routesContainer.querySelectorAll('.vibe-viewall-card').forEach(card => {
-        card.addEventListener('click', (e) => {
-          if (e.target.closest('.vibe-viewall-card-delete')) return;
-          const id = card.dataset.id;
-          const a = annotations.find(x => x.id === id);
-          if (a && a.url === window.location.href && a.selector) {
-            try {
-              const el = document.querySelector(a.selector);
-              if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                VibeEvents.emit('badge:target', { id });
+        for (const [path, routeEl] of existingRouteMap) {
+          if (!routeGroups[path]) {
+            if (activeEl && routeEl.contains(activeEl)) focusNeedsReturnToTab = true;
+            routeEl.remove();
+            existingRouteMap.delete(path);
+          }
+        }
+
+        for (const path of sortedPaths) {
+          const items = routeGroups[path];
+          let routeEl = existingRouteMap.get(path);
+          if (!routeEl) {
+            routeEl = document.createElement('div');
+            routeEl.className = 'vibe-viewall-route';
+            routeEl.setAttribute('data-path', path);
+            const clearBtnHTML = items.length > 1
+              ? `<button class="vibe-viewall-route-clear" data-path="${escapeHTML(path)}" title="Clear route">${VIEWALL_SMALL_TRASH}</button>`
+              : '';
+            // pi-lens-ignore: no-inner-html-js
+            routeEl.innerHTML = `
+              <div class="vibe-viewall-route-header">
+                <div class="vibe-viewall-route-left">
+                  <span class="vibe-viewall-route-path">${escapeHTML(path)}</span>
+                  <span class="vibe-viewall-route-count">${items.length}</span>
+                </div>
+                ${clearBtnHTML}
+              </div>
+            `;
+            routesContainer.appendChild(routeEl);
+            const clearBtn = routeEl.querySelector('.vibe-viewall-route-clear');
+            if (clearBtn) bindRouteClear(clearBtn, path);
+          } else {
+            routeEl.setAttribute('data-path', path);
+            const countEl = routeEl.querySelector('.vibe-viewall-route-count');
+            if (countEl) countEl.textContent = String(items.length);
+            const routeHeader = routeEl.querySelector('.vibe-viewall-route-header');
+            let clearBtn = routeHeader?.querySelector('.vibe-viewall-route-clear');
+            if (items.length > 1) {
+              if (!clearBtn && routeHeader) {
+                clearBtn = document.createElement('button');
+                clearBtn.className = 'vibe-viewall-route-clear';
+                clearBtn.setAttribute('data-path', path);
+                clearBtn.title = 'Clear route';
+                // pi-lens-ignore: no-inner-html-js
+                clearBtn.innerHTML = VIEWALL_SMALL_TRASH;
+                routeHeader.appendChild(clearBtn);
+                bindRouteClear(clearBtn, path);
               }
-            } catch {}
+            } else if (clearBtn) {
+              clearBtn.remove();
+            }
+            routesContainer.appendChild(routeEl);
           }
-        });
-      });
+
+          const existingCards = Array.from(routeEl.children).filter(el => el.classList && el.classList.contains('vibe-viewall-card'));
+          const existingCardMap = new Map();
+          for (const card of existingCards) {
+            const cardId = card.getAttribute('data-id') || card.dataset.id;
+            existingCardMap.set(cardId, card);
+          }
+
+          const itemIds = new Set(items.map(a => a.id));
+          for (const [id, cardEl] of existingCardMap) {
+            if (!itemIds.has(id)) {
+              if (activeEl && cardEl.contains(activeEl)) focusNeedsReturnToTab = true;
+              cardEl.remove();
+              existingCardMap.delete(id);
+            }
+          }
+
+          for (const a of items) {
+            let cardEl = existingCardMap.get(a.id);
+            const isCurrentPage = a.url === window.location.href;
+            const contentHTML = buildCardContentHTML(a);
+            const deleteHTML = a.status === 'variants-discarded'
+              ? ''
+              : `<button class="vibe-viewall-card-delete" data-id="${escapeHTML(a.id)}" title="Delete">${VIEWALL_TRASH_ICON}</button>`;
+
+            if (!cardEl) {
+              cardEl = document.createElement('div');
+              cardEl.className = `vibe-viewall-card${isCurrentPage ? ' current-page' : ''}`;
+              cardEl.setAttribute('data-id', a.id);
+              cardEl.setAttribute('data-current-page', String(isCurrentPage));
+              // pi-lens-ignore: no-inner-html-js
+              cardEl.innerHTML = `
+                <div class="vibe-viewall-card-content">
+                  ${contentHTML}
+                </div>
+                ${deleteHTML}
+              `;
+              cardEl._cardDataHash = getCardDataHash(a);
+              routeEl.appendChild(cardEl);
+              bindCardEvents(cardEl);
+            } else {
+              cardEl.setAttribute('data-id', a.id);
+              cardEl.setAttribute('data-current-page', String(isCurrentPage));
+              const newHash = getCardDataHash(a);
+              if (cardEl._cardDataHash !== newHash) {
+                const contentEl = cardEl.querySelector('.vibe-viewall-card-content');
+                if (contentEl) {
+                  // pi-lens-ignore: no-inner-html-js
+                  contentEl.innerHTML = contentHTML;
+                }
+                let delBtn = cardEl.querySelector('.vibe-viewall-card-delete');
+                if (a.status === 'variants-discarded') {
+                  if (delBtn) delBtn.remove();
+                } else if (!delBtn) {
+                  const temp = document.createElement('div');
+                  // pi-lens-ignore: no-inner-html-js
+                  temp.innerHTML = deleteHTML;
+                  if (temp.firstElementChild) {
+                    cardEl.appendChild(temp.firstElementChild);
+                    const newDelBtn = cardEl.querySelector('.vibe-viewall-card-delete');
+                    if (newDelBtn) bindCardDelete(newDelBtn, cardEl);
+                  }
+                }
+                cardEl._cardDataHash = newHash;
+              }
+              cardEl.classList.toggle('current-page', isCurrentPage);
+              routeEl.appendChild(cardEl);
+            }
+          }
+        }
+
+        if (focusNeedsReturnToTab) {
+          const activeTab = viewAllActiveFilter === 'all' ? allTab : currentTab;
+          if (activeTab && typeof activeTab.focus === 'function') activeTab.focus();
+        }
+      }
+
+      viewAllLastRenderedAnnotations = [...displayedAnnotations];
     }
 
     // 4. Update Footer global delete button
@@ -929,6 +1142,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     }
     viewAllSelectedOrigin = null;
     viewAllActiveFilter = 'all';
+    viewAllLastRenderedAnnotations = null;
     viewAllScrollPositions.clear();
     const btn = toolbarEl.querySelector('.vibe-tb-viewall');
     if (btn) btn.classList.remove('active');

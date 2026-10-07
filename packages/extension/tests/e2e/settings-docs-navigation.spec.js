@@ -11,6 +11,7 @@ test.describe('Settings and Documentation persistent shell navigation', () => {
     await settingsBtn.click();
     const dropdown = vibeRoot.locator('.vibe-settings-dropdown');
     await expect(dropdown).toBeVisible();
+    await page.waitForTimeout(200);
 
     // Instrument animation count on dropdown
     await page.evaluate(() => {
