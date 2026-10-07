@@ -17,10 +17,12 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   let settingsDropdown = null;
   let activeRecordingCleanup = null;
   let isAnnotating = false;
+  let toolbarModeTarget = null;
+  let toolbarModeSeq = 0;
   let serverOnline = false;
   let serverOutdated = false; // connected but older than the extension needs
   let annotationCount = 0;
-  let styleAnnotationCount = 0;
+  let countRefreshSeq = 0;
   let clearOnCopy = false;
   let screenshotEnabled = false;
   let badgeColor = '#D03D68';
@@ -93,8 +95,13 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     // Listen for events
     VibeEvents.on('inspection:started', () => { isAnnotating = true; updateUI(); });
     VibeEvents.on('inspection:stopped', () => { isAnnotating = false; updateUI(); });
-    VibeEvents.on('badges:rendered', ({ count, total, styleCount }) => { annotationCount = total; styleAnnotationCount = 0; updateUI(); });
-    VibeEvents.on('annotations:cleared', () => { annotationCount = 0; styleAnnotationCount = 0; updateUI(); });
+    // Page pins have a site-scoped total. The toolbar counts every stored site,
+    // including changes from other tabs or the server that render no local pins.
+    VibeEvents.on('badges:rendered', refreshAnnotationCount);
+    VibeEvents.on('annotations:cleared', refreshAnnotationCount);
+    VibeAPI.onAnnotationsChanged(setAnnotationCount);
+    VibeAPI.onPurgeStatusChanged(updateGlobalDeleteStatus);
+    await refreshAnnotationCount();
     VibeEvents.on('overlay:closed', () => { overlayOpen = false; isOverlayVisible = false; stopPolling(); });
     VibeEvents.on('overlay:shown', async () => { overlayOpen = true; isOverlayVisible = true; startPolling(); await restorePosition(); animateToolbarIn(); });
 
@@ -160,19 +167,23 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   }
 
   let viewAllPanel = null;
+  let viewAllActiveFilter = 'all';
+  let globalDeleteBusy = false;
+  let purgeStatusSeq = 0;
 
   function buildToolbar(root) {
     const logoUrl = chrome.runtime.getURL('assets/icons/icon-hq.png');
 
     toolbarEl = document.createElement('div');
     toolbarEl.className = 'vibe-toolbar';
+    toolbarModeTarget = null;
 
     toolbarEl.innerHTML = `
       <img class="vibe-toolbar-logo" src="${logoUrl}" />
       <div class="vibe-toolbar-separator"></div>
       <div class="vibe-toolbar-middle">
         <div class="vibe-toolbar-default">
-          <button class="vibe-toolbar-btn vibe-tb-annotate" title="Annotate (${shortcutHint})">
+          <button class="vibe-toolbar-btn vibe-tb-annotate" title="Annotate (${escapeHTML(shortcutHint)})">
             ${ICONS.annotate}
             <span>Annotate</span>
           </button>
@@ -280,7 +291,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       });
 
       toolbarEl.appendChild(banner);
-    } catch (_) { /* storage unavailable — skip banner */ }
+    } catch { /* storage unavailable — skip banner */ }
   }
 
   function wireButtons() {
@@ -341,11 +352,11 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       closeViewAll();
     } else {
       closeSettings();
-      openViewAll();
+      openViewAll(null, 'all');
     }
   }
 
-  async function openViewAll(targetOrigin) {
+  async function openViewAll(targetOrigin, targetFilter) {
     if (viewAllPanel) {
       if (viewAllPanel._cleanupEvents) viewAllPanel._cleanupEvents();
       viewAllPanel.remove();
@@ -357,6 +368,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     const currentOrigin = window.location.origin;
     viewAllSelectedOrigin = targetOrigin || currentOrigin;
+    if (targetFilter) viewAllActiveFilter = targetFilter;
 
     // Exclude resolved (agent finalized/cleaned them — done). variants-discarded and
     // variant-chosen stay, shown with a "pending agent" label; the count pill matches.
@@ -372,9 +384,18 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       try { return new URL(a.url).origin === viewAllSelectedOrigin; } catch { return false; }
     });
 
+    const allCount = annotations.length;
+    const currentUrl = window.location.href;
+    const currentPageAnnotations = annotations.filter(a => a.url === currentUrl);
+    const currentCount = currentPageAnnotations.length;
+
+    const displayedAnnotations = viewAllActiveFilter === 'current'
+      ? currentPageAnnotations
+      : annotations;
+
     // Group by route (path)
     const routeGroups = {};
-    for (const a of annotations) {
+    for (const a of displayedAnnotations) {
       try {
         const path = new URL(a.url).pathname;
         if (!routeGroups[path]) routeGroups[path] = [];
@@ -439,10 +460,10 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         // hide the trash for the discarded state to avoid a no-op button.
         const deleteHTML = a.status === 'variants-discarded'
           ? ''
-          : `<button class="vibe-viewall-card-delete" data-id="${a.id}" title="Delete">${trashIcon}</button>`;
+          : `<button class="vibe-viewall-card-delete" data-id="${escapeHTML(a.id)}" title="Delete">${trashIcon}</button>`;
 
         return `
-          <div class="vibe-viewall-card${isCurrentPage ? ' current-page' : ''}" data-id="${a.id}" data-current-page="${isCurrentPage}">
+          <div class="vibe-viewall-card${isCurrentPage ? ' current-page' : ''}" data-id="${escapeHTML(a.id)}" data-current-page="${isCurrentPage}">
             <div class="vibe-viewall-card-content">
               ${headerHTML}
               ${bodyHTML}
@@ -470,8 +491,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       `;
     }
 
-    if (annotations.length === 0) {
-      routesHTML = '<div class="vibe-viewall-empty">No annotations yet</div>';
+    if (displayedAnnotations.length === 0) {
+      const message = viewAllActiveFilter === 'current' ? 'No annotations on this page' : 'No annotations yet';
+      routesHTML = `<div class="vibe-viewall-empty">${message}</div>`;
     }
 
     let headerLeftHTML;
@@ -495,21 +517,86 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       `;
     }
 
+    const tabsHTML = `
+      <div class="vibe-viewall-tabs">
+        <button class="vibe-viewall-tab${viewAllActiveFilter === 'all' ? ' active' : ''}" data-filter="all" type="button">All (${allCount})</button>
+        <button class="vibe-viewall-tab${viewAllActiveFilter === 'current' ? ' active' : ''}" data-filter="current" type="button">This page (${currentCount})</button>
+      </div>
+    `;
+
     viewAllPanel.innerHTML = `
       <div class="vibe-viewall-header">
         ${headerLeftHTML}
         <div class="vibe-viewall-actions">
           <button class="vibe-viewall-copy" title="Copy all">${copyIcon}</button>
           <button class="vibe-viewall-export" title="Share / Export">${shareIcon}</button>
-          <button class="vibe-viewall-deleteall" title="Delete all">${trashIcon}</button>
+          <button class="vibe-viewall-deleteall" title="Delete annotations for this site">${trashIcon}</button>
         </div>
       </div>
+      ${tabsHTML}
       <div class="vibe-viewall-routes">${routesHTML}</div>
+      <div class="vibe-viewall-footer">
+        <div class="vibe-viewall-global-action">
+          <span class="vibe-viewall-global-caption">Delete all annotations across all sites</span>
+          <button class="vibe-viewall-delete-global" type="button" aria-label="Delete all annotations across all sites" title="Delete all annotations across all sites" data-count="${(allStored || []).length}"${globalDeleteBusy || !(allStored || []).length ? ' disabled' : ''}>${trashIcon}</button>
+        </div>
+        <div class="vibe-viewall-global-status" role="status"></div>
+      </div>
     `;
 
     toolbarEl.appendChild(viewAllPanel);
 
     // --- Wire View All actions ---
+
+    viewAllPanel.querySelector('.vibe-viewall-delete-global').addEventListener('click', async () => {
+      if (globalDeleteBusy) return;
+      globalDeleteBusy = true;
+      const button = viewAllPanel.querySelector('.vibe-viewall-delete-global');
+      button.disabled = true;
+      try {
+        // Read a fresh, unfiltered snapshot, including resolved annotations.
+        const stored = await VibeAPI.loadAllStoredAnnotations();
+        const ids = (stored || []).filter(a => a && typeof a.id === 'string' && a.id).map(a => a.id);
+        if (!ids.length) return;
+        const root = VibeShadowHost.getRoot();
+        if (!root) return;
+        // This confirmation is mandatory, regardless of skip-delete settings.
+        const confirmed = await showDeleteConfirm(root, { allSites: true, count: ids.length });
+        if (!confirmed) return;
+        if (viewAllPanel) viewAllPanel._suppressRefresh = true;
+        const result = await VibeAPI.deleteAllAnnotations(ids);
+        await refreshAnnotationCount();
+        VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
+        if (viewAllPanel) {
+          await openViewAll(window.location.origin, 'all');
+          if (result.pendingSync) {
+            const status = viewAllPanel?.querySelector('.vibe-viewall-global-status');
+            if (status) status.textContent = `Deleted locally. ${result.syncError || 'Server sync is pending.'}`;
+          }
+        }
+      } catch (error) {
+        showInfoModal('Could not delete annotations', error?.message || 'Please try again.');
+      } finally {
+        globalDeleteBusy = false;
+        if (viewAllPanel) {
+          viewAllPanel._suppressRefresh = false;
+          const currentButton = viewAllPanel.querySelector('.vibe-viewall-delete-global');
+          if (currentButton) currentButton.disabled = currentButton.dataset.count === '0';
+        }
+      }
+    });
+
+    // Filter tabs listener
+    viewAllPanel.querySelectorAll('.vibe-viewall-tab').forEach(tabBtn => {
+      tabBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const filter = tabBtn.dataset.filter;
+        if (filter && filter !== viewAllActiveFilter) {
+          viewAllActiveFilter = filter;
+          openViewAll(viewAllSelectedOrigin, viewAllActiveFilter);
+        }
+      });
+    });
 
     // Site selector change listener
     const siteSelect = viewAllPanel.querySelector('.vibe-viewall-site-select');
@@ -528,20 +615,20 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         if (!a || a.status === 'resolved') return false;
         try { return new URL(a.url).origin === deletedOrigin; } catch { return false; }
       });
+      await refreshAnnotationCount();
       if (remaining.length === 0 && deletedOrigin !== currentOrigin) {
         viewAllSelectedOrigin = currentOrigin;
-        openViewAll(currentOrigin);
+        viewAllActiveFilter = 'all';
+        openViewAll(currentOrigin, 'all');
         return;
       }
       if (deletedOrigin === currentOrigin) {
-        annotationCount = remaining.length;
-        updateUI();
         VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
         if (remaining.length === 0) {
           VibeEvents.emit('annotations:cleared', { count: deletedCount });
         }
       }
-      openViewAll(deletedOrigin);
+      openViewAll(deletedOrigin, viewAllActiveFilter);
     };
 
     // Copy all (selected site)
@@ -714,6 +801,16 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       VibeShadowHost.getRoot()?.removeEventListener('click', onOutsideClick);
       closeShareMenu();
     };
+    await updateGlobalDeleteStatus();
+  }
+
+  async function updateGlobalDeleteStatus() {
+    if (!viewAllPanel) return;
+    const seq = ++purgeStatusSeq;
+    const status = await VibeAPI.getPendingPurgeStatus();
+    if (seq !== purgeStatusSeq) return;
+    const el = viewAllPanel?.querySelector('.vibe-viewall-global-status');
+    if (el) el.textContent = status.pending ? `Deleted locally. ${status.error || 'Server sync is pending.'}` : '';
   }
 
   function closeViewAll() {
@@ -723,6 +820,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       viewAllPanel = null;
     }
     viewAllSelectedOrigin = null;
+    viewAllActiveFilter = 'all';
     const btn = toolbarEl.querySelector('.vibe-tb-viewall');
     if (btn) btn.classList.remove('active');
   }
@@ -750,9 +848,6 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const rect = toolbarEl.getBoundingClientRect();
     const inLowerHalf = rect.top > window.innerHeight / 2;
     settingsDropdown.className = 'vibe-settings-dropdown' + (inLowerHalf ? ' above' : '');
-
-    const statusColor = serverOutdated ? 'var(--v-status-watching)' : (serverOnline ? 'var(--v-status-online)' : 'var(--v-status-offline)');
-    const statusLabel = serverOutdated ? 'Update available' : (serverOnline ? 'Online' : 'Offline');
 
     const route = vibeLocationPath(window.location);
 
@@ -958,6 +1053,26 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     }
   }
 
+  function setAnnotationCount(annotations) {
+    // Invalidate any older read still awaiting storage.
+    countRefreshSeq++;
+    annotationCount = (annotations || []).filter(a => a && a.status !== 'resolved').length;
+    updateCountPill();
+  }
+
+  async function refreshAnnotationCount() {
+    const seq = ++countRefreshSeq;
+    const annotations = await VibeAPI.loadAllStoredAnnotations();
+    if (seq === countRefreshSeq) setAnnotationCount(annotations);
+  }
+
+  function updateCountPill() {
+    const pill = toolbarEl?.querySelector('.vibe-toolbar-pill');
+    if (!pill) return;
+    pill.textContent = annotationCount;
+    pill.style.display = annotationCount > 0 ? '' : 'none';
+  }
+
   function updateUI() {
     if (!toolbarEl) return;
 
@@ -966,8 +1081,28 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const middleEl = toolbarEl.querySelector('.vibe-toolbar-middle');
     const defaultEl = toolbarEl.querySelector('.vibe-toolbar-default');
     const annotatingEl = toolbarEl.querySelector('.vibe-toolbar-annotating');
+    const modeChanged = toolbarModeTarget !== isAnnotating;
+    const modeSeq = modeChanged ? ++toolbarModeSeq : toolbarModeSeq;
 
-    if (isAnnotating && !wasAnnotating && middleEl && defaultEl && annotatingEl) {
+    if (modeChanged) {
+      toolbarModeTarget = isAnnotating;
+      // A new mode supersedes every pending phase of the old animation. Restore
+      // transient styles even if its delayed class swap has not happened yet.
+      if (middleEl) {
+        middleEl.style.width = '';
+        middleEl.style.transition = '';
+        middleEl.style.overflow = '';
+      }
+      for (const el of [defaultEl, annotatingEl]) {
+        if (!el) continue;
+        el.style.position = '';
+        el.style.opacity = '';
+        el.style.visibility = '';
+        el.style.transition = '';
+      }
+    }
+
+    if (modeChanged && isAnnotating && !wasAnnotating && middleEl && defaultEl && annotatingEl) {
       // Measure current width, then target width
       const startWidth = middleEl.offsetWidth;
       annotatingEl.style.position = 'relative';
@@ -987,23 +1122,26 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
       // Phase 2: swap layout + animate width
       setTimeout(() => {
+        if (modeSeq !== toolbarModeSeq) return;
         toolbarEl.classList.add('annotating');
         middleEl.style.width = endWidth + 'px';
       }, 200);
 
       // Phase 3: fade in new content (delayed so it appears after width settles)
       setTimeout(() => {
+        if (modeSeq !== toolbarModeSeq) return;
         annotatingEl.style.transition = 'opacity 0.25s ease';
       }, 250);
 
       // Cleanup
       setTimeout(() => {
+        if (modeSeq !== toolbarModeSeq) return;
         middleEl.style.width = ''; middleEl.style.transition = ''; middleEl.style.overflow = '';
         defaultEl.style.transition = '';
         annotatingEl.style.transition = '';
       }, 500);
 
-    } else if (!isAnnotating && wasAnnotating && middleEl && defaultEl && annotatingEl) {
+    } else if (modeChanged && !isAnnotating && wasAnnotating && middleEl && defaultEl && annotatingEl) {
       const startWidth = middleEl.offsetWidth;
 
       // Phase 1: fade out annotating content
@@ -1026,6 +1164,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
       // Phase 2: swap layout + animate width
       setTimeout(() => {
+        if (modeSeq !== toolbarModeSeq) return;
         toolbarEl.classList.remove('annotating');
         annotatingEl.style.opacity = '';
         annotatingEl.style.transition = '';
@@ -1033,27 +1172,21 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         defaultEl.style.opacity = '0';
         middleEl.style.width = endWidth + 'px';
         // Phase 3: fade in default content
-        requestAnimationFrame(() => { defaultEl.style.opacity = ''; });
+        requestAnimationFrame(() => {
+          if (modeSeq === toolbarModeSeq) defaultEl.style.opacity = '';
+        });
       }, 200);
 
       // Cleanup
       setTimeout(() => {
+        if (modeSeq !== toolbarModeSeq) return;
         middleEl.style.width = ''; middleEl.style.transition = ''; middleEl.style.overflow = '';
         defaultEl.style.transition = '';
       }, 500);
     }
 
-    // --- Count pill on View all ---
-    const totalCount = annotationCount + styleAnnotationCount;
-    const pill = toolbarEl.querySelector('.vibe-toolbar-pill');
-    if (pill) {
-      if (totalCount > 0) {
-        pill.textContent = totalCount;
-        pill.style.display = '';
-      } else {
-        pill.style.display = 'none';
-      }
-    }
+    // --- Global count pill on View all ---
+    updateCountPill();
 
     // --- Status indicator (icon-only, label in tooltip) ---
     const statusEl = toolbarEl.querySelector('.vibe-tb-status');
@@ -1259,13 +1392,16 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const siteName = options.siteName || 'this site';
     const count = options.count ?? 0;
     const countStr = count === 1 ? '1 annotation' : `${count} annotations`;
+    const message = options.allSites
+      ? `All ${countStr} across all sites will be permanently deleted.<br>Generated code will not be changed. This cannot be undone.`
+      : `All ${countStr} on ${escapeHTML(siteName)} will be permanently deleted.`;
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
       backdrop.className = 'vibe-confirm-backdrop';
       backdrop.innerHTML = `
         <div class="vibe-confirm">
           <div class="vibe-confirm-title">Delete all annotations?</div>
-          <div class="vibe-confirm-msg">All ${countStr} on ${escapeHTML(siteName)} will be permanently deleted.</div>
+          <div class="vibe-confirm-msg">${message}</div>
           <div class="vibe-confirm-actions">
             <button class="vibe-btn vibe-btn-secondary vibe-confirm-no">Cancel</button>
             <button class="vibe-btn vibe-btn-danger vibe-confirm-yes">Delete All</button>
@@ -1441,7 +1577,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     // Storage listener in content.js handles re-render automatically
   }
 
-  function showImportConfirm(root, { total, newCount, skipped }) {
+  function showImportConfirm(root, { newCount, skipped }) {
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
       backdrop.className = 'vibe-confirm-backdrop';
@@ -1521,10 +1657,10 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
   // --- Helpers ---
 
-  function escapeHTML(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+  function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[char]));
   }
 
   // Lifecycle chip for a variants annotation in a state that awaits agent action.
@@ -1556,7 +1692,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
 
 
-  function formatAnnotationsForClipboard(annotations) {
+  function _formatAnnotationsForClipboard(annotations) {
     const host = window.location.host;
     const count = annotations.length;
 

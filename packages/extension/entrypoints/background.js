@@ -3,7 +3,7 @@
 
 import { isSupportedUrl, isLocalhostUrl } from '../lib/background/url-filter.js';
 import { updateBadge, clearBadge, updateBadgeForUrl, updateAllBadges } from '../lib/background/badge.js';
-import { isConnected, checkConnection, getCachedStatus, syncAll, saveOne, deleteOne, smartSync, fetchAnnotations, uploadAttachment, deleteAttachment, fetchExport, fetchWatchers, stopWatchers } from '../lib/background/api-sync.js';
+import { isConnected, checkConnection, getCachedStatus, syncAll, deleteAllStoredAnnotations, saveOne, deleteOne, smartSync, fetchAnnotations, uploadAttachment, deleteAttachment, fetchExport, fetchWatchers, stopWatchers } from '../lib/background/api-sync.js';
 import { formatExport } from '../lib/background/export.js';
 import { migrateSyncFlags } from '../lib/background/utils.js';
 import SessionCoordinator from '../lib/background/session-coordinator.js';
@@ -147,6 +147,11 @@ class VibeAnnotationsBackground {
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
+        case 'deleteAllAnnotations':
+          this.deleteAllAnnotations(request.ids)
+            .then(result => sendResponse({ success: true, ...result }))
+            .catch(error => sendResponse({ success: false, error: error.message }));
+          break;
         case 'deleteAnnotationsByUrl':
           this.deleteAnnotationsByUrl(request.url)
             .then(({ count }) => sendResponse({ success: true, count }))
@@ -158,7 +163,7 @@ class VibeAnnotationsBackground {
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
         case 'captureAnnotationScreenshot':
-          this.captureAnnotationScreenshot(request.id, request.crop, sender)
+          this.captureAnnotationScreenshot(request.id, request.crop, sender, request.dataUrl)
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
@@ -411,6 +416,20 @@ class VibeAnnotationsBackground {
     });
   }
 
+  async deleteAllAnnotations(ids) {
+    const result = await deleteAllStoredAnnotations(ids, operation => this._withStorageLock(operation));
+    await updateAllBadges().catch(() => {});
+    // Storage listeners can skip a local-save echo. Explicitly refresh all tabs
+    // as well so pins/previews disappear after this global operation.
+    try {
+      const tabs = await chrome.tabs.query({});
+      for (const tab of tabs) {
+        if (await isSupportedUrl(tab.url)) chrome.tabs.sendMessage(tab.id, { action: 'annotationsUpdated' }).catch(() => {});
+      }
+    } catch { /* The local purge succeeded even if a tab closed meanwhile. */ }
+    return result;
+  }
+
   async deleteAnnotationsByUrl(url) {
     return this._withStorageLock(async () => {
       const result = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds']);
@@ -444,15 +463,18 @@ class VibeAnnotationsBackground {
     });
   }
 
-  // Capture a real, cropped screenshot of the just-annotated element in one shot.
-  // The content script hides our overlay and sends a device-pixel crop rect; here
-  // we grab the visible tab, crop with OffscreenCanvas (no base64 — captureVisibleTab's
-  // data URL is blob-ified immediately), and upload the raw webp as the capture
-  // attachment. Server-authoritative, then mirror into storage.
-  async captureAnnotationScreenshot(id, crop, sender) {
+  // Crop the captured pixels with OffscreenCanvas and upload a raw webp. The
+  // content script has already restored the overlay; only transient PNG bytes
+  // travel over messaging. Attachment metadata, not image bytes, enters storage.
+  async captureAnnotationScreenshot(id, crop, sender, dataUrl) {
     if (!crop || !(crop.sw > 0) || !(crop.sh > 0)) return;
 
-    const dataUrl = await chrome.tabs.captureVisibleTab(sender?.tab?.windowId, { format: 'png' });
+    // New callers restore the overlay immediately after capture and send these
+    // transient pixels for crop/upload. Keep native capture for older callers.
+    dataUrl ??= await chrome.tabs.captureVisibleTab(sender?.tab?.windowId, { format: 'png' });
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) {
+      throw new Error('Invalid screenshot data');
+    }
     const fullBlob = await (await fetch(dataUrl)).blob();
     const bitmap = await createImageBitmap(fullBlob, crop.sx, crop.sy, crop.sw, crop.sh);
 
@@ -524,7 +546,7 @@ class VibeAnnotationsBackground {
   async importAnnotations(newAnnotations) {
     if (!Array.isArray(newAnnotations) || !newAnnotations.length) return { imported: 0 };
     return this._withStorageLock(async () => {
-      const result = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds']);
+      const result = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds', 'purgedAnnotationIds', 'pendingPurgeAnnotationIds']);
       const all = result.annotations || [];
       const deletedIds = result.deletedAnnotationIds || [];
       const existingIds = new Set(all.map(a => a.id));
@@ -535,7 +557,13 @@ class VibeAnnotationsBackground {
       }
       if (imported > 0) {
         const cleanedTombstones = deletedIds.filter(id => !importedIds.includes(id));
-        await chrome.storage.local.set({ annotations: all, deletedAnnotationIds: cleanedTombstones });
+        // A user-confirmed import deliberately restores these identities. Old
+        // background/server echoes cannot clear purge intent, but an import can.
+        await chrome.storage.local.set({
+          annotations: all, deletedAnnotationIds: cleanedTombstones,
+          purgedAnnotationIds: (result.purgedAnnotationIds || []).filter(id => !importedIds.includes(id)),
+          pendingPurgeAnnotationIds: (result.pendingPurgeAnnotationIds || []).filter(id => !importedIds.includes(id)),
+        });
         try {
           await syncAll(all);
           let flagsChanged = false;
@@ -600,7 +628,7 @@ class VibeAnnotationsBackground {
   // Called from the permission modal in the content script. Must run while the user gesture
   // from the modal click is still valid for chrome.permissions.request (MV3 propagates the
   // gesture through sendMessage → onMessage).
-  async requestSitePermission({ originPattern, allSites }, sender) {
+  async requestSitePermission({ originPattern, allSites }, _sender) {
     const target = allSites ? { origins: ['*://*/*'] } : { origins: [originPattern] };
     let granted = false;
     try {

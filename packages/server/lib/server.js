@@ -11,6 +11,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { normalizeProtocolVersionHeader } from './protocol-version.js';
+import { installAnnotationPurge, serializeAnnotationMutation, removeAnnotationAttachmentFiles } from './annotation-purge.js';
 import { readFile, writeFile, mkdir, unlink, readdir } from 'fs/promises';
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
@@ -152,6 +153,12 @@ class LocalAnnotationsServer {
       });
     });
 
+    // The global destructive action supplies the exact user-confirmed ID set.
+    installAnnotationPurge(this.app, {
+      mutateAnnotations: transform => this.mutateAnnotations(transform),
+      removeAttachmentFiles: (annotation, options) => this.removeAttachmentFiles(annotation, options),
+    });
+
     // API endpoints for Chrome extension
     this.app.get('/api/annotations', async (req, res) => {
       try {
@@ -196,21 +203,20 @@ class LocalAnnotationsServer {
           return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        const annotations = await this.loadAnnotations();
-        const existingIndex = annotations.findIndex(a => a.id === annotation.id);
-
-        if (existingIndex >= 0) {
-          const preserved = this.withServerAttachments(annotation, annotations[existingIndex]);
-          annotations[existingIndex] = { ...annotations[existingIndex], ...preserved, updated_at: new Date().toISOString() };
-        } else {
-          annotations.push({
-            ...annotation,
-            created_at: annotation.created_at || new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-        }
-
-        await this.saveAnnotations(annotations);
+        await this.mutateAnnotations(annotations => {
+          const existingIndex = annotations.findIndex(a => a.id === annotation.id);
+          if (existingIndex >= 0) {
+            const preserved = this.withServerAttachments(annotation, annotations[existingIndex]);
+            annotations[existingIndex] = { ...annotations[existingIndex], ...preserved, updated_at: new Date().toISOString() };
+          } else {
+            annotations.push({
+              ...annotation,
+              created_at: annotation.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          }
+          return { annotations };
+        });
         res.json({ success: true, annotation });
       } catch (error) {
         console.error('Error saving annotation:', error);
@@ -956,6 +962,17 @@ class LocalAnnotationsServer {
     }
   }
 
+  mutateAnnotations(transform) {
+    return serializeAnnotationMutation(
+      this,
+      // Fail closed on malformed storage; do not use the repair loader inside
+      // its own writer queue, where repair would enqueue a nested save.
+      async () => JSON.parse(await readFile(DATA_FILE, 'utf8')),
+      annotations => this._saveAnnotationsInternal(annotations),
+      transform
+    );
+  }
+
   async saveAnnotations(annotations) {
     // Serialize all save operations to prevent race conditions
     this.saveLock = this.saveLock.then(async () => {
@@ -1161,20 +1178,8 @@ class LocalAnnotationsServer {
   // deletion. Matches by the `<annotationId>__` filename prefix rather than the
   // metadata array, so a user attachment that a sync race dropped from
   // `annotation.attachments` still gets its file cleaned up instead of leaking.
-  async removeAttachmentFiles(annotation) {
-    const id = annotation?.id;
-    if (!id) return;
-    const prefix = `${id}__`;
-    try {
-      const files = await readdir(ATTACH_DIR);
-      await Promise.all(
-        files
-          .filter(f => f.startsWith(prefix))
-          .map(f => unlink(path.join(ATTACH_DIR, f)).catch(() => { /* best effort */ }))
-      );
-    } catch (error) {
-      if (error.code !== 'ENOENT') console.error('Failed to remove attachment files:', error.message);
-    }
+  async removeAttachmentFiles(annotation, options = {}) {
+    await removeAnnotationAttachmentFiles(ATTACH_DIR, annotation, options);
   }
 
   // One-time sweep on boot: drop any attachment file whose annotation id is no
@@ -1487,12 +1492,12 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
    * below as noise.)
    */
   optimizeForAgent(annotation) {
-    const { _synced, badge_offset, ...clean } = annotation;
+    const { _synced, badge_offset: _badge_offset, ...clean } = annotation;
 
     // Strip computed styles — agents use classes/path/selector_preview to find elements,
     // and pending_changes for design deltas. Computed styles are never useful.
     if (clean.element_context) {
-      const { styles, ...ecWithoutStyles } = clean.element_context;
+      const { styles: _styles, ...ecWithoutStyles } = clean.element_context;
       clean.element_context = ecWithoutStyles;
 
       // Strip null values from element_context
@@ -1851,7 +1856,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
           devDependencies: Object.keys(packageJson.devDependencies || {})
         };
       }
-    } catch (error) {
+    } catch {
       // Package.json not found or invalid, continue without it
     }
     
@@ -1861,7 +1866,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
       try {
         const aUrl = new URL(a.url);
         return `${aUrl.protocol}//${aUrl.host}`;
-      } catch (e) {
+      } catch {
         return null;
       }
     }).filter(Boolean))];
@@ -1991,7 +1996,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
           const cacheData = await readFile(updateCacheFile, 'utf8');
           lastCheck = parseInt(cacheData, 10) || 0;
         }
-      } catch (error) {
+      } catch {
         // Ignore cache read errors
       }
       

@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert';
 
-// Mock storage
+// Chrome storage is the external boundary; use the real API bridge and toolbar.
+const storageListeners = new Set();
+function notifyAnnotationsChanged() {
+  for (const listener of storageListeners) {
+    listener({ annotations: { newValue: mockStorage.annotations } }, 'local');
+  }
+}
+
 const mockStorage = {
   annotations: [],
   skipDeleteConfirm: true // auto-confirm for tests
@@ -9,6 +16,10 @@ const mockStorage = {
 
 globalThis.chrome = {
   storage: {
+    onChanged: {
+      addListener: listener => storageListeners.add(listener),
+      removeListener: listener => storageListeners.delete(listener),
+    },
     local: {
       get: async (keys) => {
         const result = {};
@@ -19,6 +30,7 @@ globalThis.chrome = {
       },
       set: async (items) => {
         Object.assign(mockStorage, items);
+        if ('annotations' in items) notifyAnnotationsChanged();
       }
     }
   },
@@ -28,7 +40,19 @@ globalThis.chrome = {
       if (msg.action === 'deleteAnnotation') {
         const idx = mockStorage.annotations.findIndex(a => a.id === msg.id);
         if (idx !== -1) mockStorage.annotations.splice(idx, 1);
+        notifyAnnotationsChanged();
         return { success: true };
+      }
+      if (msg.action === 'deleteAllAnnotations') {
+        const ids = new Set(msg.ids);
+        const before = mockStorage.annotations.length;
+        mockStorage.annotations = mockStorage.annotations.filter(a => !ids.has(a.id));
+        notifyAnnotationsChanged();
+        return { success: true, count: before - mockStorage.annotations.length, pendingSync: false };
+      }
+      if (msg.action === 'saveAnnotation') {
+        mockStorage.annotations.push(msg.annotation);
+        notifyAnnotationsChanged();
       }
       return { success: true };
     },
@@ -258,7 +282,11 @@ function parseHTML(html, rootParent) {
     if (text) {
       const trimmed = text.trim();
       if (trimmed && currentParent) {
-        currentParent.textContent = (currentParent.textContent || '') + trimmed;
+        // Real DOM parsing appends text nodes; assigning parent.textContent
+        // would erase earlier text/children when a message contains <br>.
+        const textNode = new MockElement('#text');
+        textNode.textContent = trimmed;
+        currentParent.appendChild(textNode);
       }
       continue;
     }
@@ -334,6 +362,8 @@ globalThis.window = {
   cancelAnimationFrame: () => {}
 };
 
+globalThis.requestAnimationFrame = window.requestAnimationFrame;
+
 globalThis.document = {
   createElement: (tag) => new MockElement(tag),
   body: rootElement,
@@ -347,7 +377,7 @@ try {
     value: { writeText: async (t) => { globalThis.__copiedText = t; } },
     configurable: true
   });
-} catch (_) {}
+} catch {}
 
 const { default: VibeShadowHost } = await import('../lib/content/shadow-host.js');
 VibeShadowHost.getRoot = () => shadowRootMock;
@@ -357,7 +387,18 @@ const { default: VibeEvents } = await import('../lib/content/event-bus.js');
 const { default: VibeToolbar } = await import('../lib/content/floating-toolbar.js');
 
 test('View all cross-site lifecycle and UI', async (t) => {
+  mockStorage.annotations = [
+    { id: 'boot-local', url: 'http://localhost:3000/page1', status: 'open' },
+    { id: 'boot-foreign', url: 'https://example.com/other', status: 'open' },
+    { id: 'boot-resolved', url: 'https://example.com/done', status: 'resolved' },
+  ];
   await VibeToolbar.init();
+
+  await t.test('initial toolbar count includes other sites before any page badges render', () => {
+    const pill = shadowRootMock.querySelector('.vibe-toolbar-pill');
+    assert.strictEqual(pill.textContent, '2');
+    assert.notStrictEqual(pill.style.display, 'none');
+  });
 
   t.after(() => {
     VibeEvents.emit('overlay:closed');
@@ -366,6 +407,8 @@ test('View all cross-site lifecycle and UI', async (t) => {
   t.beforeEach(() => {
     VibeToolbar.closeViewAll();
     mockStorage.annotations = [];
+    delete mockStorage.pendingPurgeAnnotationIds;
+    delete mockStorage.annotationPurgeError;
     globalThis.__copiedText = '';
   });
 
@@ -675,22 +718,23 @@ test('View all cross-site lifecycle and UI', async (t) => {
     }
   });
 
-  await t.test('toolbar View all count pill continues to represent current site during foreign site selection and deletion', async () => {
+  await t.test('toolbar count includes all sites during site selection and deletion', async () => {
     mockStorage.annotations = [
       { id: '1', url: 'http://localhost:3000/page1', comment: 'Current site note', status: 'open' },
       { id: '2', url: 'http://localhost:3000/page2', comment: 'Current site note 2', status: 'open' },
       { id: '3', url: 'http://localhost:5173/page1', comment: 'Foreign site note', status: 'open' }
     ];
 
-    // Simulate badges:rendered on current page with 2 annotations
+    notifyAnnotationsChanged();
     VibeEvents.emit('badges:rendered', { count: 2, total: 2, styleCount: 0 });
+    await new Promise(resolve => setImmediate(resolve));
     const pill = shadowRootMock.querySelector('.vibe-toolbar-pill');
     assert.ok(pill, 'Toolbar count pill should exist');
-    assert.strictEqual(pill.textContent, '2', 'Toolbar count pill shows current site count of 2');
+    assert.strictEqual(pill.textContent, '3', 'Toolbar counts all sites, not the page badge total');
 
     // Open View all on foreign site 5173
     await VibeToolbar.openViewAll('http://localhost:5173');
-    assert.strictEqual(pill.textContent, '2', 'Toolbar count pill remains 2 when viewing foreign site');
+    assert.strictEqual(pill.textContent, '3', 'Changing the selected site does not change the global count');
 
     // Delete foreign site card 3
     const panel = VibeToolbar.getViewAllPanel();
@@ -698,8 +742,8 @@ test('View all cross-site lifecycle and UI', async (t) => {
     cardDeleteBtn.click();
     await new Promise(r => setTimeout(r, 450));
 
-    // Toolbar count pill is still 2!
-    assert.strictEqual(pill.textContent, '2', 'Toolbar count pill remains 2 after foreign site deletion');
+    // Deleting a foreign-site annotation decreases the global count.
+    assert.strictEqual(pill.textContent, '2', 'Global count decreases after foreign site deletion');
 
     // Deleting the foreign site's last annotation returns to the current site automatically
     assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
@@ -709,7 +753,7 @@ test('View all cross-site lifecycle and UI', async (t) => {
     currentCardDeleteBtn.click();
     await new Promise(r => setTimeout(r, 450));
 
-    // Now toolbar count pill reflects current site update: 1
+    // Deleting a current-site annotation also decreases the global count.
     assert.strictEqual(pill.textContent, '1', 'Toolbar count pill updates when current site annotation deleted');
   });
 
@@ -778,5 +822,387 @@ test('View all cross-site lifecycle and UI', async (t) => {
     } finally {
       VibeAPI.deleteAnnotation = origDelete;
     }
+  });
+
+  await t.test('toolbar View all pill shows total count while Annotate button has no pill', async () => {
+    mockStorage.annotations = [
+      { id: 't1', url: 'http://localhost:3000/page1', comment: 'Page 1 note', status: 'open' },
+      { id: 't2', url: 'http://localhost:3000/page2', comment: 'Page 2 note', status: 'open' }
+    ];
+
+    notifyAnnotationsChanged();
+    VibeEvents.emit('badges:rendered', { count: 1, total: 2, styleCount: 0 });
+    await new Promise(resolve => setImmediate(resolve));
+
+    const pill = shadowRootMock.querySelector('.vibe-toolbar-pill');
+    assert.ok(pill, 'Toolbar count pill exists');
+    assert.strictEqual(pill.textContent, '2', 'Toolbar pill reflects total unresolved annotations');
+
+    const annotateBtn = shadowRootMock.querySelector('.vibe-tb-annotate');
+    assert.ok(annotateBtn, 'Annotate button exists');
+    const annotatePill = annotateBtn.querySelector('.vibe-toolbar-pill');
+    assert.strictEqual(annotatePill, null, 'Annotate button must not have any pill counter');
+  });
+
+  await t.test('saving on another site updates the global pill without a local badge render', async () => {
+    await chrome.storage.local.set({ annotations: [
+      { id: 'local', url: window.location.href, status: 'open' },
+      { id: 'done', url: 'https://example.com/done', status: 'resolved' },
+    ] });
+    await VibeAPI.saveAnnotation({ id: 'foreign', url: 'https://example.com/new', status: 'open' });
+    const pill = shadowRootMock.querySelector('.vibe-toolbar-pill');
+    assert.strictEqual(pill.textContent, '2');
+    VibeEvents.emit('badges:rendered', { count: 0, total: 1 });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(pill.textContent, '2', 'Page rendering must not overwrite the global total');
+  });
+
+  await t.test('clearing the current site does not hide counts for other sites', async () => {
+    await chrome.storage.local.set({ annotations: [
+      { id: 'remaining', url: 'https://example.com/new', status: 'variants-discarded' },
+    ] });
+    VibeEvents.emit('annotations:cleared', { count: 1 });
+    VibeEvents.emit('badges:rendered', { count: 0, total: 0 });
+    await new Promise(resolve => setImmediate(resolve));
+    const pill = shadowRootMock.querySelector('.vibe-toolbar-pill');
+    assert.strictEqual(pill.textContent, '1');
+    assert.notStrictEqual(pill.style.display, 'none');
+  });
+
+  await t.test('a stale count load cannot overwrite a newer storage change', async () => {
+    const originalGet = chrome.storage.local.get;
+    let resolveRead;
+    chrome.storage.local.get = async keys => {
+      if (keys.includes('annotations')) return new Promise(resolve => { resolveRead = resolve; });
+      return originalGet(keys);
+    };
+    try {
+      VibeEvents.emit('badges:rendered', { total: 1 });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.ok(resolveRead, 'The toolbar must read the authoritative global storage');
+      await chrome.storage.local.set({ annotations: [
+        { id: 'new-1', url: window.location.href, status: 'open' },
+        { id: 'new-2', url: 'https://example.com/new', status: 'open' },
+      ] });
+      resolveRead({ annotations: [] });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.strictEqual(shadowRootMock.querySelector('.vibe-toolbar-pill').textContent, '2');
+    } finally {
+      chrome.storage.local.get = originalGet;
+    }
+  });
+
+  await t.test('View all panel renders All and This page filter tabs with correct counts', async () => {
+    mockStorage.annotations = [
+      { id: 'p1-1', url: 'http://localhost:3000/page1', comment: 'P1 note 1', status: 'open' },
+      { id: 'p1-2', url: 'http://localhost:3000/page1', comment: 'P1 note 2', status: 'open' },
+      { id: 'p2-1', url: 'http://localhost:3000/page2', comment: 'P2 note 1', status: 'open' }
+    ];
+
+    // Current page is http://localhost:3000/page1
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+    assert.ok(panel, 'View all panel opens');
+
+    const tabsContainer = panel.querySelector('.vibe-viewall-tabs');
+    assert.ok(tabsContainer, 'Tabs container exists');
+
+    const allTab = panel.querySelector('.vibe-viewall-tab[data-filter="all"]');
+    const currentTab = panel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    assert.ok(allTab, 'All filter tab exists');
+    assert.ok(currentTab, 'Current page filter tab exists');
+
+    assert.ok(allTab.textContent.includes('All (3)'), `All tab should show total 3, got: ${allTab.textContent}`);
+    assert.ok(currentTab.textContent.includes('This page (2)'), `Current tab should show 2, got: ${currentTab.textContent}`);
+    assert.ok(allTab.classList.contains('active'), 'All tab is active by default');
+    assert.ok(!currentTab.classList.contains('active'), 'Current tab is inactive by default');
+  });
+
+  await t.test('switching to This page tab filters out other pages and switching back restores them', async () => {
+    mockStorage.annotations = [
+      { id: 'p1-1', url: 'http://localhost:3000/page1', comment: 'P1 note 1', status: 'open' },
+      { id: 'p2-1', url: 'http://localhost:3000/page2', comment: 'P2 note 1', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    let panel = VibeToolbar.getViewAllPanel();
+
+    const currentTab = panel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    currentTab.click();
+    await new Promise(r => setTimeout(r, 20));
+
+    panel = VibeToolbar.getViewAllPanel();
+    const activeTab = panel.querySelector('.vibe-viewall-tab.active');
+    assert.strictEqual(activeTab.dataset.filter, 'current', 'Current tab is active');
+
+    // Only page 1 card should be shown
+    const p1Card = panel.querySelector('[data-id="p1-1"].vibe-viewall-card');
+    const p2Card = panel.querySelector('[data-id="p2-1"].vibe-viewall-card');
+    assert.ok(p1Card, 'Current page card is shown');
+    assert.strictEqual(p2Card, null, 'Other page card is filtered out');
+
+    // Switch back to All
+    const allTab = panel.querySelector('.vibe-viewall-tab[data-filter="all"]');
+    allTab.click();
+    await new Promise(r => setTimeout(r, 20));
+
+    panel = VibeToolbar.getViewAllPanel();
+    assert.ok(panel.querySelector('[data-id="p1-1"].vibe-viewall-card'), 'P1 card shown in all view');
+    assert.ok(panel.querySelector('[data-id="p2-1"].vibe-viewall-card'), 'P2 card shown in all view');
+  });
+
+  await t.test('This page tab shows empty placeholder when current page has no annotations', async () => {
+    mockStorage.annotations = [
+      { id: 'p2-1', url: 'http://localhost:3000/page2', comment: 'P2 note 1', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    let panel = VibeToolbar.getViewAllPanel();
+
+    const currentTab = panel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    assert.ok(currentTab.textContent.includes('This page (0)'), 'Current tab shows count 0');
+
+    currentTab.click();
+    await new Promise(r => setTimeout(r, 20));
+    panel = VibeToolbar.getViewAllPanel();
+
+    const emptyNotice = panel.querySelector('.vibe-viewall-empty');
+    assert.ok(emptyNotice, 'Empty notice is shown when current page has no annotations');
+    assert.ok(emptyNotice.textContent.toLowerCase().includes('no annotations on this page'));
+  });
+
+  await t.test('deleting annotation in This page filter keeps filter active and updates counts', async () => {
+    mockStorage.annotations = [
+      { id: 'del-p1', url: 'http://localhost:3000/page1', comment: 'To delete', status: 'open' },
+      { id: 'keep-p1', url: 'http://localhost:3000/page1', comment: 'Keep p1', status: 'open' },
+      { id: 'keep-p2', url: 'http://localhost:3000/page2', comment: 'Keep p2', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000', 'current');
+    let panel = VibeToolbar.getViewAllPanel();
+    assert.strictEqual(panel.querySelector('.vibe-viewall-tab.active').dataset.filter, 'current', 'Filter initialized to current');
+
+    const cardDeleteBtn = panel.querySelector('[data-id="del-p1"].vibe-viewall-card-delete');
+    assert.ok(cardDeleteBtn, 'Delete button for del-p1 exists');
+    cardDeleteBtn.click();
+    await new Promise(r => setTimeout(r, 450));
+
+    panel = VibeToolbar.getViewAllPanel();
+    assert.strictEqual(panel.querySelector('.vibe-viewall-tab.active').dataset.filter, 'current', 'Filter remains current after delete');
+
+    const allTab = panel.querySelector('.vibe-viewall-tab[data-filter="all"]');
+    const currentTab = panel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    assert.ok(allTab.textContent.includes('All (2)'), 'All tab updated to 2');
+    assert.ok(currentTab.textContent.includes('This page (1)'), 'Current tab updated to 1');
+
+    const pill = shadowRootMock.querySelector('.vibe-toolbar-pill');
+    assert.strictEqual(pill.textContent, '2', 'Toolbar count pill updated to 2');
+  });
+
+  await t.test('exiting before the enter animation swaps layout keeps Annotate visible', testContext => {
+    testContext.mock.timers.enable({ apis: ['setTimeout'] });
+    const toolbar = shadowRootMock.querySelector('.vibe-toolbar');
+    const defaultContent = toolbar.querySelector('.vibe-toolbar-default');
+    const middle = toolbar.querySelector('.vibe-toolbar-middle');
+    try {
+      VibeEvents.emit('inspection:started');
+      testContext.mock.timers.tick(100);
+      VibeEvents.emit('inspection:stopped');
+      testContext.mock.timers.tick(1000);
+      assert.strictEqual(toolbar.classList.contains('annotating'), false, 'Stale enter timers must not restore annotating mode');
+      assert.notStrictEqual(defaultContent.style.opacity, '0', 'Annotate must not remain faded out');
+      assert.strictEqual(middle.style.width, '', 'Interrupted animation width must be cleared');
+      assert.strictEqual(middle.style.overflow, '', 'Interrupted content must not remain clipped');
+    } finally {
+      VibeEvents.emit('inspection:stopped');
+      testContext.mock.timers.tick(1000);
+      testContext.mock.timers.reset();
+    }
+  });
+
+  await t.test('re-entering during exit prevents old timers from restoring default mode', testContext => {
+    testContext.mock.timers.enable({ apis: ['setTimeout'] });
+    const originalFrame = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = callback => { callback(); return 1; };
+    const toolbar = shadowRootMock.querySelector('.vibe-toolbar');
+    const annotatingContent = toolbar.querySelector('.vibe-toolbar-annotating');
+    try {
+      VibeEvents.emit('inspection:started');
+      testContext.mock.timers.tick(600);
+      VibeEvents.emit('inspection:stopped');
+      testContext.mock.timers.tick(100);
+      VibeEvents.emit('inspection:started');
+      testContext.mock.timers.tick(1000);
+      assert.strictEqual(toolbar.classList.contains('annotating'), true, 'Stale exit timers must not change the latest mode');
+      assert.notStrictEqual(annotatingContent.style.opacity, '0', 'Current instructions must remain visible');
+    } finally {
+      VibeEvents.emit('inspection:stopped');
+      testContext.mock.timers.tick(1000);
+      testContext.mock.timers.reset();
+      if (originalFrame) globalThis.requestAnimationFrame = originalFrame;
+      else delete globalThis.requestAnimationFrame;
+    }
+  });
+
+  await t.test('an imported annotation ID cannot inject card attributes', async () => {
+    mockStorage.annotations = [{
+      id: 'note" onclick="alert(1)', url: window.location.href, comment: 'Imported note', status: 'open',
+    }];
+    await VibeToolbar.openViewAll(window.location.origin, 'all');
+    const panel = VibeToolbar.getViewAllPanel();
+    for (const element of panel.querySelectorAll('[data-id]')) {
+      assert.strictEqual(element.getAttribute('onclick'), null, 'IDs must stay data, not become executable attributes');
+    }
+    assert.ok(panel.innerHTML.includes('note&quot; onclick=&quot;alert(1)'));
+  });
+
+  await t.test('global delete is an icon-only button beside its description in a separate footer', async () => {
+    mockStorage.annotations = [{ id: 'one', url: window.location.href, status: 'open' }];
+    await VibeToolbar.openViewAll();
+    const panel = VibeToolbar.getViewAllPanel();
+    const button = panel.querySelector('.vibe-viewall-delete-global');
+    assert.ok(button, 'An explicit global deletion button is required');
+    assert.ok(button.closest('.vibe-viewall-footer'), 'The new action gets its own footer area');
+    assert.strictEqual(panel.querySelector('.vibe-viewall-header').querySelector('.vibe-viewall-delete-global'), null);
+    assert.ok(button.querySelector('svg'), 'The action has a trash icon');
+    assert.strictEqual(button.textContent.trim(), '', 'The button contains no visible text');
+    assert.strictEqual(button.getAttribute('aria-label'), 'Delete all annotations across all sites');
+    const description = panel.querySelector('.vibe-viewall-global-caption');
+    assert.strictEqual(description.textContent, 'Delete all annotations across all sites');
+    const row = button.closest('.vibe-viewall-global-action');
+    assert.ok(row, 'Description and icon share one action row');
+    assert.strictEqual(description.parentNode, row);
+    assert.ok(row.children.indexOf(description) < row.children.indexOf(button), 'Description precedes the icon button');
+  });
+
+  await t.test('global delete always asks for confirmation and cancelling keeps all sites intact', async () => {
+    mockStorage.vibeSkipDeleteConfirm = true;
+    mockStorage.annotations = [
+      { id: 'local', url: window.location.href, status: 'open' },
+      { id: 'foreign', url: 'https://example.com/a', status: 'open' },
+      { id: 'resolved', url: 'http://localhost:5173/done', status: 'resolved' },
+    ];
+    const before = structuredClone(mockStorage.annotations);
+    await VibeToolbar.openViewAll('https://example.com', 'current');
+    const button = VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-delete-global');
+    assert.ok(button);
+    button.click();
+    await new Promise(resolve => setImmediate(resolve));
+    const modal = shadowRootMock.querySelector('.vibe-confirm-backdrop');
+    assert.ok(modal, 'Global deletion must never bypass confirmation');
+    assert.ok(modal.textContent.includes('3 annotations'));
+    assert.ok(modal.textContent.includes('all sites'));
+    assert.deepStrictEqual(mockStorage.annotations, before, 'Opening confirmation must not delete anything');
+    modal.querySelector('.vibe-confirm-no').click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepStrictEqual(mockStorage.annotations, before);
+    delete mockStorage.vibeSkipDeleteConfirm;
+  });
+
+  await t.test('repeated global delete clicks open only one confirmation', async () => {
+    mockStorage.annotations = [{ id: 'one', url: window.location.href, status: 'open' }];
+    await VibeToolbar.openViewAll();
+    const button = VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-delete-global');
+    button.click();
+    button.click();
+    await new Promise(resolve => setImmediate(resolve));
+    const modals = shadowRootMock.querySelectorAll('.vibe-confirm-backdrop');
+    assert.strictEqual(modals.length, 1);
+    assert.strictEqual(mockStorage.annotations.length, 1);
+    modals[0].querySelector('.vibe-confirm-no').click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(button.disabled, false);
+  });
+
+  await t.test('a failed global delete leaves records intact and re-enables the action', async () => {
+    mockStorage.annotations = [{ id: 'one', url: window.location.href, status: 'open' }];
+    const originalSend = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = async message => message.action === 'deleteAllAnnotations'
+      ? { success: false, error: 'Storage unavailable' }
+      : originalSend(message);
+    try {
+      await VibeToolbar.openViewAll();
+      const button = VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-delete-global');
+      button.click();
+      await new Promise(resolve => setImmediate(resolve));
+      shadowRootMock.querySelector('.vibe-confirm-yes').click();
+      await new Promise(resolve => setImmediate(resolve));
+      assert.strictEqual(mockStorage.annotations.length, 1);
+      assert.strictEqual(button.disabled, false);
+      assert.strictEqual(VibeToolbar.getViewAllPanel()._suppressRefresh, false);
+      const errorModal = shadowRootMock.querySelector('.vibe-confirm-backdrop');
+      assert.ok(errorModal.textContent.includes('Storage unavailable'));
+      errorModal.querySelector('.vibe-confirm-no').click();
+    } finally {
+      chrome.runtime.sendMessage = originalSend;
+    }
+  });
+
+  await t.test('offline global deletion reports pending server sync after clearing local records', async () => {
+    mockStorage.annotations = [{ id: 'one', url: window.location.href, status: 'open' }];
+    const originalSend = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = async message => {
+      const result = await originalSend(message);
+      return message.action === 'deleteAllAnnotations' ? { ...result, pendingSync: true } : result;
+    };
+    try {
+      await VibeToolbar.openViewAll();
+      VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-delete-global').click();
+      await new Promise(resolve => setImmediate(resolve));
+      shadowRootMock.querySelector('.vibe-confirm-yes').click();
+      await new Promise(resolve => setTimeout(resolve, 30));
+      assert.strictEqual(mockStorage.annotations.length, 0);
+      const panel = VibeToolbar.getViewAllPanel();
+      assert.ok(panel.querySelector('.vibe-viewall-global-status').textContent.includes('Server sync is pending'));
+      assert.strictEqual(panel.querySelector('.vibe-viewall-delete-global').disabled, true);
+    } finally {
+      chrome.runtime.sendMessage = originalSend;
+    }
+  });
+
+  await t.test('pending server deletion remains visible after reopening an empty panel', async () => {
+    mockStorage.annotations = [];
+    mockStorage.pendingPurgeAnnotationIds = ['pending'];
+    mockStorage.annotationPurgeError = 'Update the MCP server to enable safe global deletion.';
+    await VibeToolbar.openViewAll();
+    const status = VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-global-status');
+    assert.ok(status.textContent.includes('Update the MCP server'), 'An empty local list must not hide incomplete remote deletion');
+    VibeToolbar.closeViewAll();
+    await VibeToolbar.openViewAll();
+    assert.ok(VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-global-status').textContent.includes('Update the MCP server'));
+  });
+
+  await t.test('confirmed global deletion includes resolved and variants but preserves later additions', async () => {
+    mockStorage.annotations = [
+      { id: 'local', url: window.location.href, status: 'open' },
+      { id: 'foreign', url: 'https://example.com/a', status: 'open' },
+      { id: 'resolved', url: 'http://localhost:5173/done', status: 'resolved' },
+      { id: 'variant', url: 'http://localhost:5173/v', mode: 'variants', variantsPayload: {}, status: 'variants-discarded' },
+    ];
+    await VibeToolbar.openViewAll('https://example.com', 'current');
+    const button = VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-delete-global');
+    assert.ok(button);
+    button.click();
+    await new Promise(resolve => setImmediate(resolve));
+    const modal = shadowRootMock.querySelector('.vibe-confirm-backdrop');
+    assert.ok(modal);
+    assert.ok(modal.textContent.includes('Generated code will not be changed'));
+    mockStorage.annotations.push({ id: 'later', url: window.location.href, status: 'open' });
+    modal.querySelector('.vibe-confirm-yes').click();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    assert.deepStrictEqual(mockStorage.annotations.map(a => a.id), ['later']);
+    assert.strictEqual(shadowRootMock.querySelector('.vibe-toolbar-pill').textContent, '1');
+  });
+
+  await t.test('global deletion is enabled for hidden resolved records and disabled when nothing remains', async () => {
+    mockStorage.annotations = [{ id: 'done', url: 'https://example.com/done', status: 'resolved' }];
+    await VibeToolbar.openViewAll();
+    let button = VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-delete-global');
+    assert.ok(button);
+    assert.strictEqual(button.hasAttribute('disabled'), false, 'Resolved annotations can still be purged');
+    mockStorage.annotations = [];
+    await VibeToolbar.openViewAll();
+    button = VibeToolbar.getViewAllPanel().querySelector('.vibe-viewall-delete-global');
+    assert.strictEqual(button.hasAttribute('disabled'), true, 'Empty global deletion must be disabled');
   });
 });

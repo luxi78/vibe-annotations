@@ -77,6 +77,55 @@ export async function syncAll(annotations) {
   }
 }
 
+// Explicit, user-confirmed global purge. Unlike ordinary per-card deletion,
+// this removes scaffolded variants metadata without requesting source cleanup.
+// Keep the confirmed ID snapshot: annotations created while the dialog was open
+// are not authorized for deletion. Tombstones prevent offline resurrection.
+export async function deleteAllStoredAnnotations(ids, storageLockFn) {
+  if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id)) {
+    throw new Error('Annotation ids must be a confirmed array of non-empty strings');
+  }
+  const confirmedIds = new Set(ids);
+  if (!confirmedIds.size) return { count: 0, pendingSync: false };
+
+  return storageLockFn(async () => {
+    const { annotations = [], deletedAnnotationIds = [], purgedAnnotationIds = [], pendingPurgeAnnotationIds = [] } = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds', 'purgedAnnotationIds', 'pendingPurgeAnnotationIds']);
+    const remaining = annotations.filter(a => !confirmedIds.has(a.id));
+    const count = annotations.length - remaining.length;
+    const pending = [...new Set([...pendingPurgeAnnotationIds, ...confirmedIds])];
+    await chrome.storage.local.set({
+      annotations: remaining,
+      deletedAnnotationIds: [...new Set([...deletedAnnotationIds, ...confirmedIds])],
+      // Retain intent against late in-flight creates; absence in an older GET
+      // is never acknowledgement. Explicit re-import can clear this history.
+      purgedAnnotationIds: [...new Set([...purgedAnnotationIds, ...confirmedIds])],
+      pendingPurgeAnnotationIds: pending,
+    });
+    try {
+      await purgeConfirmedAnnotations([...confirmedIds]);
+      const remainingPending = pending.filter(id => !confirmedIds.has(id));
+      await chrome.storage.local.set({ pendingPurgeAnnotationIds: remainingPending, annotationPurgeError: '', apiSyncPending: remainingPending.length > 0 });
+      return { count, pendingSync: remainingPending.length > 0 };
+    } catch (error) {
+      await chrome.storage.local.set({ apiSyncPending: true, annotationPurgeError: error.message });
+      return { count, pendingSync: true, syncError: error.message };
+    }
+  });
+}
+
+async function purgeConfirmedAnnotations(ids) {
+  const response = await fetch(`${API_URL}/api/annotations/purge`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, confirm: true }), signal: AbortSignal.timeout(5000),
+  });
+  if (response.status === 404) throw new Error('Update the MCP server to enable safe global deletion.');
+  if (!response.ok) throw new Error(`Server deletion is pending (${response.status}).`);
+  const result = await response.json();
+  if (result?.success !== true || !Array.isArray(result.purged_ids)) throw new Error('Server did not acknowledge the confirmed deletion.');
+  const acknowledged = new Set(result.purged_ids);
+  if (acknowledged.size !== ids.length || ids.some(id => !acknowledged.has(id))) throw new Error('Server did not acknowledge the confirmed deletion.');
+}
+
 export async function saveOne(annotation) {
   try {
     const controller = new AbortController();
@@ -148,13 +197,24 @@ export async function smartSync(storageLockFn) {
 
   return storageLockFn(async () => {
     try {
-      const localResult = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds']);
+      const localResult = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds', 'purgedAnnotationIds', 'pendingPurgeAnnotationIds']);
       const localAnnotations = localResult.annotations || [];
-      const deletedIds = new Set(localResult.deletedAnnotationIds || []);
+      const purgedIds = new Set(localResult.purgedAnnotationIds || []);
+      const deletedIds = new Set([...(localResult.deletedAnnotationIds || []), ...purgedIds]);
       const localMap = new Map(localAnnotations.map(a => [a.id, a]));
       const serverMap = new Map(serverAnnotations.map(a => [a.id, a]));
+      const retryPurgeIds = new Set([...(localResult.pendingPurgeAnnotationIds || []), ...[...purgedIds].filter(id => serverMap.has(id))]);
+      if (retryPurgeIds.size) {
+        try {
+          await purgeConfirmedAnnotations([...retryPurgeIds]);
+          await chrome.storage.local.set({ pendingPurgeAnnotationIds: [], annotationPurgeError: '', apiSyncPending: false });
+        } catch (error) {
+          await chrome.storage.local.set({ pendingPurgeAnnotationIds: [...retryPurgeIds], annotationPurgeError: error.message, apiSyncPending: true });
+        }
+      }
       const allIds = new Set([...localMap.keys(), ...serverMap.keys()]);
       const merged = [];
+      const toPush = [];
       let changed = false, flagsChanged = false;
 
       for (const id of allIds) {
@@ -165,9 +225,9 @@ export async function smartSync(storageLockFn) {
           const lt = new Date(local.updated_at || local.created_at || 0).getTime();
           const st = new Date(server.updated_at || server.created_at || 0).getTime();
           if (st > lt) { server._synced = true; merged.push(server); changed = true; }
-          else { if (!local._synced) flagsChanged = true; local._synced = true; merged.push(local); if (lt > st) changed = true; }
+          else { if (!local._synced) flagsChanged = true; local._synced = true; merged.push(local); if (lt > st) { changed = true; toPush.push(local); } }
         } else if (local && !server) {
-          if (local._synced) { changed = true; } else { merged.push(local); changed = true; }
+          if (local._synced) { changed = true; } else { merged.push(local); toPush.push(local); changed = true; }
         } else if (!local && server) { server._synced = true; merged.push(server); changed = true; }
       }
 
@@ -176,14 +236,20 @@ export async function smartSync(storageLockFn) {
 
       if (changed) {
         try {
-          await fetch(`${API_URL}/api/annotations/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ annotations: merged }) });
+          if (purgedIds.size) {
+            // A purge retry must never replace a stale server snapshot: only
+            // upsert surviving local changes, preserving unconfirmed server IDs.
+            for (const annotation of toPush) await saveOne(annotation);
+          } else {
+            await fetch(`${API_URL}/api/annotations/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ annotations: merged }) });
+          }
           let needsUpdate = false;
           for (const a of merged) { if (!a._synced) { a._synced = true; needsUpdate = true; } }
           if (needsUpdate) await chrome.storage.local.set({ annotations: merged });
         } catch (e) { console.warn('Failed to push merged annotations to server:', e.message); }
       }
 
-      for (const id of deletedIds) { if (serverMap.has(id)) deleteOne(id).catch(() => {}); }
+      for (const id of deletedIds) { if (serverMap.has(id) && !purgedIds.has(id)) deleteOne(id).catch(() => {}); }
       await chrome.storage.local.set({ deletedAnnotationIds: [...deletedIds].filter(id => serverMap.has(id)) });
       console.log(`[Vibe] Sync complete — merged: ${merged.length} annotations`);
       await updateAllBadges();

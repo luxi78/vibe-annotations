@@ -5,6 +5,7 @@ import assert from 'node:assert';
 const mockStorage = {};
 globalThis.chrome = {
   storage: {
+    onChanged: { addListener: () => {}, removeListener: () => {} },
     local: {
       get: async (keys) => {
         const result = {};

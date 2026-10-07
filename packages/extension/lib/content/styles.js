@@ -1381,7 +1381,9 @@ export const VIBE_STYLES = `
   width: 100%;
   min-width: 340px;
   max-height: min(calc(100vh - 120px), 500px);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--v-panel-bg);
   border: 1px solid var(--v-toolbar-border);
   border-radius: 12px;
@@ -1398,6 +1400,7 @@ export const VIBE_STYLES = `
 }
 
 .vibe-viewall-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1475,6 +1478,116 @@ export const VIBE_STYLES = `
   width: 13px;
   height: 13px;
 }
+
+/* View all filter tabs */
+.vibe-viewall-tabs {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.vibe-viewall-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--v-text-secondary);
+  font: 500 11px/1.2 var(--v-font);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.vibe-viewall-tab:hover {
+  color: var(--v-toolbar-text);
+  background: var(--v-toolbar-btn-hover, rgba(255, 255, 255, 0.08));
+}
+
+.vibe-viewall-tab.active {
+  color: var(--v-toolbar-text-active, #fff);
+  background: var(--v-surface-1, rgba(255, 255, 255, 0.1));
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.vibe-viewall-tab:focus-visible {
+  outline: none;
+  border-color: var(--v-accent, #d97757);
+  box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.2);
+}
+
+/* The list scrolls independently; the global destructive action stays separate. */
+.vibe-viewall-routes {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.vibe-viewall-footer {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vibe-viewall-global-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.vibe-viewall-delete-global {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--v-danger);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.vibe-viewall-delete-global:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--v-danger);
+}
+
+.vibe-viewall-delete-global:focus-visible {
+  outline: 2px solid var(--v-danger);
+  outline-offset: 2px;
+}
+
+.vibe-viewall-delete-global:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.vibe-viewall-global-caption {
+  flex: 1;
+  min-width: 0;
+  color: var(--v-text-secondary);
+  font: 400 12px/1.4 var(--v-font);
+}
+
+.vibe-viewall-global-status {
+  color: var(--v-text-secondary);
+  font: 400 11px/1.4 var(--v-font);
+}
+
+.vibe-viewall-global-status:empty { display: none; }
 
 /* Route group */
 .vibe-viewall-route-header {

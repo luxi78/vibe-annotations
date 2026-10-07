@@ -115,16 +115,22 @@ function isServerOutdated(version) {
     return true;
   }
 
+  async function deleteAllAnnotations(ids) {
+    const r = await chrome.runtime.sendMessage({ action: 'deleteAllAnnotations', ids });
+    if (!r || !r.success) throw new Error(r?.error || 'global delete failed');
+    return r;
+  }
+
   async function deleteAnnotationsByUrl() {
     const r = await chrome.runtime.sendMessage({ action: 'deleteAnnotationsByUrl', url: window.location.href });
     if (!r || !r.success) throw new Error(r?.error || 'bulk delete failed');
     return r.count || 0;
   }
 
-  // Ask the background to capture+crop+store a real screenshot for this annotation.
+  // Crop+store the already captured pixels after the overlay is restored.
   // `crop` is a device-pixel rect { sx, sy, sw, sh } within the visible viewport.
-  async function captureScreenshot(id, crop) {
-    const r = await chrome.runtime.sendMessage({ action: 'captureAnnotationScreenshot', id, crop });
+  async function captureScreenshot(id, crop, dataUrl) {
+    const r = await chrome.runtime.sendMessage({ action: 'captureAnnotationScreenshot', id, crop, dataUrl });
     if (!r || !r.success) throw new Error(r?.error || 'screenshot capture failed');
     return r;
   }
@@ -196,6 +202,21 @@ function isServerOutdated(version) {
       if (ns === 'local' && changes.annotations) {
         cb(changes.annotations.newValue || []);
       }
+    });
+  }
+
+  async function getPendingPurgeStatus() {
+    try {
+      const result = await chrome.storage.local.get(['pendingPurgeAnnotationIds', 'annotationPurgeError']);
+      return { pending: (result.pendingPurgeAnnotationIds || []).length > 0, error: String(result.annotationPurgeError || '') };
+    } catch {
+      return { pending: false, error: '' };
+    }
+  }
+
+  function onPurgeStatusChanged(cb) {
+    chrome.storage.onChanged.addListener((changes, ns) => {
+      if (ns === 'local' && (changes.pendingPurgeAnnotationIds || changes.annotationPurgeError)) cb();
     });
   }
 
@@ -397,6 +418,7 @@ const VibeAPI = {
   updateAnnotation,
   forceSync,
   deleteAnnotation,
+  deleteAllAnnotations,
   deleteAnnotationsByUrl,
   captureScreenshot,
   captureVisibleTab,
@@ -404,6 +426,8 @@ const VibeAPI = {
   uploadUserImage,
   removeAttachment,
   onAnnotationsChanged,
+  getPendingPurgeStatus,
+  onPurgeStatusChanged,
   getScreenshotEnabled,
   isScreenshotEnabled,
   saveScreenshotEnabled,

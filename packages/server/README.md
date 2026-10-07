@@ -142,11 +142,26 @@ Other code editors and tools that support SSE (Server-Sent Events) can also conn
 ## Architecture
 
 The server provides:
+
 - **SSE Endpoint** (`/sse`): For AI coding agent MCP connections
 - **HTTP API** (`/api/annotations`): For Chrome extension communication
 - **Health Check** (`/health`): For status monitoring
 
 Data is stored in `~/.vibe-annotations/annotations.json`.
+
+### Confirmed global deletion
+
+The extension's separate **Delete all annotations** footer uses `POST /api/annotations/purge` with `{ "ids": ["confirmed-id"], "confirm": true }`. The server applies only those IDs inside its writer queue, preserving annotations created after the confirmation snapshot. It removes annotation metadata (including scaffolded Variants) and their attachment files, but does not finalize Variants or edit generated project code. The response acknowledges the exact IDs in `purged_ids`.
+
+Older server instances do not implement this endpoint. The extension clears the confirmed local records, retains deletion intent for retry, and displays an update/pending warning instead of using an unsafe full-state replacement. A deliberate re-import can restore a purged identity.
+
+To test the repository implementation, first stop the existing instance on port 3846, then run from the monorepo root:
+
+```bash
+pnpm --filter vibe-annotations-server start
+```
+
+Run the isolated HTTP/filesystem regression tests with `pnpm --filter vibe-annotations-server test`. They use temporary data and an ephemeral port, never the user's running server.
 
 ## Development
 

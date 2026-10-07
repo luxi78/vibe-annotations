@@ -57,6 +57,16 @@ By default the suite runs in Chromium's **new headless mode** (no windows pop up
 
 ---
 
+### Toolbar count and automatic screenshot regressions
+
+`packages/extension/tests/e2e/toolbar-count-screenshot.spec.js` is included in the standard E2E command. It checks the built extension's global toolbar count across sites, SPA navigation, external storage updates, and deletion. Resolved annotations are excluded. The panel's header bulk actions remain scoped to the selected site; the toolbar badge is not a selected-site count. The separate footer action, **Delete all annotations**, always opens a confirmation and clears all stored sites, including resolved annotations and scaffolded variants metadata. It does not clean up generated project code. The list scrolls independently of the footer. Cancellation, double clicks, storage failures, and records added locally while confirmation is open are covered by `tests/view-all-panel.test.js`; the browser spec covers confirmation, cross-tab clearing, and footer visibility with a long list. `tests/global-delete.test.js` covers locked storage mutation, confirmed-ID purge requests, persistent deletion intent, stale GET responses, late server writes, and offline retries without full-state replacement. An older server leaves deletion pending with a persistent update warning; tests use an isolated HTTP boundary. `packages/server/tests/annotation-purge.test.js` uses real Express/HTTP and temporary files to exercise the shared writer queue, confirmation validation, concurrent additions, attachment preservation/cleanup retry, Windows filename aliases, and unchanged generated code. It never touches the user's server or project.
+
+The screenshot test saves through the actual editor and delays the upload response. It verifies that the overlay is hidden during pixel capture and visible during crop/upload, and that a WebP attachment reaches storage. Only Chrome's native capture boundary is replaced with a real PNG fixture, so this does **not** test the native permission prompt or `captureVisibleTab` itself. MCP network calls are isolated in the disposable service worker, not sent to the user's server. A separate test rejects non-PNG URLs in screenshot processing.
+
+`packages/extension/tests/screenshot.test.js` covers capture/upload failures, overlapping saves, visibility restoration, and off-screen targets at the Chrome messaging boundary.
+
+---
+
 ## 3. Supported Environments & Browser Mode
 
 ### Extension Architecture in Playwright

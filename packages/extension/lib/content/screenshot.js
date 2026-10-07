@@ -7,6 +7,7 @@ import VibeEvents from './event-bus.js';
 import VibeShadowHost from './shadow-host.js';
 
 const PAD = 16; // CSS px of breathing room around the element
+let captureQueue = Promise.resolve();
 
 function init() {
   VibeEvents.on('annotation:saved', ({ annotation, element }) => {
@@ -18,33 +19,43 @@ function init() {
 }
 
 async function captureZoned(id, element) {
+  // Serialize hidden frames, not uploads: overlapping saves must not restore
+  // each other's visibility or leave a stale 'hidden' value behind.
+  const capture = captureQueue.then(() => captureFrame(element));
+  captureQueue = capture.then(() => {}, () => {});
+  const frame = await capture;
+  if (frame?.dataUrl) await VibeAPI.captureScreenshot(id, frame.crop, frame.dataUrl);
+}
+
+async function captureFrame(element) {
+  // Let the popover finish dismissing before we measure and shoot.
+  await nextFrame();
+  await nextFrame();
+
+  const box = paddedBox(element);
+  if (!box) return; // element off-screen — skip silently
+  const dpr = window.devicePixelRatio || 1;
+  const crop = {
+    sx: Math.round(box.left * dpr),
+    sy: Math.round(box.top * dpr),
+    sw: Math.round(box.width * dpr),
+    sh: Math.round(box.height * dpr),
+  };
+
   const host = VibeShadowHost.getHost();
+  const previousVisibility = host?.style.visibility;
+  let dataUrl;
   try {
-    // Let the popover finish dismissing before we measure and shoot.
-    await nextFrame();
-    await nextFrame();
-
-    const box = paddedBox(element);
-    if (!box) return; // element off-screen — skip silently
-    const dpr = window.devicePixelRatio || 1;
-    const crop = {
-      sx: Math.round(box.left * dpr),
-      sy: Math.round(box.top * dpr),
-      sw: Math.round(box.width * dpr),
-      sh: Math.round(box.height * dpr),
-    };
-
-    // Hide our overlay for the capture frame, take the screenshot, restore.
     if (host) host.style.visibility = 'hidden';
     await nextFrame();
-    try {
-      await VibeAPI.captureScreenshot(id, crop);
-    } finally {
-      if (host) host.style.visibility = '';
-    }
+    dataUrl = await VibeAPI.captureVisibleTab();
   } finally {
-    if (host) host.style.visibility = '';
+    if (host) host.style.visibility = previousVisibility;
   }
+
+  // Pixels are already captured. Cropping, compression and network upload must
+  // not keep the toolbar hidden. The data URL is transient, never persisted.
+  return { crop, dataUrl };
 }
 
 // Padded, viewport-clamped box around the element (CSS px).
