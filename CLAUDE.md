@@ -42,7 +42,7 @@ Write all engineering documentation and Git commit messages for this project in 
 
 ### Issue tracker
 
-GitHub Issues via `gh` CLI. Ticket lifecycle and resolution in `docs/agents/issue-tracker.md`.
+GitHub Issues via `gh` CLI. When implementing an issue (`/implement` or ticket work), branch on `issue/<number>` and automatically close the issue upon completion per `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

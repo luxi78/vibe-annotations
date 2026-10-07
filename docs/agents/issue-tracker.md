@@ -33,13 +33,20 @@ Create a GitHub issue.
 
 Run `gh issue view <number> --comments`.
 
-## When completing an implementation ticket
+## Implementing an issue
 
-A ticket is resolved only when all its acceptance criteria and tests are green.
+When implementing an issue (via `/implement` or ticket assignment):
 
-1. **Commit message**: Include the GitHub closing directive in the commit subject: `Fixes #<number>` or `Closes #<number>`.
-   - Example: `fix(extension): contain keyboard events within shadow DOM (Fixes #1)`
-2. **Close the issue**: Run `gh issue close <number> --comment "Resolved in <commit-sha>"`.
+1. **Branch**: Always implement on an `issue/<number>` branch.
+   - Worktree (preferred for isolation): `git worktree add .worktrees/issue-<number> -b issue/<number>`
+   - Direct branch: `git checkout -b issue/<number>`
+2. **Verification**: Develop via test-driven slices. Resolve all acceptance criteria, unit tests, and relevant E2E browser tests before concluding.
+3. **Commit**: Include the GitHub closing directive in the commit subject: `... (Closes #<number>)` or `... (Fixes #<number>)`.
+   - Example: `feat(extension): keep settings shell mounted across documentation navigation (Closes #20)`
+4. **Automatic issue closure**: Immediately close the issue once verified and committed:
+   ```bash
+   gh issue close <number> --comment "Resolved in <commit-sha>"
+   ```
 
 ## Wayfinding operations
 
