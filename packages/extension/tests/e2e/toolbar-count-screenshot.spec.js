@@ -443,3 +443,119 @@ test('View all refreshes incrementally on external storage changes, preserves un
   await expect(errorBanner).toHaveCount(0);
   await expect(panel.locator('.vibe-viewall-card[data-id="card-d"]')).toBeVisible();
 });
+
+test('View all preserves mount, selected site, and focus across individual deletion, route clear, site delete with confirmation, and clear-after-copy', async ({ page, backgroundWorker }) => {
+  await isolateServer(backgroundWorker);
+  await backgroundWorker.evaluate(async origin => {
+    await chrome.storage.local.clear();
+    await chrome.storage.local.set({
+      annotations: [
+        { id: 'card-1', url: `${origin}/selected-rectangle.html`, comment: 'Route 1 Note 1', status: 'open' },
+        { id: 'card-2', url: `${origin}/selected-rectangle.html`, comment: 'Route 1 Note 2', status: 'open' },
+        { id: 'card-3', url: `${origin}/other-route`, comment: 'Route 2 Note', status: 'open' },
+        { id: 'foreign-1', url: 'http://localhost:5173/page1', comment: 'Foreign Note 1', status: 'open' },
+        { id: 'foreign-2', url: 'http://localhost:5173/page2', comment: 'Foreign Note 2', status: 'open' },
+      ]
+    });
+  }, FIXTURE_ORIGIN);
+
+  await page.goto(`${FIXTURE_ORIGIN}/selected-rectangle.html`);
+  const root = page.locator('#vibe-annotations-root');
+  await root.locator('.vibe-tb-viewall').click();
+
+  const panel = root.locator('.vibe-viewall-panel');
+  await expect(panel).toBeVisible();
+
+  // Mark panel DOM node to assert no remounting or entrance animations
+  await panel.evaluate(el => { el.dataset.stablePanel = 'true'; });
+
+  // 1. Route clear on multi-annotation route (/selected-rectangle.html)
+  const routeEl = panel.locator('.vibe-viewall-route[data-path="/selected-rectangle.html"]');
+  await expect(routeEl).toBeVisible();
+  const routeClearBtn = routeEl.locator('.vibe-viewall-route-clear');
+  await expect(routeClearBtn).toBeVisible();
+  await routeClearBtn.click();
+
+  // Route 1 cards deleted in place, route 2 remains, panel shell stable
+  await expect(routeEl).toHaveCount(0);
+  await expect(panel.locator('.vibe-viewall-card[data-id="card-3"]')).toBeVisible();
+  expect(await panel.evaluate(el => el.dataset.stablePanel)).toBe('true');
+
+  // 2. Individual card deletion with keyboard focus safety on card-3
+  const card3 = panel.locator('.vibe-viewall-card[data-id="card-3"]');
+  const card3Delete = card3.locator('.vibe-viewall-card-delete');
+  await card3Delete.focus();
+  await card3Delete.click();
+
+  // Focus safely returns to active filter tab, not an adjacent delete button
+  await expect.poll(async () => {
+    return await root.evaluate(el => {
+      const active = el.shadowRoot.activeElement;
+      return active?.classList.contains('vibe-viewall-tab') && active?.classList.contains('active');
+    });
+  }).toBe(true);
+
+  // Current site is now emptied -> displays empty notice, panel remains mounted
+  await expect(card3).toHaveCount(0);
+  await expect(panel.locator('.vibe-viewall-empty')).toBeVisible();
+  expect(await panel.evaluate(el => el.dataset.stablePanel)).toBe('true');
+
+  // 3. Switch to foreign site via dropdown
+  const siteSelect = panel.locator('.vibe-viewall-site-select');
+  await expect(siteSelect).toBeVisible();
+  await siteSelect.selectOption('http://localhost:5173');
+  await expect(panel.locator('.vibe-viewall-card[data-id="foreign-1"]')).toBeVisible();
+  await expect(panel.locator('.vibe-viewall-card[data-id="foreign-2"]')).toBeVisible();
+
+  // Whole-site delete with confirmation dialogue (.vibe-viewall-deleteall)
+  const deleteAllBtn = panel.locator('.vibe-viewall-deleteall');
+  await deleteAllBtn.click();
+
+  const confirmModal = root.locator('.vibe-confirm-backdrop');
+  await expect(confirmModal).toBeVisible();
+  await expect(confirmModal.locator('.vibe-confirm-msg')).toContainText('2 annotations');
+
+  // Cancel keeps foreign annotations intact
+  await confirmModal.locator('.vibe-confirm-no').click();
+  await expect(confirmModal).toBeHidden();
+  await expect(panel.locator('.vibe-viewall-card[data-id="foreign-1"]')).toBeVisible();
+
+  // Click delete all again, then confirm
+  await deleteAllBtn.click();
+  await expect(confirmModal).toBeVisible();
+  await confirmModal.locator('.vibe-confirm-yes').click();
+  await expect(confirmModal).toBeHidden();
+
+  // Foreign site annotations deleted, foreign site remains selected with empty state
+  await expect(panel.locator('.vibe-viewall-empty')).toBeVisible();
+  expect(await panel.evaluate(el => el.dataset.stablePanel)).toBe('true');
+  expect(await siteSelect.evaluate(el => el.value)).toBe('http://localhost:5173');
+
+  // Both sites remain present and selectable in site select
+  const options = await siteSelect.evaluate(el => Array.from(el.options).map(o => o.value));
+  expect(options).toContain('http://localhost:5173');
+  expect(options).toContain(FIXTURE_ORIGIN);
+
+  // 4. Test clear-after-copy: inject fresh annotation into current site
+  await backgroundWorker.evaluate(async origin => {
+    await chrome.storage.local.set({
+      annotations: [{ id: 'copy-target', url: `${origin}/selected-rectangle.html`, comment: 'Copy target note', status: 'open' }],
+      vibeClearOnCopy: true
+    });
+  }, FIXTURE_ORIGIN);
+
+  // Switch to current site
+  await siteSelect.selectOption(FIXTURE_ORIGIN);
+  await expect(panel.locator('.vibe-viewall-card[data-id="copy-target"]')).toBeVisible();
+
+  // Click Copy all
+  const copyBtn = panel.locator('.vibe-viewall-copy');
+  await copyBtn.focus();
+  await copyBtn.click();
+
+  // Card cleared, empty notice shown, panel shell continuously mounted
+  await expect(panel.locator('.vibe-viewall-empty')).toBeVisible();
+  expect(await panel.evaluate(el => el.dataset.stablePanel)).toBe('true');
+  // Copy button retained focus
+  expect(await root.evaluate(el => el.shadowRoot.activeElement?.classList.contains('vibe-viewall-copy'))).toBe(true);
+});

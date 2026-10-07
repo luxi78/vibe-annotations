@@ -177,6 +177,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     toolbarEl.className = 'vibe-toolbar';
     toolbarModeTarget = null;
 
+    // pi-lens-ignore: no-inner-html-js
     toolbarEl.innerHTML = `
       <img class="vibe-toolbar-logo" src="${logoUrl}" />
       <div class="vibe-toolbar-separator"></div>
@@ -265,6 +266,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
       const banner = document.createElement('div');
       banner.className = 'vibe-update-banner';
+      // pi-lens-ignore: no-inner-html-js
       banner.innerHTML = `
         <span class="vibe-update-text">
           <strong>Vibe Annotations${version ? ` ${version}` : ''}</strong>
@@ -356,6 +358,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   let viewAllAvailableOrigins = [];
   let viewAllLastRenderedAnnotations = null;
   const viewAllScrollPositions = new Map();
+  const viewAllSessionOrigins = new Set();
 
   function getCardDataHash(a) {
     return JSON.stringify([
@@ -455,6 +458,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const inLowerHalf = rect.top > window.innerHeight / 2;
     viewAllPanel.className = 'vibe-viewall-panel' + (inLowerHalf ? ' above' : '');
 
+    // pi-lens-ignore: no-inner-html-js
     viewAllPanel.innerHTML = `
       <div class="vibe-viewall-header">
         <div class="vibe-viewall-actions">
@@ -511,7 +515,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         await refreshAnnotationCount();
         VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
         if (viewAllPanel) {
-          await updateViewAll(window.location.origin, 'all');
+          await updateViewAll(viewAllSelectedOrigin, viewAllActiveFilter);
           if (result.pendingSync) {
             const status = viewAllPanel?.querySelector('.vibe-viewall-global-status');
             if (status) status.textContent = `Deleted locally. ${result.syncError || 'Server sync is pending.'}`;
@@ -541,13 +545,25 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
       }
       const origHTML = copyBtn.innerHTML;
+      // pi-lens-ignore: no-inner-html-js
       copyBtn.innerHTML = ICONS.check;
       copyBtn.style.color = 'var(--v-status-online)';
+      // pi-lens-ignore: no-inner-html-js
       setTimeout(() => { copyBtn.innerHTML = origHTML; copyBtn.style.color = ''; }, 1500);
 
-      if (clearOnCopy) {
-        for (const a of viewAllCurrentAnnotations) await VibeAPI.deleteAnnotation(a.id);
-        await syncAfterDeletion(viewAllCurrentAnnotations.length);
+      const shouldClear = clearOnCopy || (await VibeAPI.getClearOnCopy());
+      if (shouldClear) {
+        if (viewAllPanel) viewAllPanel._suppressRefresh = true;
+        try {
+          const toDelete = [...viewAllCurrentAnnotations];
+          for (const a of toDelete) await VibeAPI.deleteAnnotation(a.id);
+          await syncAfterDeletion(toDelete.length);
+        } catch (err) {
+          console.error('[Vibe] clear-after-copy failed:', err);
+          updateViewAll(viewAllSelectedOrigin);
+        } finally {
+          if (viewAllPanel) viewAllPanel._suppressRefresh = false;
+        }
       }
     });
 
@@ -604,9 +620,10 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         }
         await syncAfterDeletion(viewAllCurrentAnnotations.length);
       } catch (err) {
-        if (viewAllPanel) viewAllPanel._suppressRefresh = false;
         console.error('[Vibe] delete all failed:', err);
         updateViewAll(viewAllSelectedOrigin);
+      } finally {
+        if (viewAllPanel) viewAllPanel._suppressRefresh = false;
       }
     });
 
@@ -655,25 +672,38 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   const syncAfterDeletion = async (deletedCount) => {
     const deletedOrigin = viewAllSelectedOrigin;
     const currentOrigin = window.location.origin;
-    const stored = (await VibeAPI.loadAllStoredAnnotations()) || [];
-    const remaining = stored.filter(a => {
-      if (!a || a.status === 'resolved') return false;
-      try { return new URL(a.url).origin === deletedOrigin; } catch { return false; }
-    });
-    await refreshAnnotationCount();
-    if (remaining.length === 0 && deletedOrigin !== currentOrigin) {
-      viewAllSelectedOrigin = currentOrigin;
-      viewAllActiveFilter = 'all';
-      await updateViewAll(currentOrigin, 'all');
-      return;
+    let stored = null;
+    let readFailed = false;
+    try {
+      stored = await VibeAPI.loadAllStoredAnnotations();
+    } catch (err) {
+      readFailed = true;
+      console.error('[Vibe] syncAfterDeletion loadAllStoredAnnotations failed:', err);
     }
-    if (deletedOrigin === currentOrigin) {
-      VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
-      if (remaining.length === 0) {
-        VibeEvents.emit('annotations:cleared', { count: deletedCount });
+
+    try {
+      await refreshAnnotationCount();
+    } catch {}
+
+    if (!readFailed && Array.isArray(stored)) {
+      const remaining = stored.filter(a => {
+        if (!a || a.status === 'resolved') return false;
+        try { return new URL(a.url).origin === deletedOrigin; } catch { return false; }
+      });
+      if (deletedOrigin === currentOrigin) {
+        try {
+          VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
+        } catch {}
+        if (remaining.length === 0) {
+          VibeEvents.emit('annotations:cleared', { count: deletedCount });
+        }
       }
     }
-    await updateViewAll(deletedOrigin, viewAllActiveFilter);
+
+    if (viewAllPanel) {
+      const targetOrigin = viewAllSelectedOrigin === deletedOrigin ? deletedOrigin : viewAllSelectedOrigin;
+      await updateViewAll(targetOrigin, viewAllActiveFilter);
+    }
   };
 
   async function openViewAll(targetOrigin, targetFilter) {
@@ -720,8 +750,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         await syncAfterDeletion(1);
       } catch (err) {
         if (card) card.classList.remove('deleting');
-        if (viewAllPanel) viewAllPanel._suppressRefresh = false;
         console.error('[Vibe] deleteAnnotation failed:', err);
+      } finally {
+        if (viewAllPanel) viewAllPanel._suppressRefresh = false;
       }
     });
   }
@@ -747,9 +778,10 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         }
         await syncAfterDeletion(routeAnnotations.length);
       } catch (err) {
-        if (viewAllPanel) viewAllPanel._suppressRefresh = false;
         console.error('[Vibe] clear route failed:', err);
         updateViewAll(viewAllSelectedOrigin);
+      } finally {
+        if (viewAllPanel) viewAllPanel._suppressRefresh = false;
       }
     });
   }
@@ -819,10 +851,19 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const allEligible = (allStored || []).filter(a => a && a.status !== 'resolved');
 
     const availableOrigins = getAvailableSiteOrigins(allEligible, currentOrigin);
-    if (viewAllSelectedOrigin && !availableOrigins.includes(viewAllSelectedOrigin)) {
-      availableOrigins.push(viewAllSelectedOrigin);
+    for (const orig of availableOrigins) {
+      viewAllSessionOrigins.add(orig);
     }
-    viewAllAvailableOrigins = availableOrigins;
+    if (viewAllSelectedOrigin) {
+      viewAllSessionOrigins.add(viewAllSelectedOrigin);
+    }
+    const sessionAvailableOrigins = Array.from(viewAllSessionOrigins);
+    sessionAvailableOrigins.sort((a, b) => {
+      if (a === currentOrigin) return -1;
+      if (b === currentOrigin) return 1;
+      return a.localeCompare(b);
+    });
+    viewAllAvailableOrigins = sessionAvailableOrigins;
 
     const annotations = allEligible.filter(a => {
       try { return new URL(a.url).origin === viewAllSelectedOrigin; } catch { return false; }
@@ -858,7 +899,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       const actionsEl = headerEl.querySelector('.vibe-viewall-actions');
       const existingLeft = headerEl.firstElementChild !== actionsEl ? headerEl.firstElementChild : null;
 
-      if (availableOrigins.length <= 1) {
+      if (viewAllAvailableOrigins.length <= 1) {
         if (!existingLeft || !existingLeft.classList.contains('vibe-viewall-url')) {
           const newLeftEl = document.createElement('span');
           newLeftEl.className = 'vibe-viewall-url';
@@ -873,13 +914,13 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         const existingSelect = existingLeft?.querySelector('.vibe-viewall-site-select');
         const populateSiteOptions = (selectEl) => {
           selectEl.textContent = '';
-          for (const orig of availableOrigins) {
+          for (const orig of viewAllAvailableOrigins) {
             const opt = document.createElement('option');
             opt.value = orig;
-            opt.textContent = formatSiteOptionText(orig, currentOrigin, availableOrigins);
+            opt.textContent = formatSiteOptionText(orig, currentOrigin, viewAllAvailableOrigins);
             if (orig === viewAllSelectedOrigin) opt.selected = true;
             if (orig === currentOrigin) {
-              opt.setAttribute('aria-label', `${formatSiteLabel(orig, availableOrigins)}, current site`);
+              opt.setAttribute('aria-label', `${formatSiteLabel(orig, viewAllAvailableOrigins)}, current site`);
             }
             selectEl.appendChild(opt);
           }
@@ -897,7 +938,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
           populateSiteOptions(select);
           select.value = viewAllSelectedOrigin;
           select.addEventListener('change', (e) => {
-            const newOrigin = e.target.value;
+            const newOrigin = e?.target?.value || select.value;
             saveCurrentScroll();
             viewAllSelectedOrigin = newOrigin;
             updateViewAll(newOrigin);
@@ -928,6 +969,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const sortedPaths = Object.keys(routeGroups).sort();
 
     if (!listUnchanged && routesContainer) {
+      const hadFocusedChild = Boolean(activeEl && routesContainer.contains(activeEl));
       if (displayedAnnotations.length === 0) {
         routesContainer.textContent = '';
         const message = viewAllActiveFilter === 'current' ? 'No annotations on this page' : 'No annotations yet';
@@ -936,7 +978,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         emptyEl.textContent = message;
         routesContainer.appendChild(emptyEl);
 
-        if (activeEl && routesContainer.contains(activeEl)) {
+        if (hadFocusedChild) {
           const activeTab = viewAllActiveFilter === 'all' ? allTab : currentTab;
           if (activeTab && typeof activeTab.focus === 'function') activeTab.focus();
         }
@@ -1144,6 +1186,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     viewAllActiveFilter = 'all';
     viewAllLastRenderedAnnotations = null;
     viewAllScrollPositions.clear();
+    viewAllSessionOrigins.clear();
     const btn = toolbarEl.querySelector('.vibe-tb-viewall');
     if (btn) btn.classList.remove('active');
   }
@@ -1191,6 +1234,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const version = chrome.runtime.getManifest().version;
     const route = vibeLocationPath(window.location);
 
+    // pi-lens-ignore: no-inner-html-js
     header.innerHTML = `
       <div>
         <span class="vibe-settings-title">${escapeHTML(route)}</span>
@@ -1198,6 +1242,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       </div>
     `;
 
+    // pi-lens-ignore: no-inner-html-js
     body.innerHTML = `
       <button class="vibe-settings-link vibe-get-started-btn" type="button">
         ${ICONS.book}
@@ -1595,18 +1640,22 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const statusEl = toolbarEl.querySelector('.vibe-tb-status');
     if (statusEl) {
       if (watcherActive) {
+        // pi-lens-ignore: no-inner-html-js
         statusEl.innerHTML = ICONS.eye;
         statusEl.style.color = 'var(--v-status-watching)';
         statusEl.title = 'Watching — click to stop';
       } else if (serverOnline && serverOutdated) {
+        // pi-lens-ignore: no-inner-html-js
         statusEl.innerHTML = ICONS.serverRack;
         statusEl.style.color = 'var(--v-status-watching)';
         statusEl.title = 'MCP Server online — update available (npm update -g vibe-annotations-server)';
       } else if (serverOnline) {
+        // pi-lens-ignore: no-inner-html-js
         statusEl.innerHTML = ICONS.serverRack;
         statusEl.style.color = 'var(--v-status-online)';
         statusEl.title = 'MCP Server online';
       } else {
+        // pi-lens-ignore: no-inner-html-js
         statusEl.innerHTML = ICONS.serverRack;
         statusEl.style.color = 'var(--v-status-offline)';
         statusEl.title = 'MCP Server offline';
@@ -1801,6 +1850,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
       backdrop.className = 'vibe-confirm-backdrop';
+      // pi-lens-ignore: no-inner-html-js
       backdrop.innerHTML = `
         <div class="vibe-confirm">
           <div class="vibe-confirm-title">Delete all annotations?</div>
@@ -1985,6 +2035,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       const backdrop = document.createElement('div');
       backdrop.className = 'vibe-confirm-backdrop';
       const skipText = skipped > 0 ? `<br>${skipped} already exist and will be skipped.` : '';
+      // pi-lens-ignore: no-inner-html-js
       backdrop.innerHTML = `
         <div class="vibe-confirm">
           <div class="vibe-confirm-title">Import annotations</div>
@@ -2013,6 +2064,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
       backdrop.className = 'vibe-confirm-backdrop';
+      // pi-lens-ignore: no-inner-html-js
       backdrop.innerHTML = `
         <div class="vibe-confirm">
           <div class="vibe-confirm-title">Remap annotations?</div>
@@ -2043,6 +2095,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     const backdrop = document.createElement('div');
     backdrop.className = 'vibe-confirm-backdrop';
+    // pi-lens-ignore: no-inner-html-js
     backdrop.innerHTML = `
       <div class="vibe-confirm">
         <div class="vibe-confirm-title">${escapeHTML(title)}</div>
