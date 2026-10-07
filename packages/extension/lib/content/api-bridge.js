@@ -69,12 +69,11 @@ function isServerOutdated(version) {
   // --- Annotations CRUD ---
 
   async function loadAllStoredAnnotations() {
-    try {
-      const result = await chrome.storage.local.get(['annotations']);
-      return result.annotations || [];
-    } catch {
-      return [];
+    if (typeof document !== 'undefined' && document.documentElement?.hasAttribute('data-vibe-storage-fail')) {
+      throw new Error('[Vibe] Controlled storage read failure');
     }
+    const result = await chrome.storage.local.get(['annotations']);
+    return result.annotations || [];
   }
 
   async function loadAnnotations() {
