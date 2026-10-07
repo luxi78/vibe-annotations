@@ -531,7 +531,7 @@ import VibeElementContext from './element-context.js';
         const ai = isVert ? ALIGN_3[col] : ALIGN_3[row];
         const isActive = curJC === jc && curAI === ai;
         const label = alignLabel(jc, ai, isVert);
-        matrixHTML += `<button class="vibe-matrix-cell ${isActive ? 'active' : ''}" data-jc="${jc}" data-ai="${ai}" type="button" title="${label}"><span class="vibe-matrix-dot"></span></button>`;
+        matrixHTML += `<button class="vibe-matrix-cell ${isActive ? 'active' : ''}" data-jc="${jc}" data-ai="${ai}" type="button" title="${label}" aria-label="${label}"><span class="vibe-matrix-dot"></span></button>`;
       }
     }
     return {
@@ -727,29 +727,35 @@ import VibeElementContext from './element-context.js';
     modeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         applyMode(btn.dataset.mode);
-        rebuildMatrix(btn.dataset.mode);
+        updateMatrix(btn.dataset.mode);
       });
     });
 
     const matrixContainer = popover.querySelector('.vibe-align-matrix');
 
-    function rebuildMatrix(newMode) {
+    function updateMatrix(newMode) {
       if (!matrixContainer) return;
       const isVert = newMode === 'vflex';
       matrixContainer.dataset.direction = newMode;
-      let html = '';
+      const cells = matrixContainer.querySelectorAll('.vibe-matrix-cell');
       for (let row = 0; row < 3; row++) {
         for (let col = 0; col < 3; col++) {
+          const idx = row * 3 + col;
+          const cell = cells[idx];
+          if (!cell) continue;
           const jc = isVert ? JUSTIFY_3[row] : JUSTIFY_3[col];
           const ai = isVert ? ALIGN_3[col] : ALIGN_3[row];
           const isActive = currentJC === jc && currentAI === ai;
           const label = alignLabel(jc, ai, isVert);
-          html += `<button class="vibe-matrix-cell ${isActive ? 'active' : ''}" data-jc="${jc}" data-ai="${ai}" type="button" title="${label}"><span class="vibe-matrix-dot"></span></button>`;
+          cell.dataset.jc = jc;
+          cell.dataset.ai = ai;
+          cell.title = label;
+          cell.setAttribute('aria-label', label);
+          cell.classList.toggle('active', isActive);
         }
       }
-      matrixContainer.innerHTML = html;
-      wireMatrixCells();
     }
+    const rebuildMatrix = updateMatrix;
 
     function wireMatrixCells() {
       const cells = popover.querySelectorAll('.vibe-matrix-cell');
