@@ -3,7 +3,6 @@
 // Settings dropdown with theme toggle, MCP status, clear-on-copy
 
 import VibeAPI from './api-bridge.js';
-import VibeElementContext from './element-context.js';
 import VibeEvents, { vibeLocationPath } from './event-bus.js';
 import VibeShadowHost from './shadow-host.js';
 import VibeKeyboardRouter from './keyboard-router.js';
@@ -345,7 +344,42 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     });
   }
 
-  // --- View All panel (stub — full impl in Phase 6) ---
+  // --- View All panel ---
+
+  const VIEWALL_TRASH_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
+  const VIEWALL_COPY_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+  const VIEWALL_SHARE_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>';
+  const VIEWALL_SMALL_TRASH = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
+  const VIEWALL_SPARKLE_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
+
+  let viewAllRenderSeq = 0;
+  let viewAllCurrentAnnotations = [];
+  let viewAllAvailableOrigins = [];
+  const viewAllScrollPositions = new Map();
+
+  function getReviewPositionKey(origin, filter) {
+    return `${origin}:${filter}`;
+  }
+
+  function saveCurrentScroll() {
+    if (!viewAllPanel || !viewAllSelectedOrigin) return;
+    const routesEl = viewAllPanel.querySelector('.vibe-viewall-routes');
+    if (routesEl) {
+      const key = getReviewPositionKey(viewAllSelectedOrigin, viewAllActiveFilter);
+      viewAllScrollPositions.set(key, routesEl.scrollTop || 0);
+    }
+  }
+
+  function restoreScrollForCurrentView() {
+    if (!viewAllPanel) return;
+    const routesEl = viewAllPanel.querySelector('.vibe-viewall-routes');
+    if (routesEl) {
+      const key = getReviewPositionKey(viewAllSelectedOrigin, viewAllActiveFilter);
+      const saved = viewAllScrollPositions.get(key) || 0;
+      const maxScroll = Math.max(0, (routesEl.scrollHeight || 0) - (routesEl.clientHeight || 0));
+      routesEl.scrollTop = Math.min(saved, maxScroll);
+    }
+  }
 
   function toggleViewAll() {
     if (viewAllPanel) {
@@ -356,189 +390,34 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     }
   }
 
-  async function openViewAll(targetOrigin, targetFilter) {
-    if (viewAllPanel) {
-      if (viewAllPanel._cleanupEvents) viewAllPanel._cleanupEvents();
-      viewAllPanel.remove();
-      viewAllPanel = null;
-    }
+  function ensureViewAllPanelShell() {
+    if (viewAllPanel) return;
 
     const btn = toolbarEl.querySelector('.vibe-tb-viewall');
     if (btn) btn.classList.add('active');
-
-    const currentOrigin = window.location.origin;
-    viewAllSelectedOrigin = targetOrigin || currentOrigin;
-    if (targetFilter) viewAllActiveFilter = targetFilter;
-
-    // Exclude resolved (agent finalized/cleaned them — done). variants-discarded and
-    // variant-chosen stay, shown with a "pending agent" label; the count pill matches.
-    const allStored = await VibeAPI.loadAllStoredAnnotations();
-    const allEligible = (allStored || []).filter(a => a && a.status !== 'resolved');
-
-    const availableOrigins = getAvailableSiteOrigins(allEligible, currentOrigin);
-    if (!availableOrigins.includes(viewAllSelectedOrigin)) {
-      viewAllSelectedOrigin = currentOrigin;
-    }
-
-    const annotations = allEligible.filter(a => {
-      try { return new URL(a.url).origin === viewAllSelectedOrigin; } catch { return false; }
-    });
-
-    const allCount = annotations.length;
-    const currentUrl = window.location.href;
-    const currentPageAnnotations = annotations.filter(a => a.url === currentUrl);
-    const currentCount = currentPageAnnotations.length;
-
-    const displayedAnnotations = viewAllActiveFilter === 'current'
-      ? currentPageAnnotations
-      : annotations;
-
-    // Group by route (path)
-    const routeGroups = {};
-    for (const a of displayedAnnotations) {
-      try {
-        const path = new URL(a.url).pathname;
-        if (!routeGroups[path]) routeGroups[path] = [];
-        routeGroups[path].push(a);
-      } catch {
-        const fallback = '/';
-        if (!routeGroups[fallback]) routeGroups[fallback] = [];
-        routeGroups[fallback].push(a);
-      }
-    }
 
     viewAllPanel = document.createElement('div');
     const rect = toolbarEl.getBoundingClientRect();
     const inLowerHalf = rect.top > window.innerHeight / 2;
     viewAllPanel.className = 'vibe-viewall-panel' + (inLowerHalf ? ' above' : '');
 
-    const trashIcon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
-    const copyIcon = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
-    const shareIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>';
-    const smallTrash = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
-    const sparkleIcon = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
-
-    // Build routes HTML
-    let routesHTML = '';
-    const sortedPaths = Object.keys(routeGroups).sort();
-    for (const path of sortedPaths) {
-      const items = routeGroups[path];
-      const cardsHTML = items.map(a => {
-        const isStylesheet = a.type === 'stylesheet';
-        const selector = isStylesheet ? null : (a.selector || a.element_context?.tag || '?');
-        const hasPendingChanges = a.pending_changes && Object.keys(a.pending_changes).length > 0;
-        const changeCount = hasPendingChanges ? Object.keys(a.pending_changes).length : 0;
-        const comment = a.comment || '';
-        const isCurrentPage = a.url === window.location.href;
-
-        let headerHTML;
-        if (isStylesheet) {
-          headerHTML = `<div class="vibe-viewall-design">${sparkleIcon}<span>Stylesheet change</span></div>`;
-        } else {
-          headerHTML = `<div class="vibe-viewall-selector">${escapeHTML(selector)}</div>`;
-        }
-
-        let bodyHTML;
-        if (hasPendingChanges && !comment) {
-          bodyHTML = `<div class="vibe-viewall-design">${sparkleIcon}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
-        } else if (comment) {
-          bodyHTML = `<div class="vibe-viewall-comment">${escapeHTML(comment)}</div>`;
-          if (hasPendingChanges) {
-            bodyHTML += `<div class="vibe-viewall-design" style="margin-top:2px;">${sparkleIcon}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
-          }
-        } else if (!isStylesheet) {
-          bodyHTML = `<div class="vibe-viewall-comment empty">No comment</div>`;
-        } else {
-          bodyHTML = '';
-        }
-
-        // Variant lifecycle chip — signals states that need agent action so the
-        // list is self-explanatory (esp. why a "deleted" variant lingers here).
-        const vs = variantStatusLabel(a);
-        const statusHTML = vs ? `<div class="vibe-viewall-status ${vs.cls}">${vs.text}</div>` : '';
-        // A scaffolded variant can't be hard-deleted (it awaits agent cleanup), so
-        // hide the trash for the discarded state to avoid a no-op button.
-        const deleteHTML = a.status === 'variants-discarded'
-          ? ''
-          : `<button class="vibe-viewall-card-delete" data-id="${escapeHTML(a.id)}" title="Delete">${trashIcon}</button>`;
-
-        return `
-          <div class="vibe-viewall-card${isCurrentPage ? ' current-page' : ''}" data-id="${escapeHTML(a.id)}" data-current-page="${isCurrentPage}">
-            <div class="vibe-viewall-card-content">
-              ${headerHTML}
-              ${bodyHTML}
-              ${statusHTML}
-            </div>
-            ${deleteHTML}
-          </div>
-        `;
-      }).join('');
-      const routeClearHTML = items.length > 1
-        ? `<button class="vibe-viewall-route-clear" data-path="${escapeHTML(path)}" title="Clear route">${smallTrash}</button>`
-        : '';
-
-      routesHTML += `
-        <div class="vibe-viewall-route" data-path="${escapeHTML(path)}">
-          <div class="vibe-viewall-route-header">
-            <div class="vibe-viewall-route-left">
-              <span class="vibe-viewall-route-path">${escapeHTML(path)}</span>
-              <span class="vibe-viewall-route-count">${items.length}</span>
-            </div>
-            ${routeClearHTML}
-          </div>
-          ${cardsHTML}
-        </div>
-      `;
-    }
-
-    if (displayedAnnotations.length === 0) {
-      const message = viewAllActiveFilter === 'current' ? 'No annotations on this page' : 'No annotations yet';
-      routesHTML = `<div class="vibe-viewall-empty">${message}</div>`;
-    }
-
-    let headerLeftHTML;
-    if (availableOrigins.length <= 1) {
-      const hostname = window.location.host || window.location.hostname;
-      headerLeftHTML = `<span class="vibe-viewall-url">${escapeHTML(hostname)}</span>`;
-    } else {
-      const optionsHTML = availableOrigins.map(orig => {
-        const isSel = orig === viewAllSelectedOrigin;
-        const isCurrent = orig === currentOrigin;
-        const optText = formatSiteOptionText(orig, currentOrigin, availableOrigins);
-        const ariaLabel = isCurrent ? ` aria-label="${escapeHTML(formatSiteLabel(orig, availableOrigins))}, current site"` : '';
-        return `<option value="${escapeHTML(orig)}"${isSel ? ' selected' : ''}${ariaLabel}>${escapeHTML(optText)}</option>`;
-      }).join('');
-      headerLeftHTML = `
-        <div class="vibe-viewall-site-picker">
-          <select class="vibe-viewall-site-select" aria-label="Select site; green check marks the current site">
-            ${optionsHTML}
-          </select>
-        </div>
-      `;
-    }
-
-    const tabsHTML = `
-      <div class="vibe-viewall-tabs">
-        <button class="vibe-viewall-tab${viewAllActiveFilter === 'all' ? ' active' : ''}" data-filter="all" type="button">All (${allCount})</button>
-        <button class="vibe-viewall-tab${viewAllActiveFilter === 'current' ? ' active' : ''}" data-filter="current" type="button">This page (${currentCount})</button>
-      </div>
-    `;
-
     viewAllPanel.innerHTML = `
       <div class="vibe-viewall-header">
-        ${headerLeftHTML}
         <div class="vibe-viewall-actions">
-          <button class="vibe-viewall-copy" title="Copy all">${copyIcon}</button>
-          <button class="vibe-viewall-export" title="Share / Export">${shareIcon}</button>
-          <button class="vibe-viewall-deleteall" title="Delete annotations for this site">${trashIcon}</button>
+          <button class="vibe-viewall-copy" title="Copy all">${VIEWALL_COPY_ICON}</button>
+          <button class="vibe-viewall-export" title="Share / Export">${VIEWALL_SHARE_ICON}</button>
+          <button class="vibe-viewall-deleteall" title="Delete annotations for this site">${VIEWALL_TRASH_ICON}</button>
         </div>
       </div>
-      ${tabsHTML}
-      <div class="vibe-viewall-routes">${routesHTML}</div>
+      <div class="vibe-viewall-tabs">
+        <button class="vibe-viewall-tab active" data-filter="all" type="button">All (0)</button>
+        <button class="vibe-viewall-tab" data-filter="current" type="button">This page (0)</button>
+      </div>
+      <div class="vibe-viewall-routes"></div>
       <div class="vibe-viewall-footer">
         <div class="vibe-viewall-global-action">
           <span class="vibe-viewall-global-caption">Delete all annotations across all sites</span>
-          <button class="vibe-viewall-delete-global" type="button" aria-label="Delete all annotations across all sites" title="Delete all annotations across all sites" data-count="${(allStored || []).length}"${globalDeleteBusy || !(allStored || []).length ? ' disabled' : ''}>${trashIcon}</button>
+          <button class="vibe-viewall-delete-global" type="button" aria-label="Delete all annotations across all sites" title="Delete all annotations across all sites" data-count="0" disabled>${VIEWALL_TRASH_ICON}</button>
         </div>
         <div class="vibe-viewall-global-status" role="status"></div>
       </div>
@@ -546,21 +425,31 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     toolbarEl.appendChild(viewAllPanel);
 
-    // --- Wire View All actions ---
+    // Filter tabs listener
+    viewAllPanel.querySelectorAll('.vibe-viewall-tab').forEach(tabBtn => {
+      tabBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const filter = tabBtn.dataset.filter;
+        if (filter && filter !== viewAllActiveFilter) {
+          saveCurrentScroll();
+          viewAllActiveFilter = filter;
+          updateViewAll();
+        }
+      });
+    });
 
+    // Global delete listener
     viewAllPanel.querySelector('.vibe-viewall-delete-global').addEventListener('click', async () => {
       if (globalDeleteBusy) return;
       globalDeleteBusy = true;
       const button = viewAllPanel.querySelector('.vibe-viewall-delete-global');
       button.disabled = true;
       try {
-        // Read a fresh, unfiltered snapshot, including resolved annotations.
         const stored = await VibeAPI.loadAllStoredAnnotations();
         const ids = (stored || []).filter(a => a && typeof a.id === 'string' && a.id).map(a => a.id);
         if (!ids.length) return;
         const root = VibeShadowHost.getRoot();
         if (!root) return;
-        // This confirmation is mandatory, regardless of skip-delete settings.
         const confirmed = await showDeleteConfirm(root, { allSites: true, count: ids.length });
         if (!confirmed) return;
         if (viewAllPanel) viewAllPanel._suppressRefresh = true;
@@ -568,7 +457,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         await refreshAnnotationCount();
         VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
         if (viewAllPanel) {
-          await openViewAll(window.location.origin, 'all');
+          await updateViewAll(window.location.origin, 'all');
           if (result.pendingSync) {
             const status = viewAllPanel?.querySelector('.vibe-viewall-global-status');
             if (status) status.textContent = `Deleted locally. ${result.syncError || 'Server sync is pending.'}`;
@@ -586,78 +475,29 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       }
     });
 
-    // Filter tabs listener
-    viewAllPanel.querySelectorAll('.vibe-viewall-tab').forEach(tabBtn => {
-      tabBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const filter = tabBtn.dataset.filter;
-        if (filter && filter !== viewAllActiveFilter) {
-          viewAllActiveFilter = filter;
-          openViewAll(viewAllSelectedOrigin, viewAllActiveFilter);
-        }
-      });
-    });
-
-    // Site selector change listener
-    const siteSelect = viewAllPanel.querySelector('.vibe-viewall-site-select');
-    if (siteSelect) {
-      siteSelect.addEventListener('change', (e) => {
-        const newOrigin = e.target.value;
-        viewAllSelectedOrigin = newOrigin;
-        openViewAll(newOrigin);
-      });
-    }
-
-    const syncAfterDeletion = async (deletedCount) => {
-      const deletedOrigin = viewAllSelectedOrigin;
-      const stored = (await VibeAPI.loadAllStoredAnnotations()) || [];
-      const remaining = stored.filter(a => {
-        if (!a || a.status === 'resolved') return false;
-        try { return new URL(a.url).origin === deletedOrigin; } catch { return false; }
-      });
-      await refreshAnnotationCount();
-      if (remaining.length === 0 && deletedOrigin !== currentOrigin) {
-        viewAllSelectedOrigin = currentOrigin;
-        viewAllActiveFilter = 'all';
-        openViewAll(currentOrigin, 'all');
-        return;
-      }
-      if (deletedOrigin === currentOrigin) {
-        VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
-        if (remaining.length === 0) {
-          VibeEvents.emit('annotations:cleared', { count: deletedCount });
-        }
-      }
-      openViewAll(deletedOrigin, viewAllActiveFilter);
-    };
-
     // Copy all (selected site)
     const copyBtn = viewAllPanel.querySelector('.vibe-viewall-copy');
     copyBtn.addEventListener('click', async () => {
-      if (!annotations.length) return;
+      if (!viewAllCurrentAnnotations.length) return;
       let siteHost;
       try { siteHost = new URL(viewAllSelectedOrigin).host; } catch { siteHost = window.location.host; }
-      const text = renderAnnotationsMarkdown(annotations, siteHost);
+      const text = renderAnnotationsMarkdown(viewAllCurrentAnnotations, siteHost);
       try { await navigator.clipboard.writeText(text); } catch {
         const ta = document.createElement('textarea'); ta.value = text;
         document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
       }
-      // Flash checkmark feedback
       const origHTML = copyBtn.innerHTML;
       copyBtn.innerHTML = ICONS.check;
       copyBtn.style.color = 'var(--v-status-online)';
       setTimeout(() => { copyBtn.innerHTML = origHTML; copyBtn.style.color = ''; }, 1500);
 
       if (clearOnCopy) {
-        for (const a of annotations) await VibeAPI.deleteAnnotation(a.id);
-        await syncAfterDeletion(annotations.length);
+        for (const a of viewAllCurrentAnnotations) await VibeAPI.deleteAnnotation(a.id);
+        await syncAfterDeletion(viewAllCurrentAnnotations.length);
       }
     });
 
-    // Share / Export — dropdown with .md (agent), .html (human share), and .json
-    // (re-importable) options.
-    // The menu is rendered at the shadow root (not inside the panel) to avoid the
-    // panel's overflow clipping and the toolbar's transform breaking fixed-position.
+    // Share / Export
     const shareBtn = viewAllPanel.querySelector('.vibe-viewall-export');
     let shareMenu = null;
     const closeShareMenu = () => { if (shareMenu) { shareMenu.remove(); shareMenu = null; } };
@@ -682,22 +522,21 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
           ev.stopPropagation();
           const fmt = opt.dataset.format;
           closeShareMenu();
-          await downloadShare(fmt, viewAllSelectedOrigin, annotations);
+          await downloadShare(fmt, viewAllSelectedOrigin, viewAllCurrentAnnotations);
         });
       });
     });
-    // Close on any click elsewhere (in the overlay or on the page).
     const onOutsideClick = (ev) => { if (shareMenu && !shareMenu.contains(ev.target) && ev.target !== shareBtn) closeShareMenu(); };
     VibeShadowHost.getRoot()?.addEventListener('click', onOutsideClick);
     document.addEventListener('click', closeShareMenu);
 
-    // Delete all (animate all cards out with stagger, then delete)
+    // Delete all for selected site
     viewAllPanel.querySelector('.vibe-viewall-deleteall').addEventListener('click', async () => {
-      if (!annotations.length) return;
+      if (!viewAllCurrentAnnotations.length) return;
       const root = VibeShadowHost.getRoot();
       if (!root) return;
-      const siteLabel = formatSiteLabel(viewAllSelectedOrigin, availableOrigins);
-      const confirmed = await showDeleteConfirm(root, { siteName: siteLabel, count: annotations.length });
+      const siteLabel = formatSiteLabel(viewAllSelectedOrigin, viewAllAvailableOrigins);
+      const confirmed = await showDeleteConfirm(root, { siteName: siteLabel, count: viewAllCurrentAnnotations.length });
       if (!confirmed) return;
       const allCards = viewAllPanel.querySelectorAll('.vibe-viewall-card');
       allCards.forEach((card, i) => {
@@ -706,91 +545,23 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       await new Promise(r => setTimeout(r, allCards.length * 40 + 300));
       if (viewAllPanel) viewAllPanel._suppressRefresh = true;
       try {
-        for (const a of annotations) {
+        for (const a of viewAllCurrentAnnotations) {
           await VibeAPI.deleteAnnotation(a.id);
         }
-        await syncAfterDeletion(annotations.length);
+        await syncAfterDeletion(viewAllCurrentAnnotations.length);
       } catch (err) {
         if (viewAllPanel) viewAllPanel._suppressRefresh = false;
         console.error('[Vibe] delete all failed:', err);
-        openViewAll(viewAllSelectedOrigin);
+        updateViewAll(viewAllSelectedOrigin);
       }
     });
 
-    // Per-route clear (animate each card out with stagger, then delete)
-    viewAllPanel.querySelectorAll('.vibe-viewall-route-clear').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const path = btn.dataset.path;
-        const routeAnnotations = routeGroups[path] || [];
-        const routeEl = btn.closest('.vibe-viewall-route');
-        if (routeEl) {
-          const cards = routeEl.querySelectorAll('.vibe-viewall-card');
-          cards.forEach((card, i) => {
-            setTimeout(() => card.classList.add('deleting'), i * 50);
-          });
-          await new Promise(r => setTimeout(r, cards.length * 50 + 300));
-        }
-        if (viewAllPanel) viewAllPanel._suppressRefresh = true;
-        try {
-          for (const a of routeAnnotations) {
-            await VibeAPI.deleteAnnotation(a.id);
-          }
-          await syncAfterDeletion(routeAnnotations.length);
-        } catch (err) {
-          if (viewAllPanel) viewAllPanel._suppressRefresh = false;
-          console.error('[Vibe] clear route failed:', err);
-          openViewAll(viewAllSelectedOrigin);
-        }
-      });
-    });
-
-    // Per-card delete (animate out then delete)
-    viewAllPanel.querySelectorAll('.vibe-viewall-card-delete').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const id = btn.dataset.id;
-        const card = btn.closest('.vibe-viewall-card');
-        if (card) {
-          card.classList.add('deleting');
-          await new Promise(r => setTimeout(r, 300));
-        }
-        if (viewAllPanel) viewAllPanel._suppressRefresh = true;
-        try {
-          await VibeAPI.deleteAnnotation(id);
-          await syncAfterDeletion(1);
-        } catch (err) {
-          if (card) card.classList.remove('deleting');
-          if (viewAllPanel) viewAllPanel._suppressRefresh = false;
-          console.error('[Vibe] deleteAnnotation failed:', err);
-        }
-      });
-    });
-
-    // Click card to scroll to element (current page only!)
-    viewAllPanel.querySelectorAll('.vibe-viewall-card').forEach(card => {
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.vibe-viewall-card-delete')) return;
-        const id = card.dataset.id;
-        const a = annotations.find(x => x.id === id);
-        if (a && a.url === window.location.href && a.selector) {
-          try {
-            const el = document.querySelector(a.selector);
-            if (el) {
-              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              VibeEvents.emit('badge:target', { id });
-            }
-          } catch {}
-        }
-      });
-    });
-
-    // Listen for external annotation changes (e.g. MCP deletion, other tab sync)
-    // Skip refresh if the panel itself triggered the change (via delete actions)
+    // Listen for external annotation changes
     let refreshPending = false;
     const refreshHandler = () => {
       if (!viewAllPanel || refreshPending || viewAllPanel._suppressRefresh) return;
       refreshPending = true;
-      setTimeout(() => { refreshPending = false; if (viewAllPanel && !viewAllPanel._suppressRefresh) openViewAll(viewAllSelectedOrigin); }, 600);
+      setTimeout(() => { refreshPending = false; if (viewAllPanel && !viewAllPanel._suppressRefresh) updateViewAll(viewAllSelectedOrigin); }, 600);
     };
     VibeEvents.on('badges:rendered', refreshHandler);
 
@@ -801,6 +572,343 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       VibeShadowHost.getRoot()?.removeEventListener('click', onOutsideClick);
       closeShareMenu();
     };
+  }
+
+  const syncAfterDeletion = async (deletedCount) => {
+    const deletedOrigin = viewAllSelectedOrigin;
+    const currentOrigin = window.location.origin;
+    const stored = (await VibeAPI.loadAllStoredAnnotations()) || [];
+    const remaining = stored.filter(a => {
+      if (!a || a.status === 'resolved') return false;
+      try { return new URL(a.url).origin === deletedOrigin; } catch { return false; }
+    });
+    await refreshAnnotationCount();
+    if (remaining.length === 0 && deletedOrigin !== currentOrigin) {
+      viewAllSelectedOrigin = currentOrigin;
+      viewAllActiveFilter = 'all';
+      await updateViewAll(currentOrigin, 'all');
+      return;
+    }
+    if (deletedOrigin === currentOrigin) {
+      VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
+      if (remaining.length === 0) {
+        VibeEvents.emit('annotations:cleared', { count: deletedCount });
+      }
+    }
+    await updateViewAll(deletedOrigin, viewAllActiveFilter);
+  };
+
+  async function openViewAll(targetOrigin, targetFilter) {
+    if (!viewAllPanel) {
+      closeSettings();
+      ensureViewAllPanelShell();
+    }
+    await updateViewAll(targetOrigin, targetFilter);
+  }
+
+  async function updateViewAll(targetOrigin, targetFilter) {
+    if (!viewAllPanel) return;
+    const seq = ++viewAllRenderSeq;
+
+    const currentOrigin = window.location.origin;
+    if (targetOrigin) {
+      viewAllSelectedOrigin = targetOrigin;
+    } else if (!viewAllSelectedOrigin) {
+      viewAllSelectedOrigin = currentOrigin;
+    }
+
+    if (targetFilter) {
+      viewAllActiveFilter = targetFilter;
+    }
+
+    const root = VibeShadowHost.getRoot();
+    const activeEl = root?.activeElement || (typeof document !== 'undefined' ? document.activeElement : null);
+    const wasFilterTabFocused = !!(activeEl && activeEl.classList && activeEl.classList.contains('vibe-viewall-tab'));
+    const wasSiteSelectFocused = !!(activeEl && activeEl.classList && activeEl.classList.contains('vibe-viewall-site-select'));
+
+    // Exclude resolved (agent finalized/cleaned them — done). variants-discarded and
+    // variant-chosen stay, shown with a "pending agent" label; the count pill matches.
+    const allStored = await VibeAPI.loadAllStoredAnnotations();
+    if (seq !== viewAllRenderSeq || !viewAllPanel) return;
+
+    const allEligible = (allStored || []).filter(a => a && a.status !== 'resolved');
+
+    const availableOrigins = getAvailableSiteOrigins(allEligible, currentOrigin);
+    if (!availableOrigins.includes(viewAllSelectedOrigin)) {
+      viewAllSelectedOrigin = currentOrigin;
+    }
+    viewAllAvailableOrigins = availableOrigins;
+
+    const annotations = allEligible.filter(a => {
+      try { return new URL(a.url).origin === viewAllSelectedOrigin; } catch { return false; }
+    });
+    viewAllCurrentAnnotations = annotations;
+
+    const allCount = annotations.length;
+    const currentUrl = window.location.href;
+    const currentPageAnnotations = annotations.filter(a => a.url === currentUrl);
+    const currentCount = currentPageAnnotations.length;
+
+    const displayedAnnotations = viewAllActiveFilter === 'current'
+      ? currentPageAnnotations
+      : annotations;
+
+    // Group by route (path)
+    const routeGroups = {};
+    for (const a of displayedAnnotations) {
+      try {
+        const path = new URL(a.url).pathname;
+        if (!routeGroups[path]) routeGroups[path] = [];
+        routeGroups[path].push(a);
+      } catch {
+        const fallback = '/';
+        if (!routeGroups[fallback]) routeGroups[fallback] = [];
+        routeGroups[fallback].push(a);
+      }
+    }
+
+    // 1. Update Header Left
+    const headerEl = viewAllPanel.querySelector('.vibe-viewall-header');
+    if (headerEl) {
+      const actionsEl = headerEl.querySelector('.vibe-viewall-actions');
+      const existingLeft = headerEl.firstElementChild !== actionsEl ? headerEl.firstElementChild : null;
+
+      if (availableOrigins.length <= 1) {
+        if (!existingLeft || !existingLeft.classList.contains('vibe-viewall-url')) {
+          const newLeftEl = document.createElement('span');
+          newLeftEl.className = 'vibe-viewall-url';
+          newLeftEl.textContent = window.location.host || window.location.hostname;
+          if (existingLeft) headerEl.replaceChild(newLeftEl, existingLeft);
+          else if (actionsEl) headerEl.insertBefore(newLeftEl, actionsEl);
+          else headerEl.appendChild(newLeftEl);
+        } else {
+          existingLeft.textContent = window.location.host || window.location.hostname;
+        }
+      } else {
+        const existingSelect = existingLeft?.querySelector('.vibe-viewall-site-select');
+        const populateSiteOptions = (selectEl) => {
+          selectEl.textContent = '';
+          for (const orig of availableOrigins) {
+            const opt = document.createElement('option');
+            opt.value = orig;
+            opt.textContent = formatSiteOptionText(orig, currentOrigin, availableOrigins);
+            if (orig === viewAllSelectedOrigin) opt.selected = true;
+            if (orig === currentOrigin) {
+              opt.setAttribute('aria-label', `${formatSiteLabel(orig, availableOrigins)}, current site`);
+            }
+            selectEl.appendChild(opt);
+          }
+        };
+
+        if (existingSelect) {
+          populateSiteOptions(existingSelect);
+          existingSelect.value = viewAllSelectedOrigin;
+        } else {
+          const picker = document.createElement('div');
+          picker.className = 'vibe-viewall-site-picker';
+          const select = document.createElement('select');
+          select.className = 'vibe-viewall-site-select';
+          select.setAttribute('aria-label', 'Select site; green check marks the current site');
+          populateSiteOptions(select);
+          select.value = viewAllSelectedOrigin;
+          select.addEventListener('change', (e) => {
+            const newOrigin = e.target.value;
+            saveCurrentScroll();
+            viewAllSelectedOrigin = newOrigin;
+            updateViewAll(newOrigin);
+          });
+          picker.appendChild(select);
+          if (existingLeft) headerEl.replaceChild(picker, existingLeft);
+          else if (actionsEl) headerEl.insertBefore(picker, actionsEl);
+          else headerEl.appendChild(picker);
+        }
+      }
+    }
+
+    // 2. Update Tabs
+    const allTab = viewAllPanel.querySelector('.vibe-viewall-tab[data-filter="all"]');
+    const currentTab = viewAllPanel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    if (allTab) {
+      allTab.textContent = `All (${allCount})`;
+      allTab.classList.toggle('active', viewAllActiveFilter === 'all');
+    }
+    if (currentTab) {
+      currentTab.textContent = `This page (${currentCount})`;
+      currentTab.classList.toggle('active', viewAllActiveFilter === 'current');
+    }
+
+    // 3. Build & Update Routes HTML
+    let routesHTML = '';
+    const sortedPaths = Object.keys(routeGroups).sort();
+    for (const path of sortedPaths) {
+      const items = routeGroups[path];
+      const cardsHTML = items.map(a => {
+        const isStylesheet = a.type === 'stylesheet';
+        const selector = isStylesheet ? null : (a.selector || a.element_context?.tag || '?');
+        const hasPendingChanges = a.pending_changes && Object.keys(a.pending_changes).length > 0;
+        const changeCount = hasPendingChanges ? Object.keys(a.pending_changes).length : 0;
+        const comment = a.comment || '';
+        const isCurrentPage = a.url === window.location.href;
+
+        let cardHeaderHTML;
+        if (isStylesheet) {
+          cardHeaderHTML = `<div class="vibe-viewall-design">${VIEWALL_SPARKLE_ICON}<span>Stylesheet change</span></div>`;
+        } else {
+          cardHeaderHTML = `<div class="vibe-viewall-selector">${escapeHTML(selector)}</div>`;
+        }
+
+        let bodyHTML;
+        if (hasPendingChanges && !comment) {
+          bodyHTML = `<div class="vibe-viewall-design">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
+        } else if (comment) {
+          bodyHTML = `<div class="vibe-viewall-comment">${escapeHTML(comment)}</div>`;
+          if (hasPendingChanges) {
+            bodyHTML += `<div class="vibe-viewall-design" style="margin-top:2px;">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
+          }
+        } else if (!isStylesheet) {
+          bodyHTML = `<div class="vibe-viewall-comment empty">No comment</div>`;
+        } else {
+          bodyHTML = '';
+        }
+
+        const variantStatus = variantStatusLabel(a);
+        const statusHTML = variantStatus ? `<div class="vibe-viewall-status ${variantStatus.cls}">${variantStatus.text}</div>` : '';
+        const deleteHTML = a.status === 'variants-discarded'
+          ? ''
+          : `<button class="vibe-viewall-card-delete" data-id="${escapeHTML(a.id)}" title="Delete">${VIEWALL_TRASH_ICON}</button>`;
+
+        return `
+          <div class="vibe-viewall-card${isCurrentPage ? ' current-page' : ''}" data-id="${escapeHTML(a.id)}" data-current-page="${isCurrentPage}">
+            <div class="vibe-viewall-card-content">
+              ${cardHeaderHTML}
+              ${bodyHTML}
+              ${statusHTML}
+            </div>
+            ${deleteHTML}
+          </div>
+        `;
+      }).join('');
+      const routeClearHTML = items.length > 1
+        ? `<button class="vibe-viewall-route-clear" data-path="${escapeHTML(path)}" title="Clear route">${VIEWALL_SMALL_TRASH}</button>`
+        : '';
+
+      routesHTML += `
+        <div class="vibe-viewall-route" data-path="${escapeHTML(path)}">
+          <div class="vibe-viewall-route-header">
+            <div class="vibe-viewall-route-left">
+              <span class="vibe-viewall-route-path">${escapeHTML(path)}</span>
+              <span class="vibe-viewall-route-count">${items.length}</span>
+            </div>
+            ${routeClearHTML}
+          </div>
+          ${cardsHTML}
+        </div>
+      `;
+    }
+
+    if (displayedAnnotations.length === 0) {
+      const message = viewAllActiveFilter === 'current' ? 'No annotations on this page' : 'No annotations yet';
+      routesHTML = `<div class="vibe-viewall-empty">${message}</div>`;
+    }
+
+    const routesContainer = viewAllPanel.querySelector('.vibe-viewall-routes');
+    if (routesContainer) {
+      // pi-lens-ignore: no-inner-html-js
+      routesContainer.innerHTML = routesHTML;
+
+      // Per-route clear
+      routesContainer.querySelectorAll('.vibe-viewall-route-clear').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const path = btn.dataset.path;
+          const routeAnnotations = routeGroups[path] || [];
+          const routeEl = btn.closest('.vibe-viewall-route');
+          if (routeEl) {
+            const cards = routeEl.querySelectorAll('.vibe-viewall-card');
+            cards.forEach((card, i) => {
+              setTimeout(() => card.classList.add('deleting'), i * 50);
+            });
+            await new Promise(r => setTimeout(r, cards.length * 50 + 300));
+          }
+          if (viewAllPanel) viewAllPanel._suppressRefresh = true;
+          try {
+            for (const a of routeAnnotations) {
+              await VibeAPI.deleteAnnotation(a.id);
+            }
+            await syncAfterDeletion(routeAnnotations.length);
+          } catch (err) {
+            if (viewAllPanel) viewAllPanel._suppressRefresh = false;
+            console.error('[Vibe] clear route failed:', err);
+            updateViewAll(viewAllSelectedOrigin);
+          }
+        });
+      });
+
+      // Per-card delete
+      routesContainer.querySelectorAll('.vibe-viewall-card-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          const card = btn.closest('.vibe-viewall-card');
+          if (card) {
+            card.classList.add('deleting');
+            await new Promise(r => setTimeout(r, 300));
+          }
+          if (viewAllPanel) viewAllPanel._suppressRefresh = true;
+          try {
+            await VibeAPI.deleteAnnotation(id);
+            await syncAfterDeletion(1);
+          } catch (err) {
+            if (card) card.classList.remove('deleting');
+            if (viewAllPanel) viewAllPanel._suppressRefresh = false;
+            console.error('[Vibe] deleteAnnotation failed:', err);
+          }
+        });
+      });
+
+      // Click card to scroll
+      routesContainer.querySelectorAll('.vibe-viewall-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.vibe-viewall-card-delete')) return;
+          const id = card.dataset.id;
+          const a = annotations.find(x => x.id === id);
+          if (a && a.url === window.location.href && a.selector) {
+            try {
+              const el = document.querySelector(a.selector);
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                VibeEvents.emit('badge:target', { id });
+              }
+            } catch {}
+          }
+        });
+      });
+    }
+
+    // 4. Update Footer global delete button
+    const globalDeleteBtn = viewAllPanel.querySelector('.vibe-viewall-delete-global');
+    if (globalDeleteBtn) {
+      globalDeleteBtn.dataset.count = String((allStored || []).length);
+      const shouldDisable = globalDeleteBusy || !(allStored || []).length;
+      globalDeleteBtn.disabled = shouldDisable;
+      if (shouldDisable) {
+        globalDeleteBtn.setAttribute('disabled', '');
+      } else {
+        globalDeleteBtn.removeAttribute('disabled');
+      }
+    }
+
+    // 5. Restore scroll for current view
+    restoreScrollForCurrentView();
+
+    // 6. Retain focus on surviving controls
+    if (wasFilterTabFocused) {
+      const activeTab = viewAllActiveFilter === 'all' ? allTab : currentTab;
+      if (activeTab && typeof activeTab.focus === 'function') activeTab.focus();
+    } else if (wasSiteSelectFocused) {
+      const siteSelect = viewAllPanel.querySelector('.vibe-viewall-site-select');
+      if (siteSelect && typeof siteSelect.focus === 'function') siteSelect.focus();
+    }
+
     await updateGlobalDeleteStatus();
   }
 
@@ -808,12 +916,13 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     if (!viewAllPanel) return;
     const seq = ++purgeStatusSeq;
     const status = await VibeAPI.getPendingPurgeStatus();
-    if (seq !== purgeStatusSeq) return;
+    if (seq !== purgeStatusSeq || !viewAllPanel) return;
     const el = viewAllPanel?.querySelector('.vibe-viewall-global-status');
     if (el) el.textContent = status.pending ? `Deleted locally. ${status.error || 'Server sync is pending.'}` : '';
   }
 
   function closeViewAll() {
+    viewAllRenderSeq++;
     if (viewAllPanel) {
       if (viewAllPanel._cleanupEvents) viewAllPanel._cleanupEvents();
       viewAllPanel.remove();
@@ -821,6 +930,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     }
     viewAllSelectedOrigin = null;
     viewAllActiveFilter = 'all';
+    viewAllScrollPositions.clear();
     const btn = toolbarEl.querySelector('.vibe-tb-viewall');
     if (btn) btn.classList.remove('active');
   }
@@ -1688,187 +1798,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     return isMac ? parts.join('') : parts.join('+');
   }
 
-  // --- Clipboard format ---
-
-
-
-  function _formatAnnotationsForClipboard(annotations) {
-    const host = window.location.host;
-    const count = annotations.length;
-
-    let header = `# Vibe Annotations \u2014 ${host}`;
-    header += ` \u00B7 ${count} annotation${count !== 1 ? 's' : ''}`;
-
-    // Group by route
-    const routeGroups = {};
-    for (const a of annotations) {
-      const route = a.url_path || (() => { try { return new URL(a.url).pathname; } catch { return '/'; } })();
-      if (!routeGroups[route]) routeGroups[route] = [];
-      routeGroups[route].push(a);
-    }
-
-    const sections = [];
-    let globalIdx = 0;
-    for (const route of Object.keys(routeGroups).sort()) {
-      const items = routeGroups[route];
-      const routeHeader = `## ${route} (${items.length})`;
-
-      const blocks = items.map(a => {
-        globalIdx++;
-        const isStylesheet = a.type === 'stylesheet';
-
-        if (isStylesheet) {
-          const lines = [];
-          lines.push(`${globalIdx}. [Stylesheet change]`);
-          if (a.comment) lines.push(`   Comment: ${a.comment}`);
-          if (a.css) lines.push(`   CSS rules:\n${a.css.split('\n').map(l => '      ' + l).join('\n')}`);
-          return lines.join('\n');
-        }
-
-        const ec = a.element_context || {};
-        const tag = ec.tag ? `<${ec.tag}>` : '';
-        const text = ec.text ? truncate(ec.text, 40) : '';
-        const identity = [tag, text ? `"${text}"` : ''].filter(Boolean).join(' ');
-
-        const lines = [];
-        lines.push(`${globalIdx}. ${identity}`);
-        if (a.comment) lines.push(`   Comment: ${a.comment}`);
-        lines.push(`   Selector: ${formatAnnotationSelector(a)}`);
-        const pathStr = formatAnnotationPath(a);
-        if (pathStr) lines.push(`   Path: ${pathStr}`);
-
-        if (a.source_file_path) {
-          let src = a.source_file_path;
-          if (a.source_line_range) src += ` (lines ${a.source_line_range})`;
-          lines.push(`   Source: ${src}`);
-        }
-
-        const pc = a.pending_changes;
-        if (pc) {
-          const changes = [];
-          if (pc.fontSize) changes.push(`font-size: ${pc.fontSize.original} \u2192 ${pc.fontSize.value}`);
-          if (pc.fontWeight) changes.push(`font-weight: ${pc.fontWeight.original} \u2192 ${pc.fontWeight.value}`);
-          if (pc.lineHeight) changes.push(`line-height: ${pc.lineHeight.original} \u2192 ${pc.lineHeight.value}`);
-          if (pc.textAlign) changes.push(`text-align: ${pc.textAlign.original} \u2192 ${pc.textAlign.value}`);
-          ['paddingTop','paddingRight','paddingBottom','paddingLeft','marginTop','marginRight','marginBottom','marginLeft'].filter(p => pc[p]).forEach(p => {
-            changes.push(`${camelToKebab(p)}: ${pc[p].original} \u2192 ${pc[p].value}`);
-          });
-          if (pc.display) changes.push(`display: ${pc.display.original} \u2192 ${pc.display.value}`);
-          if (pc.flexDirection) changes.push(`flex-direction: ${pc.flexDirection.original} \u2192 ${pc.flexDirection.value}`);
-          if (pc.flexWrap) changes.push(`flex-wrap: ${pc.flexWrap.original} \u2192 ${pc.flexWrap.value}`);
-          if (pc.justifyContent) changes.push(`justify-content: ${pc.justifyContent.original} \u2192 ${pc.justifyContent.value}`);
-          if (pc.alignItems) changes.push(`align-items: ${pc.alignItems.original} \u2192 ${pc.alignItems.value}`);
-          if (pc.gridTemplateColumns) changes.push(`grid-template-columns: ${pc.gridTemplateColumns.original} \u2192 ${pc.gridTemplateColumns.value}`);
-          if (pc.gridTemplateRows) changes.push(`grid-template-rows: ${pc.gridTemplateRows.original} \u2192 ${pc.gridTemplateRows.value}`);
-          if (pc.gap) changes.push(`gap: ${pc.gap.original} \u2192 ${pc.gap.value}`);
-          if (pc.columnGap) changes.push(`column-gap: ${pc.columnGap.original} \u2192 ${pc.columnGap.value}`);
-          if (pc.rowGap) changes.push(`row-gap: ${pc.rowGap.original} \u2192 ${pc.rowGap.value}`);
-          if (pc.borderWidth) changes.push(`border-width: ${pc.borderWidth.original} \u2192 ${pc.borderWidth.value}`);
-          if (pc.borderRadius) changes.push(`border-radius: ${pc.borderRadius.original} \u2192 ${pc.borderRadius.value}`);
-          if (pc.color) changes.push(`color: ${pc.color.original} \u2192 ${pc.color.variable ? `var(${pc.color.variable})` : pc.color.value}`);
-          if (pc.backgroundColor) changes.push(`background-color: ${pc.backgroundColor.original} \u2192 ${pc.backgroundColor.variable ? `var(${pc.backgroundColor.variable})` : pc.backgroundColor.value}`);
-          if (pc.borderColor) changes.push(`border-color: ${pc.borderColor.original} \u2192 ${pc.borderColor.variable ? `var(${pc.borderColor.variable})` : pc.borderColor.value}`);
-          if (pc.width) changes.push(`width: ${pc.width.original} \u2192 ${pc.width.value}`);
-          if (pc.minWidth) changes.push(`min-width: ${pc.minWidth.original} \u2192 ${pc.minWidth.value}`);
-          if (pc.maxWidth) changes.push(`max-width: ${pc.maxWidth.original} \u2192 ${pc.maxWidth.value}`);
-          if (pc.height) changes.push(`height: ${pc.height.original} \u2192 ${pc.height.value}`);
-          if (pc.minHeight) changes.push(`min-height: ${pc.minHeight.original} \u2192 ${pc.minHeight.value}`);
-          if (pc.maxHeight) changes.push(`max-height: ${pc.maxHeight.original} \u2192 ${pc.maxHeight.value}`);
-          const standardProps = new Set(['fontSize','fontWeight','lineHeight','textAlign','paddingTop','paddingRight','paddingBottom','paddingLeft','marginTop','marginRight','marginBottom','marginLeft','display','flexDirection','flexWrap','justifyContent','alignItems','gridTemplateColumns','gridTemplateRows','gap','columnGap','rowGap','borderWidth','borderRadius','borderStyle','color','backgroundColor','borderColor','width','minWidth','maxWidth','height','minHeight','maxHeight']);
-          for (const [prop, change] of Object.entries(pc)) {
-            if (!standardProps.has(prop) && change.original && change.value) {
-              changes.push(`${camelToKebab(prop)}: ${change.original} \u2192 ${change.value}`);
-            }
-          }
-          if (changes.length) {
-            lines.push(`   Design changes: ${changes.join(', ')}`);
-          }
-        }
-
-        if (a.css) {
-          lines.push(`   CSS rules:\n${a.css.split('\n').map(l => '      ' + l).join('\n')}`);
-        }
-
-        return lines.join('\n');
-      });
-
-      sections.push(routeHeader + '\n\n' + blocks.join('\n\n'));
-    }
-
-    return header + '\n\nFollow my instructions on these elements.\nWhen applying design changes, map values to the project design system (Tailwind classes, CSS variables, or design tokens).\n\n---\n\n' + sections.join('\n\n---\n\n');
-  }
-
-  function formatAnnotationPath(annotation) {
-    const ec = annotation.element_context || {};
-    if (ec.path) return ec.path;
-
-    const segments = [];
-    if (annotation.parent_chain?.length) {
-      annotation.parent_chain
-        .slice()
-        .reverse()
-        .forEach(node => segments.push(formatPathNode(node)));
-    }
-    if (ec.tag) {
-      segments.push(formatPathNode({
-        tag: ec.tag,
-        classes: ec.classes || [],
-        id: ec.id || null,
-        role: ec.role || null
-      }));
-    }
-
-    if (!segments.length) return '';
-    return segments.slice(-4).join(' > ');
-  }
-
-  function formatAnnotationSelector(annotation) {
-    if (annotation.selector_preview) return annotation.selector_preview;
-
-    const ec = annotation.element_context || {};
-    const attrs = [];
-    const classes = VibeElementContext.getDisplayClasses(ec.classes).slice(0, 6);
-    if (classes.length) attrs.push(`class="${classes.join(' ')}"`);
-    if (ec.id) attrs.push(`id="${ec.id}"`);
-    if (ec.role) attrs.push(`role="${ec.role}"`);
-
-    if (ec.tag) {
-      return `<${ec.tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>`;
-    }
-
-    return annotation.selector;
-  }
-
-  function formatPathNode(node) {
-    const tag = node.tag || 'element';
-    if (node.id) return `${tag}#${sanitizePathToken(node.id)}`;
-
-    const classes = VibeElementContext.getDisplayClasses(node.classes).slice(0, 4);
-    if (classes.length) {
-      return `${tag}[class="${classes.map(c => sanitizePathToken(c, 48)).join(' ')}"]`;
-    }
-
-    if (node.role) return `${tag}[role="${sanitizePathToken(node.role)}"]`;
-    return tag;
-  }
-
-  function sanitizePathToken(value, maxLen = 48) {
-    return String(value).replace(/\s+/g, ' ').trim().slice(0, maxLen);
-  }
-
   function applyBadgeColor(color) {
     const root = VibeShadowHost.getRoot();
     if (root) root.host.style.setProperty('--v-badge-bg', color);
-  }
-
-  function camelToKebab(str) {
-    return str.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
-  }
-
-  function truncate(str, max) {
-    const clean = str.replace(/\s+/g, ' ').trim();
-    if (clean.length <= max) return clean;
-    return clean.substring(0, max) + '\u2026';
   }
 
 const VibeToolbar = {

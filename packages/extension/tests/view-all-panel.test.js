@@ -76,6 +76,7 @@ class MockElement {
     this._listeners = {};
     this._innerHTML = '';
     this._value = '';
+    this._scrollTop = 0;
     this.scrollIntoViewCalls = 0;
     this.classList = {
       add: (cls) => {
@@ -147,6 +148,26 @@ class MockElement {
     return this.attributes[name] !== undefined;
   }
 
+  removeAttribute(name) {
+    delete this.attributes[name];
+    if (name.startsWith('data-')) {
+      const key = name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      delete this.dataset[key];
+    }
+  }
+
+  get disabled() {
+    return this.attributes['disabled'] !== undefined;
+  }
+
+  set disabled(val) {
+    if (val) {
+      this.attributes['disabled'] = '';
+    } else {
+      delete this.attributes['disabled'];
+    }
+  }
+
   closest(sel) {
     if (sel.startsWith('.')) {
       const cls = sel.slice(1);
@@ -155,10 +176,72 @@ class MockElement {
     return this.parentNode?.closest ? this.parentNode.closest(sel) : null;
   }
 
+  get scrollTop() {
+    return this._scrollTop || 0;
+  }
+
+  set scrollTop(val) {
+    this._scrollTop = Number(val) || 0;
+  }
+
+  get scrollHeight() {
+    return this._scrollHeight !== undefined ? this._scrollHeight : 1000;
+  }
+
+  set scrollHeight(val) {
+    this._scrollHeight = Number(val);
+  }
+
+  get clientHeight() {
+    return this._clientHeight !== undefined ? this._clientHeight : 300;
+  }
+
+  set clientHeight(val) {
+    this._clientHeight = Number(val);
+  }
+
+  focus() {
+    if (globalThis.document) globalThis.document.activeElement = this;
+    if (typeof shadowRootMock !== 'undefined' && shadowRootMock) shadowRootMock.activeElement = this;
+  }
+
+  contains(child) {
+    let curr = child;
+    while (curr) {
+      if (curr === this) return true;
+      curr = curr.parentNode;
+    }
+    return false;
+  }
+
   appendChild(child) {
     this.children.push(child);
     child.parentNode = this;
     return child;
+  }
+
+  insertBefore(newNode, referenceNode) {
+    if (!referenceNode) return this.appendChild(newNode);
+    const idx = this.children.indexOf(referenceNode);
+    if (idx !== -1) {
+      if (newNode.parentNode) newNode.parentNode.removeChild(newNode);
+      this.children.splice(idx, 0, newNode);
+      newNode.parentNode = this;
+      return newNode;
+    }
+    return this.appendChild(newNode);
+  }
+
+  replaceChild(newChild, oldChild) {
+    const idx = this.children.indexOf(oldChild);
+    if (idx !== -1) {
+      if (newChild.parentNode) newChild.parentNode.removeChild(newChild);
+      this.children.splice(idx, 1, newChild);
+      oldChild.parentNode = null;
+      newChild.parentNode = this;
+      return oldChild;
+    }
+    return null;
   }
 
   removeChild(child) {
@@ -226,7 +309,18 @@ class MockElement {
   }
 
   get innerHTML() {
-    return this._innerHTML;
+    if (this.children.length === 0) return this._innerHTML || '';
+    return this.children.map(child => {
+      if (child.tagName === '#TEXT') return child.textContent;
+      const attrs = Object.entries(child.attributes)
+        .map(([k, v]) => v !== '' ? ` ${k}="${v}"` : ` ${k}`)
+        .join('');
+      const tag = child.tagName.toLowerCase();
+      if (['input', 'img', 'br', 'hr'].includes(tag)) {
+        return `<${tag}${attrs}>`;
+      }
+      return `<${tag}${attrs}>${child.innerHTML}</${tag}>`;
+    }).join('');
   }
 
   querySelectorAll(sel) {
@@ -949,6 +1043,287 @@ test('View all cross-site lifecycle and UI', async (t) => {
     panel = VibeToolbar.getViewAllPanel();
     assert.ok(panel.querySelector('[data-id="p1-1"].vibe-viewall-card'), 'P1 card shown in all view');
     assert.ok(panel.querySelector('[data-id="p2-1"].vibe-viewall-card'), 'P2 card shown in all view');
+  });
+
+  await t.test('repeated site and filter changes keep panel shell and footer continuously mounted without recreating DOM', async () => {
+    mockStorage.annotations = [
+      { id: 'p1-1', url: 'http://localhost:3000/page1', comment: 'Site A page 1', status: 'open' },
+      { id: 'p2-1', url: 'http://localhost:3000/page2', comment: 'Site A page 2', status: 'open' },
+      { id: 'b-1', url: 'http://localhost:5173/page1', comment: 'Site B note', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const initialPanel = VibeToolbar.getViewAllPanel();
+    assert.ok(initialPanel, 'Panel is mounted initially');
+    const initialHeader = initialPanel.querySelector('.vibe-viewall-header');
+    const initialTabs = initialPanel.querySelector('.vibe-viewall-tabs');
+    const initialFooter = initialPanel.querySelector('.vibe-viewall-footer');
+
+    // 1. Switch site to localhost:5173 while on "All" filter
+    const siteSelect = initialPanel.querySelector('.vibe-viewall-site-select');
+    assert.ok(siteSelect, 'Site select is present');
+    siteSelect.value = 'http://localhost:5173';
+    siteSelect.dispatchEvent({ type: 'change', target: { value: 'http://localhost:5173' } });
+    await new Promise(r => setTimeout(r, 20));
+
+    let currentPanel = VibeToolbar.getViewAllPanel();
+    assert.strictEqual(currentPanel, initialPanel, 'Panel shell must remain the exact same DOM node after site change');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:5173');
+    assert.ok(currentPanel.querySelector('[data-id="b-1"]'), 'Site B annotations are displayed');
+    assert.strictEqual(currentPanel.querySelector('.vibe-viewall-footer'), initialFooter, 'Footer must remain mounted');
+    assert.strictEqual(currentPanel.querySelector('.vibe-viewall-tabs'), initialTabs, 'Tabs container must remain mounted');
+    assert.strictEqual(currentPanel.querySelector('.vibe-viewall-header'), initialHeader, 'Header container must remain mounted');
+
+    // 2. Switch filter on other site to "This page" (empty list since current page belongs to localhost:3000)
+    const tabOnOtherSite = currentPanel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    tabOnOtherSite.click();
+    await new Promise(r => setTimeout(r, 20));
+
+    currentPanel = VibeToolbar.getViewAllPanel();
+    assert.strictEqual(currentPanel, initialPanel, 'Panel shell must remain mounted even when filter results in empty list');
+    assert.ok(currentPanel.querySelector('.vibe-viewall-empty'), 'Empty message is rendered');
+    assert.strictEqual(currentPanel.querySelector('.vibe-viewall-footer'), initialFooter, 'Footer remains mounted on empty list');
+
+    // 3. Switch back to All filter
+    const allTabOnOtherSite = currentPanel.querySelector('.vibe-viewall-tab[data-filter="all"]');
+    allTabOnOtherSite.click();
+    await new Promise(r => setTimeout(r, 20));
+
+    currentPanel = VibeToolbar.getViewAllPanel();
+    assert.strictEqual(currentPanel, initialPanel, 'Panel shell must remain mounted when switching back to All');
+    assert.ok(currentPanel.querySelector('[data-id="b-1"]'), 'Site B annotations restored');
+
+    // 4. Switch back to localhost:3000
+    const returnSelect = currentPanel.querySelector('.vibe-viewall-site-select');
+    returnSelect.value = 'http://localhost:3000';
+    returnSelect.dispatchEvent({ type: 'change', target: { value: 'http://localhost:3000' } });
+    await new Promise(r => setTimeout(r, 20));
+
+    currentPanel = VibeToolbar.getViewAllPanel();
+    assert.strictEqual(currentPanel, initialPanel, 'Panel shell remains mounted after returning to original site');
+    assert.ok(currentPanel.querySelector('[data-id="p1-1"]'), 'Site A page 1 note displayed');
+    assert.ok(currentPanel.querySelector('[data-id="p2-1"]'), 'Site A page 2 note displayed');
+
+    // 5. Switch to "This page" filter on localhost:3000
+    const currentTab = currentPanel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    currentTab.click();
+    await new Promise(r => setTimeout(r, 20));
+
+    currentPanel = VibeToolbar.getViewAllPanel();
+    assert.strictEqual(currentPanel, initialPanel, 'Panel shell remains mounted after filter switch to This page');
+    assert.ok(currentPanel.querySelector('[data-id="p1-1"]'), 'Current page note shown');
+    assert.strictEqual(currentPanel.querySelector('[data-id="p2-1"]'), null, 'Other page note filtered out');
+  });
+
+  await t.test('rapid site and filter changes with out-of-order reads settle on the latest choice', async () => {
+    mockStorage.annotations = [
+      { id: 'a-p1', url: 'http://localhost:3000/page1', comment: 'Site A page 1', status: 'open' },
+      { id: 'a-p2', url: 'http://localhost:3000/page2', comment: 'Site A page 2', status: 'open' },
+      { id: 'b-p1', url: 'http://localhost:5173/page1', comment: 'Site B note', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+
+    const origLoad = VibeAPI.loadAllStoredAnnotations;
+    let deferredFirstRead = null;
+    let callCount = 0;
+
+    VibeAPI.loadAllStoredAnnotations = async () => {
+      callCount++;
+      if (callCount === 1) {
+        return new Promise(resolve => {
+          deferredFirstRead = () => resolve(origLoad.call(VibeAPI));
+        });
+      }
+      return origLoad.call(VibeAPI);
+    };
+
+    try {
+      // 1. User switches to localhost:5173 (call 1 is delayed)
+      const siteSelect = panel.querySelector('.vibe-viewall-site-select');
+      siteSelect.value = 'http://localhost:5173';
+      siteSelect.dispatchEvent({ type: 'change', target: { value: 'http://localhost:5173' } });
+
+      // 2. Before first read finishes, user quickly switches back to localhost:3000
+      siteSelect.value = 'http://localhost:3000';
+      siteSelect.dispatchEvent({ type: 'change', target: { value: 'http://localhost:3000' } }); // Call 2 resolves immediately
+
+      await new Promise(r => setTimeout(r, 20));
+
+      // Call 2 has settled on localhost:3000
+      assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
+      assert.ok(panel.querySelector('[data-id="a-p1"]'), 'Site A annotations displayed');
+      assert.ok(panel.querySelector('[data-id="a-p2"]'), 'Site A page 2 note displayed');
+      assert.strictEqual(panel.querySelector('[data-id="b-p1"]'), null);
+
+      // 3. Now the delayed first read (for Site B) finally finishes
+      assert.ok(deferredFirstRead, 'Deferred first read was registered');
+      deferredFirstRead();
+      await new Promise(r => setTimeout(r, 20));
+
+      // Assert: Late first read did NOT overwrite with stale Site B data
+      assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000', 'Latest choice Site A remains selected');
+      assert.ok(panel.querySelector('[data-id="a-p1"]'), 'Site A annotations remain displayed');
+      assert.ok(panel.querySelector('[data-id="a-p2"]'), 'Site A annotations remain displayed');
+      assert.strictEqual(panel.querySelector('[data-id="b-p1"]'), null, 'Stale Site B card does not appear');
+    } finally {
+      VibeAPI.loadAllStoredAnnotations = origLoad;
+    }
+  });
+
+  await t.test('pending reads and callbacks cannot reopen a closed panel or overwrite a later session', async () => {
+    mockStorage.annotations = [
+      { id: 'a-1', url: 'http://localhost:3000/page1', comment: 'Site A', status: 'open' },
+      { id: 'b-1', url: 'http://localhost:5173/page1', comment: 'Site B', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+    assert.ok(panel);
+
+    const origLoad = VibeAPI.loadAllStoredAnnotations;
+    let resolveDelayed = null;
+    VibeAPI.loadAllStoredAnnotations = async () => {
+      return new Promise(resolve => {
+        resolveDelayed = () => resolve(origLoad.call(VibeAPI));
+      });
+    };
+
+    try {
+      const currentTab = panel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+      currentTab.click();
+
+      // Before delayed read finishes, explicitly close the panel
+      VibeToolbar.closeViewAll();
+      assert.strictEqual(VibeToolbar.getViewAllPanel(), null, 'Panel is closed');
+
+      // Now resolve the delayed read from the closed session
+      assert.ok(resolveDelayed);
+      resolveDelayed();
+      await new Promise(r => setTimeout(r, 20));
+
+      // Assert: The closed panel MUST NOT be reopened
+      assert.strictEqual(VibeToolbar.getViewAllPanel(), null, 'Delayed read must not reopen closed panel');
+
+      // Reopen for a new session
+      VibeAPI.loadAllStoredAnnotations = origLoad;
+      await VibeToolbar.openViewAll();
+      const newPanel = VibeToolbar.getViewAllPanel();
+      assert.ok(newPanel, 'New session opens fresh panel');
+      assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000', 'New session starts at current site');
+      assert.strictEqual(newPanel.querySelector('.vibe-viewall-tab.active').dataset.filter, 'all', 'New session starts at All filter');
+    } finally {
+      VibeAPI.loadAllStoredAnnotations = origLoad;
+    }
+  });
+
+  await t.test('session scroll position is remembered per site/filter, clamped when content shrinks, and reset on close', async () => {
+    mockStorage.annotations = [
+      { id: 'a1', url: 'http://localhost:3000/page1', comment: 'Site A P1 note 1', status: 'open' },
+      { id: 'a2', url: 'http://localhost:3000/page1', comment: 'Site A P1 note 2', status: 'open' },
+      { id: 'a3', url: 'http://localhost:3000/page2', comment: 'Site A P2 note 1', status: 'open' },
+      { id: 'a4', url: 'http://localhost:3000/page2', comment: 'Site A P2 note 2', status: 'open' },
+      { id: 'b1', url: 'http://localhost:5173/page1', comment: 'Site B note 1', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+    let routes = panel.querySelector('.vibe-viewall-routes');
+    routes.scrollHeight = 500;
+    routes.clientHeight = 200;
+
+    // 1. First visit to Site A + All starts at top (scroll 0)
+    assert.strictEqual(routes.scrollTop, 0, 'First visit starts at scroll 0');
+
+    // 2. User scrolls down
+    routes.scrollTop = 150;
+
+    // 3. Switch to "This page" filter
+    const currentTab = panel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    currentTab.click();
+    await new Promise(r => setTimeout(r, 20));
+
+    routes = panel.querySelector('.vibe-viewall-routes');
+    routes.scrollHeight = 300;
+    routes.clientHeight = 200;
+    // First visit to Site A + This page starts at scroll 0
+    assert.strictEqual(routes.scrollTop, 0, 'First visit to This page starts at scroll 0');
+
+    // User scrolls on This page
+    routes.scrollTop = 40;
+
+    // 4. Switch back to "All" filter (All list is longer: scrollHeight = 500)
+    routes.scrollHeight = 500;
+    const allTab = panel.querySelector('.vibe-viewall-tab[data-filter="all"]');
+    allTab.click();
+    await new Promise(r => setTimeout(r, 20));
+
+    routes = panel.querySelector('.vibe-viewall-routes');
+    // Returning visit to Site A + All restores scroll to 150
+    assert.strictEqual(routes.scrollTop, 150, 'Returning visit restores remembered scroll');
+
+    // 5. Test clamping: simulate content becoming shorter
+    routes.scrollHeight = 250;
+    routes.clientHeight = 200; // maxScroll = 50
+    currentTab.click();
+    await new Promise(r => setTimeout(r, 20));
+
+    // Now switch back to All where content is shorter than saved 150
+    allTab.click();
+    await new Promise(r => setTimeout(r, 20));
+    routes = panel.querySelector('.vibe-viewall-routes');
+    assert.strictEqual(routes.scrollTop, 50, 'Scroll is clamped to maxScroll (50) when content becomes shorter');
+
+    // 6. Switch to Site B
+    const siteSelect = panel.querySelector('.vibe-viewall-site-select');
+    siteSelect.value = 'http://localhost:5173';
+    siteSelect.dispatchEvent({ type: 'change', target: { value: 'http://localhost:5173' } });
+    await new Promise(r => setTimeout(r, 20));
+
+    routes = panel.querySelector('.vibe-viewall-routes');
+    assert.strictEqual(routes.scrollTop, 0, 'First visit to Site B starts at scroll 0');
+
+    // 7. Explicit close ends the session
+    VibeToolbar.closeViewAll();
+
+    // 8. Reopening starts fresh on current site + All at top
+    await VibeToolbar.openViewAll();
+    const freshPanel = VibeToolbar.getViewAllPanel();
+    const freshRoutes = freshPanel.querySelector('.vibe-viewall-routes');
+    assert.strictEqual(freshRoutes.scrollTop, 0, 'Reopening after close resets scroll to 0');
+    assert.strictEqual(VibeToolbar.getSelectedOrigin(), 'http://localhost:3000');
+    assert.strictEqual(freshPanel.querySelector('.vibe-viewall-tab.active').dataset.filter, 'all');
+  });
+
+  await t.test('surviving controls retain keyboard focus across filter and site changes', async () => {
+    mockStorage.annotations = [
+      { id: 'a1', url: 'http://localhost:3000/page1', comment: 'Site A note', status: 'open' },
+      { id: 'b1', url: 'http://localhost:5173/page1', comment: 'Site B note', status: 'open' }
+    ];
+
+    await VibeToolbar.openViewAll('http://localhost:3000');
+    const panel = VibeToolbar.getViewAllPanel();
+
+    // Focus the "This page" filter tab
+    const currentTab = panel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    currentTab.focus();
+    currentTab.click();
+    await new Promise(r => setTimeout(r, 20));
+
+    // Active tab retains focus
+    const activeTab = panel.querySelector('.vibe-viewall-tab.active');
+    assert.strictEqual(document.activeElement, activeTab, 'Active filter tab retains focus');
+
+    // Focus site selector and change it
+    const siteSelect = panel.querySelector('.vibe-viewall-site-select');
+    siteSelect.focus();
+    siteSelect.value = 'http://localhost:5173';
+    siteSelect.dispatchEvent({ type: 'change', target: { value: 'http://localhost:5173' } });
+    await new Promise(r => setTimeout(r, 20));
+
+    const newSelect = panel.querySelector('.vibe-viewall-site-select');
+    assert.strictEqual(document.activeElement, newSelect, 'Site selector retains focus after selection');
   });
 
   await t.test('This page tab shows empty placeholder when current page has no annotations', async () => {

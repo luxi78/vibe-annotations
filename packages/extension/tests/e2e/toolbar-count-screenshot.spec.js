@@ -263,3 +263,99 @@ test('automatic capture restores the toolbar before a delayed upload finishes', 
   })).toBe('captured');
   await expect(toolbar).toBeVisible();
 });
+
+test('View all maintains continuous panel mount, scroll memory, focus, and avoids replaying entrance animations during site and filter switching', async ({ page, backgroundWorker }) => {
+  await isolateServer(backgroundWorker);
+  await backgroundWorker.evaluate(async origin => {
+    await chrome.storage.local.clear();
+    await chrome.storage.local.set({ annotations: [
+      ...Array.from({ length: 15 }, (_, i) => ({
+        id: `local-${i}`, url: `${origin}/selected-rectangle.html`, comment: `Local note ${i + 1}`, status: 'open',
+      })),
+      { id: 'local-other-page', url: `${origin}/other-page.html`, comment: 'Other page note', status: 'open' },
+      { id: 'site-b-1', url: 'http://localhost:5173/page1', comment: 'Site B note 1', status: 'open' },
+      { id: 'site-b-2', url: 'http://localhost:5173/page2', comment: 'Site B note 2', status: 'open' },
+    ] });
+  }, FIXTURE_ORIGIN);
+
+  await page.goto(`${FIXTURE_ORIGIN}/selected-rectangle.html`);
+  const root = page.locator('#vibe-annotations-root');
+  await root.locator('.vibe-tb-viewall').click();
+
+  const panel = root.locator('.vibe-viewall-panel');
+  await expect(panel).toBeVisible();
+
+  // Mark the initial mounted panel element and listen for animation starts
+  await root.evaluate(el => {
+    const p = el.shadowRoot.querySelector('.vibe-viewall-panel');
+    p.dataset.mountMarker = 'session-1-panel';
+    window.__animationReplayCount = 0;
+    p.addEventListener('animationstart', () => { window.__animationReplayCount++; });
+  });
+
+  const list = root.locator('.vibe-viewall-routes');
+  await expect(list).toBeVisible();
+
+  // Scroll the list down on All filter
+  await list.evaluate(el => { el.scrollTop = 80; });
+  expect(await list.evaluate(el => el.scrollTop)).toBe(80);
+
+  // 1. Switch filter tab to "This page"
+  const currentTab = root.locator('.vibe-viewall-tab[data-filter="current"]');
+  await currentTab.click();
+
+  // Panel shell must remain the exact same element (not remounted)
+  expect(await panel.evaluate(el => el.dataset.mountMarker)).toBe('session-1-panel');
+  // Entrance animation must NOT have replayed
+  expect(await page.evaluate(() => window.__animationReplayCount)).toBe(0);
+  // Focus should remain on the active filter tab
+  expect(await root.evaluate(el => el.shadowRoot.activeElement?.dataset.filter)).toBe('current');
+  // First visit to This page starts at scroll 0
+  expect(await list.evaluate(el => el.scrollTop)).toBe(0);
+
+  // 2. Switch site to Site B
+  const siteSelect = root.locator('.vibe-viewall-site-select');
+  await expect(siteSelect).toBeVisible();
+  await siteSelect.focus();
+  await siteSelect.selectOption('http://localhost:5173');
+
+  // Page URL must NOT have navigated
+  expect(page.url()).toBe(`${FIXTURE_ORIGIN}/selected-rectangle.html`);
+  // Panel shell remains the exact same element
+  expect(await panel.evaluate(el => el.dataset.mountMarker)).toBe('session-1-panel');
+  // No entrance animation replayed
+  expect(await page.evaluate(() => window.__animationReplayCount)).toBe(0);
+  // Site select retains focus
+  expect(await root.evaluate(el => el.shadowRoot.activeElement?.classList.contains('vibe-viewall-site-select'))).toBe(true);
+
+  // 3. Switch back to current site and back to "All" filter
+  await siteSelect.selectOption(FIXTURE_ORIGIN);
+  const allTab = root.locator('.vibe-viewall-tab[data-filter="all"]');
+  await allTab.click();
+
+  // Returning visit to All filter restores remembered scroll (80)
+  expect(await list.evaluate(el => el.scrollTop)).toBe(80);
+  expect(await panel.evaluate(el => el.dataset.mountMarker)).toBe('session-1-panel');
+  expect(await page.evaluate(() => window.__animationReplayCount)).toBe(0);
+
+  // 4. Rapid filter changes settle on the latest choice
+  await currentTab.click();
+  await allTab.click();
+  await expect(root.locator('.vibe-viewall-tab.active')).toHaveAttribute('data-filter', 'all');
+  expect(await list.locator('.vibe-viewall-card').count()).toBeGreaterThan(1);
+  expect(await panel.evaluate(el => el.dataset.mountMarker)).toBe('session-1-panel');
+
+  // 5. Explicit close ends the session; pending callbacks cannot reopen it
+  await root.locator('.vibe-tb-viewall').click();
+  await expect(panel).toBeHidden();
+  await page.waitForTimeout(100);
+  await expect(panel).toBeHidden();
+
+  // 6. Reopening starts fresh on current site + All with scroll 0
+  await root.locator('.vibe-tb-viewall').click();
+  await expect(panel).toBeVisible();
+  // New panel instance
+  expect(await panel.evaluate(el => el.dataset.mountMarker || null)).toBe(null);
+  expect(await root.locator('.vibe-viewall-tab.active').getAttribute('data-filter')).toBe('all');
+  expect(await list.evaluate(el => el.scrollTop)).toBe(0);
+});
