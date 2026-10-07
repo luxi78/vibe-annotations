@@ -114,14 +114,23 @@
     `;
 
     header.querySelector('.vibe-guide-back-btn').addEventListener('click', () => {
-      callbacks.onBack();
+      if (callbacks?.onBack) callbacks.onBack();
     });
 
-    body.querySelector('.vibe-get-started-guide-btn').addEventListener('click', () => showGetStartedGuide(dropdown, ICONS, callbacks));
-    body.querySelector('.vibe-mcp-server-btn').addEventListener('click', () => showWorkflow(dropdown, 'mcp-setup', ICONS, callbacks));
+    body.querySelector('.vibe-get-started-guide-btn').addEventListener('click', (e) => {
+      if (callbacks?.onNavigate) callbacks.onNavigate('get-started', null, e.currentTarget);
+      else showGetStartedGuide(dropdown, ICONS, callbacks);
+    });
+    body.querySelector('.vibe-mcp-server-btn').addEventListener('click', (e) => {
+      if (callbacks?.onNavigate) callbacks.onNavigate('workflow', 'mcp-setup', e.currentTarget);
+      else showWorkflow(dropdown, 'mcp-setup', ICONS, callbacks);
+    });
 
     body.querySelectorAll('.vibe-workflow-btn').forEach(btn => {
-      btn.addEventListener('click', () => showWorkflow(dropdown, btn.dataset.workflow, ICONS, callbacks));
+      btn.addEventListener('click', (e) => {
+        if (callbacks?.onNavigate) callbacks.onNavigate('workflow', btn.dataset.workflow, e.currentTarget);
+        else showWorkflow(dropdown, btn.dataset.workflow, ICONS, callbacks);
+      });
     });
   }
 
@@ -213,7 +222,10 @@
       </div>
     `;
 
-    header.querySelector('.vibe-guide-back-btn').addEventListener('click', () => showDocumentation(dropdown, ICONS, callbacks));
+    header.querySelector('.vibe-guide-back-btn').addEventListener('click', () => {
+      if (callbacks?.onBack) callbacks.onBack();
+      else showDocumentation(dropdown, ICONS, callbacks);
+    });
     wireTabSwitching(body);
     wireCopyButtons(body, ICONS);
   }
@@ -549,7 +561,10 @@
 
     body.innerHTML = `<div class="vibe-guide">${wf.content}</div>`;
 
-    header.querySelector('.vibe-guide-back-btn').addEventListener('click', () => showDocumentation(dropdown, ICONS, callbacks));
+    header.querySelector('.vibe-guide-back-btn').addEventListener('click', () => {
+      if (callbacks?.onBack) callbacks.onBack();
+      else showDocumentation(dropdown, ICONS, callbacks);
+    });
     wireTabSwitching(body);
     wireCopyButtons(body, ICONS);
   }
