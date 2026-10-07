@@ -30,6 +30,7 @@ import VibeShadowHost from './shadow-host.js';
   // Uses the stored original instead of blanking to '' so that pre-existing
   // inline styles (e.g. style="padding: 40px") are preserved.
   function revertPendingChanges(el, pc) {
+    if (!el || !pc) return;
     for (const prop of Object.keys(pc)) {
       if (prop === 'copyChange') {
         el.textContent = pc.copyChange.original;
@@ -42,6 +43,61 @@ import VibeShadowHost from './shadow-host.js';
       // Values like "0px", "auto", "none" are real originals — restore them.
       // Only clear if original was explicitly empty.
       el.style[prop] = orig === '' ? '' : orig;
+    }
+  }
+
+  function applyPendingChanges(el, pc) {
+    if (!el || !pc) return;
+    for (const prop of getStyleProps(pc)) {
+      if (pc[prop]) el.style[prop] = pc[prop].value;
+    }
+    if (pc.copyChange) el.textContent = pc.copyChange.value;
+  }
+
+  function arePendingChangesEqual(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    for (const k of keysA) {
+      if (k === 'copyChange') {
+        if (a.copyChange?.value !== b.copyChange?.value || a.copyChange?.original !== b.copyChange?.original) return false;
+        continue;
+      }
+      if (a[k]?.value !== b[k]?.value || a[k]?.original !== b[k]?.original) return false;
+    }
+    return true;
+  }
+
+  function updateBadgeTooltip(badgeEl, comment) {
+    let tooltip = badgeEl.querySelector('.vibe-badge-tooltip');
+    if (comment) {
+      if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.className = 'vibe-badge-tooltip';
+        badgeEl.appendChild(tooltip);
+      }
+      tooltip.textContent = comment;
+    } else if (tooltip) {
+      tooltip.remove();
+    }
+  }
+
+  function updateBadgeLabel(badgeEl, index, isWatching) {
+    const label = badgeEl.querySelector('.vibe-badge-label');
+    if (!label) return;
+    if (isWatching) {
+      if (!badgeEl.classList.contains('watching')) {
+        setEyeIcon(label);
+        badgeEl.classList.add('watching');
+      }
+    } else {
+      const text = index.toString();
+      if (label.textContent !== text || badgeEl.classList.contains('watching')) {
+        label.textContent = text;
+        badgeEl.classList.remove('watching');
+      }
     }
   }
 
@@ -58,7 +114,37 @@ import VibeShadowHost from './shadow-host.js';
   let watchMode = false;
   let renderSeq = 0; // guards against out-of-order async renders (see render())
 
-  const EYE_SVG ='<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  function createEyeIcon() {
+    const svg = (typeof document.createElementNS === 'function')
+      ? document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      : document.createElement('svg');
+    svg.setAttribute('width', '12');
+    svg.setAttribute('height', '12');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2.5');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    const path = (typeof document.createElementNS === 'function')
+      ? document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      : document.createElement('path');
+    path.setAttribute('d', 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z');
+    const circle = (typeof document.createElementNS === 'function')
+      ? document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+      : document.createElement('circle');
+    circle.setAttribute('cx', '12');
+    circle.setAttribute('cy', '12');
+    circle.setAttribute('r', '3');
+    svg.appendChild(path);
+    svg.appendChild(circle);
+    return svg;
+  }
+
+  function setEyeIcon(label) {
+    label.textContent = '';
+    label.appendChild(createEyeIcon());
+  }
 
   function init() {
     VibeEvents.on('annotations:render', render);
@@ -80,10 +166,11 @@ import VibeShadowHost from './shadow-host.js';
       const label = entry.el.querySelector('.vibe-badge-label');
       if (!label) return;
       if (watchMode) {
-        label.innerHTML = EYE_SVG;
+        setEyeIcon(label);
         entry.el.classList.add('watching');
       } else {
-        label.textContent = (i + 1).toString();
+        const num = entry.index || (i + 1);
+        label.textContent = num.toString();
         entry.el.classList.remove('watching');
       }
     });
@@ -150,6 +237,7 @@ import VibeShadowHost from './shadow-host.js';
         }
       }
     }
+    if (changed) scheduleReposition();
     // Re-matched badges after framework re-render
   }
 
@@ -162,7 +250,7 @@ import VibeShadowHost from './shadow-host.js';
     badge.className = 'vibe-badge' + (watchMode ? ' watching' : '');
     const label = document.createElement('span');
     label.className = 'vibe-badge-label';
-    if (watchMode) { label.innerHTML = EYE_SVG; } else { label.textContent = (lastProjectTotal + 1).toString(); }
+    if (watchMode) { setEyeIcon(label); } else { label.textContent = (lastProjectTotal + 1).toString(); }
     badge.appendChild(label);
     root.appendChild(badge);
     provisionalBadge = badge;
@@ -198,15 +286,21 @@ import VibeShadowHost from './shadow-host.js';
   async function render(annotations) {
     const myGen = ++renderSeq;
     removeProvisional();
-    // In watch mode, don't revert pending changes — agent implemented them in source
-    clearAll(undefined, { skipRevert: watchMode });
 
     // Load all project annotations for project-wide numbering and total count.
     // Exclude resolved — the agent has finalized/cleaned those, so they're done
     // and must not inflate the "View all" count pill (variants-discarded and
     // variant-chosen still count: they're pending agent action, shown in the list).
-    const projectAnnotations = (await VibeAPI.loadProjectAnnotations())
-      .filter(a => a.status !== 'resolved');
+    let projectAnnotations;
+    try {
+      projectAnnotations = (await VibeAPI.loadProjectAnnotations())
+        .filter(a => a.status !== 'resolved');
+    } catch {
+      // Overlapping asynchronous renders cannot apply stale results. Failed reads
+      // do not clear displayed feedback as though they were successful empty results.
+      return;
+    }
+
     // A newer render started while we awaited — bail so we don't emit a stale
     // total (e.g. leaving the "View all" count at 1 after deleting everything).
     if (myGen !== renderSeq) return;
@@ -220,6 +314,9 @@ import VibeShadowHost from './shadow-host.js';
     const sorted = [...annotations].sort((a, b) =>
       new Date(a.created_at) - new Date(b.created_at)
     );
+
+    const activeBadgeIds = new Set();
+    const activeStyleIds = new Set();
 
     sorted.forEach((annotation) => {
       // Terminal variant states are agent-only (cleanup / done) — no badge on the
@@ -236,7 +333,8 @@ import VibeShadowHost from './shadow-host.js';
 
       // Stylesheet annotations — inject as <style> tag
       if (annotation.type === 'stylesheet' && annotation.css) {
-        injectStyleAnnotation(annotation);
+        reconcileStyleAnnotation(annotation);
+        activeStyleIds.add(annotation.id);
         return;
       }
 
@@ -246,33 +344,100 @@ import VibeShadowHost from './shadow-host.js';
       const variant = resolveVariantAnchor(annotation);
       if (variant) {
         const badgeNum = projectIndexMap.get(annotation.id) || 1;
-        addBadge(variant.container, annotation, badgeNum, variant);
+        reconcileBadge(variant.container, annotation, badgeNum, variant);
+        activeBadgeIds.add(annotation.id);
+        if (annotation.css) {
+          reconcileStyleAnnotation(annotation);
+          activeStyleIds.add(annotation.id);
+        }
         return;
       }
 
       const target = VibeElementContext.findElementBySelector(annotation);
       if (target) {
-        // Rehydrate pending design changes
-        const rpc = annotation.pending_changes;
-        if (rpc) {
-          for (const prop of getStyleProps(rpc)) {
-            if (rpc[prop]) target.style[prop] = rpc[prop].value;
-          }
-          if (rpc.copyChange) target.textContent = rpc.copyChange.value;
-        }
+        const badgeNum = projectIndexMap.get(annotation.id) || 1;
+        reconcileBadge(target, annotation, badgeNum);
+        activeBadgeIds.add(annotation.id);
+
         // Inject companion CSS rules if present
         if (annotation.css) {
-          injectStyleAnnotation(annotation);
+          reconcileStyleAnnotation(annotation);
+          activeStyleIds.add(annotation.id);
         }
-        // Badge number is project-wide
-        const badgeNum = projectIndexMap.get(annotation.id) || 1;
-        addBadge(target, annotation, badgeNum);
       }
     });
+
+    // Remove obsolete badges
+    for (let i = badges.length - 1; i >= 0; i--) {
+      const entry = badges[i];
+      if (!activeBadgeIds.has(entry.annotation.id)) {
+        if (entry.annotation.pending_changes && !watchMode) {
+          revertPendingChanges(entry.targetElement, entry.annotation.pending_changes);
+        }
+        entry.el.remove();
+        badges.splice(i, 1);
+      }
+    }
+
+    // Remove obsolete style injections
+    for (let i = styleInjections.length - 1; i >= 0; i--) {
+      const entry = styleInjections[i];
+      if (!activeStyleIds.has(entry.annotation.id)) {
+        entry.styleEl.remove();
+        styleInjections.splice(i, 1);
+      }
+    }
+
+    if (!badges.length) stopRAF();
+    else if (!rafId) startRAF();
 
     lastTotal = annotations.length;
     lastProjectTotal = projectAnnotations.length;
     VibeEvents.emit('badges:rendered', { count: badges.length, total: projectAnnotations.length, styleCount: styleInjections.filter(s => s.annotation.type === 'stylesheet').length });
+  }
+
+  function reconcileBadge(targetElement, annotation, badgeNum, variant = null) {
+    const existing = badges.find(b => b.annotation.id === annotation.id);
+    if (existing) {
+      if (existing.targetElement !== targetElement || existing.variant !== variant) {
+        if (existing.annotation.pending_changes && !watchMode) {
+          revertPendingChanges(existing.targetElement, existing.annotation.pending_changes);
+        }
+        existing.targetElement = targetElement;
+        existing.variant = variant;
+        applyPendingChanges(targetElement, annotation.pending_changes);
+      } else {
+        const oldPC = existing.annotation.pending_changes;
+        const newPC = annotation.pending_changes;
+        if (!arePendingChangesEqual(oldPC, newPC)) {
+          if (oldPC && !watchMode) {
+            revertPendingChanges(targetElement, oldPC);
+          }
+          applyPendingChanges(targetElement, newPC);
+        }
+      }
+      existing.annotation = annotation;
+      existing.variant = variant;
+      existing.index = badgeNum;
+      updateBadgeTooltip(existing.el, annotation.comment);
+      updateBadgeLabel(existing.el, badgeNum, watchMode);
+      positionBadge(existing);
+    } else {
+      applyPendingChanges(targetElement, annotation.pending_changes);
+      addBadge(targetElement, annotation, badgeNum, variant);
+    }
+  }
+
+  function reconcileStyleAnnotation(annotation) {
+    const existing = styleInjections.find(s => s.annotation.id === annotation.id);
+    if (existing) {
+      if (existing.styleEl.textContent !== annotation.css) {
+        existing.styleEl.textContent = annotation.css;
+      }
+      existing.annotation = annotation;
+    } else {
+      injectStyleAnnotation(annotation);
+    }
   }
 
   function injectStyleAnnotation(annotation) {
@@ -291,7 +456,7 @@ import VibeShadowHost from './shadow-host.js';
     const p = annotation.variantsPayload;
     if (!p || !p.container) return null;
     let container = null;
-    try { container = document.querySelector(p.container); } catch (_) {}
+    try { container = document.querySelector(p.container); } catch {}
     if (!container) return null;
     return { container, attribute: p.attribute || 'data-vibe-active' };
   }
@@ -304,7 +469,7 @@ import VibeShadowHost from './shadow-host.js';
     const p = annotation.variantsPayload;
     if (!p || !p.container) return;
     let container = null;
-    try { container = document.querySelector(p.container); } catch (_) {}
+    try { container = document.querySelector(p.container); } catch {}
     if (!container) return;
     const attr = p.attribute || 'data-vibe-active';
     const original = (p.variants && p.variants[0]) ? String(p.variants[0].value) : '1';
@@ -322,7 +487,7 @@ import VibeShadowHost from './shadow-host.js';
     // Label span (number or eye)
     const label = document.createElement('span');
     label.className = 'vibe-badge-label';
-    if (watchMode) { label.innerHTML = EYE_SVG; } else { label.textContent = index.toString(); }
+    if (watchMode) { setEyeIcon(label); } else { label.textContent = index.toString(); }
     badge.appendChild(label);
 
     // Tooltip
@@ -335,7 +500,7 @@ import VibeShadowHost from './shadow-host.js';
 
     root.appendChild(badge);
 
-    const entry = { el: badge, annotation, targetElement, variant: variant || null };
+    const entry = { el: badge, annotation, targetElement, variant: variant || null, index };
 
     // Click → edit (read from entry so we get the latest annotation after updates)
     badge.addEventListener('click', (e) => {
@@ -363,7 +528,7 @@ import VibeShadowHost from './shadow-host.js';
       try {
         const esc = (window.CSS && CSS.escape) ? CSS.escape(active) : active;
         child = container.querySelector(`:scope > [data-variant="${esc}"]`);
-      } catch (_) {}
+      } catch {}
       const anchor = child || container;
       const rect = anchor.getBoundingClientRect();
       if (!rect.width && !rect.height) { entry.el.style.display = 'none'; return; }
@@ -494,9 +659,10 @@ import VibeShadowHost from './shadow-host.js';
       const label = entry.el.querySelector('.vibe-badge-label');
       if (!label) return;
       if (watchMode) {
-        label.innerHTML = EYE_SVG;
+        setEyeIcon(label);
       } else {
-        label.textContent = (i + 1).toString();
+        const num = entry.index || (i + 1);
+        label.textContent = num.toString();
       }
     });
   }
