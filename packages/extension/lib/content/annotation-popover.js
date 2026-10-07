@@ -14,13 +14,12 @@ import VibeShadowHost from './shadow-host.js';
   let escHandler = null;
   let activeElement = null;
   let activeExistingAnnotation = null;
-  let activeElType = null;
-  let activeRawCssOriginals = null;
   let activeOriginalText = null;
   let activeTextDirty = false;
   let activeOriginalCssText = null;
   let activeCssRulesStyleEl = null;
   let activePendingAttachments = null;
+  let activeSessionBlobUrls = null;
   let currentGenerationId = 0;
   let activeSaveHandler = null;
 
@@ -304,7 +303,6 @@ import VibeShadowHost from './shadow-host.js';
     activeElement = targetElement;
     activeOriginalCssText = targetElement.style.cssText;
     activeExistingAnnotation = existingAnnotation;
-    activeElType = elType;
 
     // Capture the click offset within the element NOW, same frame as the click —
     // it's element-relative and scroll-invariant. Computing it later (at save) would
@@ -321,37 +319,135 @@ import VibeShadowHost from './shadow-host.js';
     const attachmentsEl = popover.querySelector('.vibe-attachments');
     const isLocal = VibeAPI.isLocalOrigin();
     // For a not-yet-saved annotation we buffer blobs and upload them on save.
-    const pendingAttachments = []; // { blob, mime, url }
+    const pendingAttachments = []; // { id, blob, mime, url, kind }
+    let pendingAttachmentSeq = 0;
     // Object URLs for images added this session, keyed by server attachment id —
     // lets us show a real thumbnail even on https (where we couldn't re-fetch).
     const sessionBlobUrls = new Map();
+    activeSessionBlobUrls = sessionBlobUrls;
     // Track attachment add/remove so the save button reflects it (see updateSave).
     let attachmentsDirty = false;
     const markAttachmentsChanged = () => { attachmentsDirty = true; popover._updateSave?.(); };
 
+    function createSvgIcon(svgString) {
+      if (typeof DOMParser !== 'undefined') {
+        try {
+          const parsed = new DOMParser().parseFromString(svgString, 'image/svg+xml');
+          if (parsed && parsed.documentElement) return parsed.documentElement;
+        } catch { /* fallback */ }
+      }
+      return null;
+    }
+
+    function createAttachmentTile({ src, attId, pendingId, kind }) {
+      const div = document.createElement('div');
+      div.className = 'vibe-att-tile';
+      const label = kind === 'capture' ? 'Screenshot' : 'Image';
+      div.title = `${label} — click to open`;
+      if (attId != null) {
+        div.setAttribute('data-att', attId);
+      } else if (pendingId != null) {
+        div.setAttribute('data-pending-id', pendingId);
+        div.setAttribute('data-pending', pendingId);
+      }
+
+      if (src) {
+        const img = document.createElement('img');
+        img.className = 'vibe-att-img';
+        img.src = src;
+        img.alt = label;
+        div.appendChild(img);
+      } else {
+        const chip = document.createElement('span');
+        chip.className = 'vibe-att-chip';
+        const iconSpan = document.createElement('span');
+        const icon = createSvgIcon(VIBE_IMG_ICON);
+        if (icon) iconSpan.appendChild(icon);
+        const textSpan = document.createElement('span');
+        textSpan.textContent = label;
+        chip.appendChild(iconSpan);
+        chip.appendChild(textSpan);
+        div.appendChild(chip);
+      }
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'vibe-att-remove';
+      removeBtn.type = 'button';
+      removeBtn.title = 'Remove';
+      if (attId != null) {
+        removeBtn.setAttribute('data-att', attId);
+      } else if (pendingId != null) {
+        removeBtn.setAttribute('data-pending-id', pendingId);
+        removeBtn.setAttribute('data-pending', pendingId);
+      }
+      const xIcon = createSvgIcon(VIBE_X_ICON);
+      if (xIcon) removeBtn.appendChild(xIcon);
+      div.appendChild(removeBtn);
+      return div;
+    }
+
     function renderAttachments() {
       const saved = (isEdit && Array.isArray(activeExistingAnnotation?.attachments)) ? activeExistingAnnotation.attachments : [];
-      const tiles = [];
+      const targetItems = [];
       saved.forEach(att => {
         const blobUrl = sessionBlobUrls.get(att.id);
         const src = blobUrl || (isLocal ? VibeAPI.attachmentUrl(activeExistingAnnotation.id, att.id) : null);
-        tiles.push(attachmentTileHTML({ src, attId: att.id, kind: att.kind }));
+        targetItems.push({ key: `saved:${att.id}`, attId: att.id, kind: att.kind, src });
       });
-      pendingAttachments.forEach((p, i) => tiles.push(attachmentTileHTML({ src: p.url, pendingIndex: i, kind: p.kind || 'user' })));
-      attachmentsEl.innerHTML = tiles.join('');
-      attachmentsEl.classList.toggle('empty', tiles.length === 0);
-    }
+      pendingAttachments.forEach(p => {
+        targetItems.push({ key: `pending:${p.id}`, pendingId: p.id, kind: p.kind || 'user', src: p.url });
+      });
 
-    function attachmentTileHTML({ src, attId, pendingIndex, kind }) {
-      const ref = attId != null ? `data-att="${P.escapeHTML(attId)}"` : `data-pending="${pendingIndex}"`;
-      const label = kind === 'capture' ? 'Screenshot' : 'Image';
-      const inner = src
-        ? `<img class="vibe-att-img" src="${P.escapeHTML(src)}" alt="${label}">`
-        : `<span class="vibe-att-chip">${VIBE_IMG_ICON}<span>${label}</span></span>`;
-      return `<div class="vibe-att-tile" ${ref} title="${label} — click to open">
-        ${inner}
-        <button class="vibe-att-remove" type="button" title="Remove" ${ref}>${VIBE_X_ICON}</button>
-      </div>`;
+      const existingTiles = Array.from(attachmentsEl.querySelectorAll('.vibe-att-tile'));
+      const targetKeys = new Set(targetItems.map(item => item.key));
+
+      // Remove tiles no longer present
+      for (const tile of existingTiles) {
+        const tileAttId = tile.getAttribute('data-att');
+        const tilePendingId = tile.getAttribute('data-pending-id') || tile.getAttribute('data-pending');
+        const tileKey = tileAttId ? `saved:${tileAttId}` : `pending:${tilePendingId}`;
+        if (!targetKeys.has(tileKey)) {
+          tile.remove();
+        }
+      }
+
+      // Reconcile in target order preserving surviving nodes
+      let previousNode = null;
+      for (const item of targetItems) {
+        let tile = item.attId != null
+          ? attachmentsEl.querySelector(`.vibe-att-tile[data-att="${item.attId}"]`)
+          : (attachmentsEl.querySelector(`.vibe-att-tile[data-pending-id="${item.pendingId}"]`)
+             || attachmentsEl.querySelector(`.vibe-att-tile[data-pending="${item.pendingId}"]`));
+
+        if (!tile) {
+          tile = createAttachmentTile(item);
+          if (previousNode) {
+            if (previousNode.nextSibling) {
+              attachmentsEl.insertBefore(tile, previousNode.nextSibling);
+            } else {
+              attachmentsEl.appendChild(tile);
+            }
+          } else {
+            if (attachmentsEl.firstChild) {
+              attachmentsEl.insertBefore(tile, attachmentsEl.firstChild);
+            } else {
+              attachmentsEl.appendChild(tile);
+            }
+          }
+        } else {
+          const expectedNext = previousNode ? previousNode.nextSibling : attachmentsEl.firstChild;
+          if (tile !== expectedNext) {
+            if (previousNode) {
+              attachmentsEl.insertBefore(tile, previousNode.nextSibling);
+            } else {
+              attachmentsEl.insertBefore(tile, attachmentsEl.firstChild);
+            }
+          }
+        }
+        previousNode = tile;
+      }
+
+      attachmentsEl.classList.toggle('empty', targetItems.length === 0);
     }
 
     async function handleAttach(blob, mime, kind = 'user') {
@@ -361,6 +457,16 @@ import VibeShadowHost from './shadow-host.js';
           const att = await VibeAPI.uploadUserImage(activeExistingAnnotation.id, blob, mime, kind);
           sessionBlobUrls.set(att.id, URL.createObjectURL(blob));
           const cur = activeExistingAnnotation.attachments || [];
+          if (kind === 'capture') {
+            const priorCapture = cur.find(a => a.kind === 'capture');
+            if (priorCapture) {
+              const oldUrl = sessionBlobUrls.get(priorCapture.id);
+              if (oldUrl) {
+                URL.revokeObjectURL(oldUrl);
+                sessionBlobUrls.delete(priorCapture.id);
+              }
+            }
+          }
           // A capture is singular (server replaces the prior one) — mirror that locally.
           activeExistingAnnotation.attachments = kind === 'capture'
             ? [att, ...cur.filter(a => a.kind !== 'capture')]
@@ -369,7 +475,19 @@ import VibeShadowHost from './shadow-host.js';
           markAttachmentsChanged();
         } catch (err) { console.warn('[Vibe] attach failed:', err); }
       } else {
-        pendingAttachments.push({ blob, mime, kind, url: URL.createObjectURL(blob) });
+        const id = `pending_${Date.now()}_${++pendingAttachmentSeq}`;
+        const newUrl = URL.createObjectURL(blob);
+        const newPending = { id, blob, mime, kind, url: newUrl };
+        if (kind === 'capture') {
+          const priorIdx = pendingAttachments.findIndex(p => p.kind === 'capture');
+          if (priorIdx !== -1) {
+            const [oldCapture] = pendingAttachments.splice(priorIdx, 1);
+            if (oldCapture && oldCapture.url) URL.revokeObjectURL(oldCapture.url);
+          }
+          pendingAttachments.unshift(newPending);
+        } else {
+          pendingAttachments.push(newPending);
+        }
         renderAttachments();
         markAttachmentsChanged();
       }
@@ -461,28 +579,71 @@ import VibeShadowHost from './shadow-host.js';
       const removeBtn = e.target.closest('.vibe-att-remove');
       if (removeBtn) {
         e.stopPropagation();
+        const root = VibeShadowHost.getRoot();
+        const activeEl = root?.activeElement || (typeof document !== 'undefined' ? document.activeElement : null);
+        const hadFocus = !!(activeEl && (activeEl === removeBtn || (typeof removeBtn.contains === 'function' && removeBtn.contains(activeEl))));
+
+        let fallbackFocusTarget = null;
+        if (hadFocus) {
+          const allTiles = Array.from(attachmentsEl.querySelectorAll('.vibe-att-tile'));
+          const currentTile = removeBtn.closest('.vibe-att-tile');
+          const currentTileIdx = allTiles.indexOf(currentTile);
+          if (currentTileIdx !== -1) {
+            const nextTile = allTiles[currentTileIdx + 1];
+            const prevTile = allTiles[currentTileIdx - 1];
+            if (nextTile) {
+              fallbackFocusTarget = nextTile.querySelector('.vibe-att-remove');
+            } else if (prevTile) {
+              fallbackFocusTarget = prevTile.querySelector('.vibe-att-remove');
+            } else {
+              fallbackFocusTarget = popover.querySelector('.vibe-add-btn');
+            }
+          }
+        }
+
         const attId = removeBtn.getAttribute('data-att');
-        const pendingIndex = removeBtn.getAttribute('data-pending');
+        const pendingId = removeBtn.getAttribute('data-pending-id') || removeBtn.getAttribute('data-pending');
         if (attId) {
           try { await VibeAPI.removeAttachment(activeExistingAnnotation.id, attId); } catch (err) { console.warn('[Vibe] remove failed:', err); }
           const url = sessionBlobUrls.get(attId);
           if (url) { URL.revokeObjectURL(url); sessionBlobUrls.delete(attId); }
           activeExistingAnnotation.attachments = (activeExistingAnnotation.attachments || []).filter(a => a.id !== attId);
-        } else if (pendingIndex != null) {
-          const p = pendingAttachments[Number(pendingIndex)];
-          if (p) { URL.revokeObjectURL(p.url); pendingAttachments.splice(Number(pendingIndex), 1); }
+        } else if (pendingId != null) {
+          const idx = pendingAttachments.findIndex(p => p.id === pendingId);
+          if (idx !== -1) {
+            const [p] = pendingAttachments.splice(idx, 1);
+            if (p && p.url) URL.revokeObjectURL(p.url);
+          }
         }
         renderAttachments();
         markAttachmentsChanged();
+
+        if (hadFocus) {
+          const targetToFocus = (fallbackFocusTarget && (attachmentsEl.contains(fallbackFocusTarget) || popover.contains(fallbackFocusTarget)))
+            ? fallbackFocusTarget
+            : (attachmentsEl.querySelector('.vibe-att-remove') || popover.querySelector('.vibe-add-btn'));
+          if (targetToFocus && typeof targetToFocus.focus === 'function') {
+            targetToFocus.focus();
+          }
+        }
         return;
       }
       // Click a tile → open the full image in a new tab.
       const tile = e.target.closest('.vibe-att-tile');
       if (!tile) return;
       const attId = tile.getAttribute('data-att');
-      const pendingIndex = tile.getAttribute('data-pending');
-      if (attId) window.open(VibeAPI.attachmentUrl(activeExistingAnnotation.id, attId), '_blank', 'noopener');
-      else if (pendingIndex != null && pendingAttachments[Number(pendingIndex)]) window.open(pendingAttachments[Number(pendingIndex)].url, '_blank', 'noopener');
+      const pendingId = tile.getAttribute('data-pending-id') || tile.getAttribute('data-pending');
+      if (attId) {
+        const url = VibeAPI.attachmentUrl(activeExistingAnnotation.id, attId);
+        if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+          window.open(url, '_blank', 'noopener');
+        }
+      } else if (pendingId != null) {
+        const p = pendingAttachments.find(x => x.id === pendingId);
+        if (p && p.url && p.url.startsWith('blob:')) {
+          window.open(p.url, '_blank', 'noopener');
+        }
+      }
     });
     attachmentsEl.addEventListener('error', (e) => {
       const img = e.target;
@@ -559,7 +720,6 @@ import VibeShadowHost from './shadow-host.js';
       btn.addEventListener('click', () => {
         const section = btn.parentElement;
         const body = section.querySelector('.vibe-design-sec-body');
-        const chevron = btn.querySelector('.vibe-design-sec-chevron');
         const willOpen = body.style.display === 'none';
         designSections.forEach(sec => {
           const b = sec.querySelector('.vibe-design-sec-body');
@@ -594,7 +754,6 @@ import VibeShadowHost from './shadow-host.js';
       const m = line.match(/^\s*([\w-]+)\s*:\s*(.+?)\s*;?\s*$/);
       if (m) rawCssOriginals.set(m[1], m[2]);
     });
-    activeRawCssOriginals = rawCssOriginals;
 
     if (rawCssTextarea) {
       rawCssTextarea.addEventListener('input', () => {
@@ -964,7 +1123,7 @@ import VibeShadowHost from './shadow-host.js';
     try {
       const esc = (window.CSS && CSS.escape) ? CSS.escape(current) : current;
       posEl = container.querySelector(`:scope > [data-variant="${esc}"]`) || container.querySelector(':scope > [data-variant]');
-    } catch (_) {}
+    } catch { /* ignore */ }
     positionPopover(anchor, posEl || targetElement, clickX, clickY);
     wireDragHandle(popover.querySelector('.vibe-drag-handle'), popover);
 
@@ -1078,11 +1237,25 @@ import VibeShadowHost from './shadow-host.js';
     if (currentTargetHighlight) { currentTargetHighlight.remove(); currentTargetHighlight = null; }
     activeElement = null;
     activeExistingAnnotation = null;
-    activeElType = null;
-    activeRawCssOriginals = null;
     activeOriginalText = null;
     activeTextDirty = false;
     activeOriginalCssText = null;
+
+    if (activeSessionBlobUrls) {
+      for (const url of activeSessionBlobUrls.values()) {
+        try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+      }
+      activeSessionBlobUrls.clear();
+      activeSessionBlobUrls = null;
+    }
+    if (activePendingAttachments && activePendingAttachments.length) {
+      for (const p of activePendingAttachments) {
+        if (p && p.url) {
+          try { URL.revokeObjectURL(p.url); } catch { /* ignore */ }
+        }
+      }
+      activePendingAttachments = null;
+    }
     const actuallyReEnable = !!(reEnableInspection && VibeInspectionMode.isActive());
     if (hadPopover && !saved) VibeEvents.emit('popover:cancelled');
     if (hadPopover) VibeEvents.emit('popover:dismissed', { reEnableInspection: actuallyReEnable, saved });
