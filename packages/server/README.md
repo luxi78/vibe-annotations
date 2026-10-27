@@ -1,182 +1,69 @@
-# vibe-annotations-server
+# Pinvelto local service
 
-Global MCP server for Vibe Annotations browser extension.
+Pinvelto is an internal-use visual Feedback product derived from Vibe Annotations. This package provides its local HTTP API, MCP interface, and `pinvelto` command. Install only this repository's artifact; no public registry package is needed for Pinvelto itself.
 
-## Quick start
+## Local installation
 
-```bash
-npx vibe-annotations-server init
+From the repository root with Node.js 18+ and pnpm installed:
+
+```sh
+pnpm install --frozen-lockfile
+npm install --global ./packages/server
+pinvelto --version
+pinvelto init --agent codex --non-interactive
+pinvelto status
 ```
 
-Interactive wizard — installs the global package, starts the server on port 3846, configures your AI coding agent (Claude Code, Cursor, Windsurf, Codex, OpenClaw, VS Code), and links the Chrome extension. Supports these flags: `--agent <name>` (repeatable), `--non-interactive`, `--project` (use project scope instead of user), `--skip-server`, `--skip-extension`, `--reset`.
+The global installation source is the local `packages/server` directory. The only installed executable is `pinvelto`. Alternatively, run `node packages/server/bin/cli.js` in place of `pinvelto`, which is useful in a temporary test environment or when avoiding global installation.
 
-## Manual installation
+`init` starts the installed local service and creates a new `pinvelto` entry for the selected agent. Other entries, including upstream entries, remain intact. Existing conflicting Pinvelto entries are preserved in non-interactive mode. For project-scoped setup use `--project` with an agent that supports it. `--skip-server` configures without starting; `--skip-extension` suppresses unpacked-extension guidance. The wizard does not download packages or open a browser store.
 
-```bash
-npm install -g vibe-annotations-server
+Build the repository extension separately and load its unpacked output; see [the extension instructions](../extension/README.md). Do not install an upstream extension to connect to Pinvelto.
+
+## Endpoint and local state
+
+The default MCP URL is `http://127.0.0.1:3847/mcp`; SSE clients may use `/sse`. `/health` reports `product: "pinvelto"`, the installed package version, PID, and launch identity. The extension's Feedback transport remains `/api/annotations`.
+
+New state lives in `~/.pinvelto/`: Feedback in `annotations.json`, images in `attachments/`, and port-specific service records/logs. No upstream state is read or migrated. Existing installations, agent entries, and `~/.vibe-annotations` remain untouched.
+
+For isolated automation, set `PINVELTO_HOME` to a temporary home directory and `PINVELTO_PORT` to a free port. `pinvelto --port 43847 ...` overrides the service port for that command; use the same port for setup and lifecycle commands. The default extension uses port 3847. `PINVELTO_HOME` scopes both service state and wizard agent configuration; it does not change your actual home. Never point an acceptance fixture at a user's active service/configuration.
+
+```sh
+pinvelto start --daemon
+pinvelto status
+pinvelto logs --lines 50
+pinvelto restart
+pinvelto stop
 ```
 
-## Usage
+Without `--daemon`, `start` runs in the foreground. Lifecycle operations require both the matching Pinvelto response and the port-specific launch record. Shutdown is an authenticated request to that exact instance; a stale PID never authorizes signaling a process. An occupied endpoint or an unowned Pinvelto service produces an error and remains running. Inspect the reported endpoint and choose a free port or stop its owning application deliberately.
 
-### Start the server
+## MCP capabilities
 
-```bash
-vibe-annotations-server start
+Only these tools are registered:
+
+- `pinvelto_list_feedback`
+- `pinvelto_get_project_context`
+- `pinvelto_get_screenshot`
+- `pinvelto_watch_feedback`
+- `pinvelto_delete_feedback`
+- `pinvelto_delete_project_feedback`
+- `pinvelto_update_feedback`
+
+List/read returns Feedback plus project guidance and existing local attachment paths. Filter by the intended project URL. Screenshot retrieval and watch preserve their existing capabilities. `pinvelto_update_feedback` handles Variants lifecycle transitions rather than acting as a general Feedback editor. Ordinary completed Feedback is deleted through the delete tools; Variants must follow their generation/selection/finalization workflow.
+
+The confirmed global deletion endpoint `POST /api/annotations/purge` accepts `{ "ids": ["confirmed-id"], "confirm": true }`. It removes only confirmed Feedback and attachments, preserves concurrent additions, and never edits generated project code.
+
+## Deliberate updates and tests
+
+Stop Pinvelto, check out the intended project revision, run `pnpm install --frozen-lockfile`, repeat the local installation command, rebuild/reload the extension, then run `pinvelto start --daemon` and inspect `pinvelto status`. Agent HTTP URLs remain stable. Updates are deliberate; the service does not poll public package versions or display registry upgrade prompts.
+
+```sh
+pnpm --filter pinvelto-server test
 ```
 
-The server will run in the background on port 3846.
+Tests spawn actual CLI/service processes, exchange HTTP and MCP requests, persist Feedback, and use temporary homes and ephemeral ports. They verify foreign-service rejection, stale PID isolation, configuration preservation, independent state, persistence, and shutdown.
 
-### Stop the server
+## Provenance and license
 
-```bash
-vibe-annotations-server stop
-```
-
-### Check server status
-
-```bash
-vibe-annotations-server status
-```
-
-### Restart the server
-
-```bash
-vibe-annotations-server restart
-```
-
-### View logs
-
-```bash
-vibe-annotations-server logs
-# or follow logs
-vibe-annotations-server logs -f
-```
-
-## AI Coding Agent Integration
-
-After starting the server, connect it to your AI coding agent. The server supports multiple agents via MCP (Model Context Protocol) using both HTTP and SSE transports.
-
-### Claude Code
-
-Run once (from any directory — `--scope user` makes it available across all projects):
-
-```bash
-# Recommended (HTTP transport - more stable)
-claude mcp add --scope user --transport http vibe-annotations http://127.0.0.1:3846/mcp
-
-# Alternative (SSE transport - for compatibility)
-claude mcp add --scope user --transport sse vibe-annotations http://127.0.0.1:3846/sse
-```
-
-### Cursor
-
-1. Open Cursor → Settings → Cursor Settings
-2. Go to the Tools & Integrations tab
-3. Click + Add new global MCP server
-4. Enter the following configuration and save:
-
-```json
-{
-  "mcpServers": {
-    "vibe-annotations": {
-      "url": "http://127.0.0.1:3846/mcp"
-    }
-  }
-}
-```
-
-### Windsurf
-
-1. Navigate to Windsurf → Settings → Advanced Settings
-2. Scroll down to the Cascade section
-3. Click "Add new server" or edit the raw JSON config file
-4. Add the following configuration:
-
-```json
-{
-  "mcpServers": {
-    "vibe-annotations": {
-      "serverUrl": "http://127.0.0.1:3846/mcp"
-    }
-  }
-}
-```
-
-### VS Code
-
-1. Install an AI extension that supports MCP (like GitHub Copilot Chat or Continue)
-2. Go to Code → Settings → Settings or use the shortcut ⌘,
-3. In the search bar, type "MCP"
-4. Look for MCP server configurations in your AI extension settings
-5. Add the following SSE configuration:
-
-```json
-{
-  "mcpServers": {
-    "vibe-annotations": {
-      "type": "sse",
-      "url": "http://127.0.0.1:3846/mcp"
-    }
-  }
-}
-```
-
-**Note:** MCP support varies by AI extension. Check your extension's documentation for specific setup instructions.
-
-### Other Editors
-
-Other code editors and tools that support SSE (Server-Sent Events) can also connect to the Vibe Annotations MCP server. If you're using a different editor or tool, check its documentation to confirm it supports SSE-based communication. If it does, you can manually add the server using this configuration:
-
-```json
-{
-  "mcpServers": {
-    "vibe-annotations": {
-      "url": "http://127.0.0.1:3846/mcp"
-    }
-  }
-}
-```
-
-**Note:** The Vibe Annotations MCP server supports both HTTP and SSE transports. HTTP transport is recommended for better stability. Use the URL: `http://127.0.0.1:3846/mcp` (HTTP) or `http://127.0.0.1:3846/sse` (SSE).
-
-## Architecture
-
-The server provides:
-
-- **SSE Endpoint** (`/sse`): For AI coding agent MCP connections
-- **HTTP API** (`/api/annotations`): For Chrome extension communication
-- **Health Check** (`/health`): For status monitoring
-
-Data is stored in `~/.vibe-annotations/annotations.json`.
-
-### Confirmed global deletion
-
-The extension's separate **Delete all annotations** footer uses `POST /api/annotations/purge` with `{ "ids": ["confirmed-id"], "confirm": true }`. The server applies only those IDs inside its writer queue, preserving annotations created after the confirmation snapshot. It removes annotation metadata (including scaffolded Variants) and their attachment files, but does not finalize Variants or edit generated project code. The response acknowledges the exact IDs in `purged_ids`.
-
-Older server instances do not implement this endpoint. The extension clears the confirmed local records, retains deletion intent for retry, and displays an update/pending warning instead of using an unsafe full-state replacement. A deliberate re-import can restore a purged identity.
-
-To test the repository implementation, first stop the existing instance on port 3846, then run from the monorepo root:
-
-```bash
-pnpm --filter vibe-annotations-server start
-```
-
-Run the isolated HTTP/filesystem regression tests with `pnpm --filter vibe-annotations-server test`. They use temporary data and an ephemeral port, never the user's running server.
-
-## Development
-
-```bash
-# Clone the repository
-git clone <repo-url>
-cd vibe-annotations-server
-
-# Install dependencies
-npm install
-
-# Run in development mode
-npm run dev
-```
-
-## License
-
-MIT
+Inherited authorship and notices remain in [LICENSE](LICENSE), the repository [LICENSE](../../LICENSE), and [NOTICE](../../NOTICE). The inherited code is under PolyForm Shield 1.0.0 as recorded in those files; independent branding and internal use do not relicense it or establish legal clearance. Project issues: [luxi78/vibe-annotations](https://github.com/luxi78/vibe-annotations/issues).

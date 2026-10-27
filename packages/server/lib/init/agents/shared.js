@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname } from 'path';
 import { spawnSync } from 'child_process';
-import { homedir } from 'os';
+import { HOME } from '../../config.js';
 
-export const MCP_URL = 'http://127.0.0.1:3846/mcp';
-export const MCP_NAME = 'vibe-annotations';
+export { MCP_URL } from '../../config.js';
+export const MCP_NAME = 'pinvelto';
 
 export function hasBinary(name) {
   const cmd = process.platform === 'win32' ? 'where' : 'sh';
@@ -15,7 +15,7 @@ export function hasBinary(name) {
 
 export function expandHome(p) {
   if (p.startsWith('~/') || p === '~') {
-    return p.replace(/^~/, homedir());
+    return p.replace(/^~/, HOME);
   }
   return p;
 }

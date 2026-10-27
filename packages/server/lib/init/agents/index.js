@@ -70,7 +70,7 @@ async function applyJson(agent, config, { scope, detected, confirmOverwrite }) {
     if (!ok) return { status: 'skipped', agent: agent.id, path: config.path };
   }
 
-  const cli = detected && pickCli(agent, scope);
+  const cli = !process.env.PINVELTO_HOME && detected && pickCli(agent, scope);
   if (cli) {
     const result = runCli(cli);
     if (result.ok) {

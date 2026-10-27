@@ -1,16 +1,16 @@
 import { join } from 'path';
-import { homedir } from 'os';
+import { HOME } from '../../config.js';
 import { existsSync } from 'fs';
 import { hasBinary, MCP_URL, MCP_NAME } from './shared.js';
 
-const USER_PATH = join(homedir(), '.codeium', 'windsurf', 'mcp_config.json');
+const USER_PATH = join(HOME, '.codeium', 'windsurf', 'mcp_config.json');
 
 export default {
   id: 'windsurf',
   label: 'Windsurf',
 
   detect() {
-    return hasBinary('windsurf') || existsSync(join(homedir(), '.codeium', 'windsurf'));
+    return hasBinary('windsurf') || existsSync(join(HOME, '.codeium', 'windsurf'));
   },
 
   userConfig() {

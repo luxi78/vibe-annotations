@@ -1,250 +1,113 @@
 #!/usr/bin/env node
-
 import { Command } from 'commander';
-import { spawn } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, openSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import chalk from 'chalk';
-import { homedir } from 'os';
-import fs from 'fs';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Read version from package.json automatically
-const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8'));
-
+import { readFileSync, existsSync } from 'node:fs';
+const pkg = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8')
+);
 const program = new Command();
-
-// Configuration paths
-const CONFIG_DIR = join(homedir(), '.vibe-annotations');
-const PID_FILE = join(CONFIG_DIR, 'server.pid');
-const LOG_FILE = join(CONFIG_DIR, 'server.log');
-const PORT = 3846;
-
-// Ensure config directory exists
-if (!existsSync(CONFIG_DIR)) {
-  mkdirSync(CONFIG_DIR, { recursive: true });
-}
-
-// Helper functions
-function isServerRunning() {
-  if (!existsSync(PID_FILE)) {
-    return false;
-  }
-  
-  try {
-    const pid = readFileSync(PID_FILE, 'utf8').trim();
-    process.kill(parseInt(pid), 0); // Check if process exists
-    return true;
-  } catch (e) {
-    // Process doesn't exist
-    if (existsSync(PID_FILE)) {
-      // Clean up stale PID file
-      unlinkSync(PID_FILE);
-    }
-    return false;
-  }
-}
-
-async function checkPort() {
-  try {
-    const response = await fetch(`http://127.0.0.1:${PORT}/health`);
-    return response.ok;
-  } catch (error) {
-    return false;
-  }
-}
-
-// Commands
 program
-  .name('vibe-annotations-server')
-  .description('Global MCP server for Vibe Annotations browser extension')
-  .version(packageJson.version);
-
-program
-  .command('init')
-  .description('Interactive setup wizard: install server, configure MCP, link the extension')
-  .option('--agent <name>', 'Configure specific agent (repeatable). One of: claude-code, cursor, windsurf, codex, openclaw, opencode, vscode', collectAgent, [])
-  .option('--non-interactive', 'No prompts; use defaults. Auto-applied on CI or no TTY.')
-  .option('--skip-extension', 'Skip the Chrome extension prompt')
-  .option('--skip-server', 'Skip installing/starting the server')
-  .option('--project', 'Configure MCP at project scope instead of user scope')
-  .option('--reset', 'Remove existing vibe-annotations entries from known agent configs before configuring')
-  .action(async (options) => {
-    const { runInit } = await import('../lib/init/index.js');
-    await runInit({
-      agent: options.agent.length ? options.agent : null,
-      nonInteractive: !!options.nonInteractive,
-      skipExtension: !!options.skipExtension,
-      skipServer: !!options.skipServer,
-      project: !!options.project,
-      reset: !!options.reset,
-    });
+  .name('pinvelto')
+  .description('Pinvelto local webpage Feedback and MCP service')
+  .version(pkg.version)
+  .option(
+    '--port <number>',
+    'Local service port (default: PINVELTO_PORT or 3847)'
+  )
+  .hook('preAction', () => {
+    if (program.opts().port) process.env.PINVELTO_PORT = program.opts().port;
   });
-
-function collectAgent(value, previous) {
-  return previous.concat(value);
+async function lifecycle() {
+  return import('../lib/lifecycle.js');
 }
-
+function failure(result) {
+  if (!result.ok) {
+    console.error(result.reason);
+    process.exitCode = 1;
+    return true;
+  }
+  return false;
+}
 program
   .command('start')
-  .description('Start the Vibe Annotations server')
-  .option('-d, --daemon', 'Run as daemon (background process)')
+  .description('Start the Pinvelto service')
+  .option('-d, --daemon', 'Run in the background')
   .action(async (options) => {
-    if (isServerRunning()) {
-      console.log(chalk.yellow('✓ Server is already running'));
-      console.log(chalk.gray(`  Port: ${PORT}`));
-      console.log(chalk.gray(`  PID: ${readFileSync(PID_FILE, 'utf8').trim()}`));
-      return;
-    }
-
-    console.log(chalk.blue('Starting Vibe Annotations server...'));
-
-    const serverPath = join(dirname(__dirname), 'lib', 'server.js');
-    
-    if (options.daemon) {
-      // Run as daemon
-      const out = fs.openSync(LOG_FILE, 'a');
-      const err = fs.openSync(LOG_FILE, 'a');
-      
-      const child = spawn('node', [serverPath], {
-        detached: true,
-        stdio: ['ignore', out, err],
-        env: { ...process.env, NODE_ENV: 'production' }
-      });
-      
-      child.unref();
-      writeFileSync(PID_FILE, child.pid.toString());
-      
-      // Wait for server to start
-      let attempts = 0;
-      while (attempts < 10) {
-        if (await checkPort()) {
-          console.log(chalk.green('✅ Vibe Annotations server running on http://127.0.0.1:3846/sse'));
-          console.log(chalk.gray(`   PID: ${child.pid}`));
-          console.log(chalk.gray(`   Logs: ${LOG_FILE}`));
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-        attempts++;
-      }
-      
-      if (attempts >= 10) {
-        console.log(chalk.red('❌ Failed to start server. Check logs at:'));
-        console.log(chalk.gray(`   ${LOG_FILE}`));
-      }
-    } else {
-      // Run in foreground
-      const child = spawn('node', [serverPath], {
-        stdio: 'inherit',
-        env: { ...process.env, NODE_ENV: 'production' }
-      });
-      
-      writeFileSync(PID_FILE, child.pid.toString());
-      
-      child.on('exit', () => {
-        if (existsSync(PID_FILE)) {
-          unlinkSync(PID_FILE);
-        }
-      });
-    }
+    const result = await (
+      await lifecycle()
+    ).startService({ daemon: !!options.daemon });
+    if (!failure(result))
+      console.log(`Pinvelto is running (PID ${result.pid})`);
   });
-
 program
   .command('stop')
-  .description('Stop the Vibe Annotations server')
-  .action(() => {
-    if (!isServerRunning()) {
-      console.log(chalk.yellow('Server is not running'));
-      return;
-    }
-    
-    try {
-      const pid = readFileSync(PID_FILE, 'utf8').trim();
-      process.kill(parseInt(pid), 'SIGTERM');
-      
-      if (existsSync(PID_FILE)) {
-        unlinkSync(PID_FILE);
-      }
-      
-      console.log(chalk.green('✅ Server stopped'));
-    } catch (error) {
-      console.log(chalk.red('❌ Failed to stop server:'), error.message);
-    }
+  .description('Stop the owned Pinvelto service')
+  .action(async () => {
+    const result = await (await lifecycle()).stopService();
+    if (!failure(result))
+      console.log(
+        result.stopped ? 'Pinvelto stopped' : 'Pinvelto is not running'
+      );
   });
-
 program
   .command('restart')
-  .description('Restart the Vibe Annotations server')
+  .description('Restart the owned Pinvelto service')
   .action(async () => {
-    console.log(chalk.blue('Restarting server...'));
-    
-    // Stop if running
-    if (isServerRunning()) {
-      try {
-        const pid = readFileSync(PID_FILE, 'utf8').trim();
-        process.kill(parseInt(pid), 'SIGTERM');
-        
-        if (existsSync(PID_FILE)) {
-          unlinkSync(PID_FILE);
-        }
-        
-        // Wait for process to stop
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error) {
-        console.log(chalk.yellow('Warning:'), error.message);
-      }
-    }
-    
-    // Start with daemon flag
-    program.parse(['node', 'cli.js', 'start', '--daemon'], { from: 'user' });
+    const service = await lifecycle();
+    if (failure(await service.stopService())) return;
+    const result = await service.startService();
+    if (!failure(result))
+      console.log(`Pinvelto is running (PID ${result.pid})`);
   });
-
 program
   .command('status')
-  .description('Check server status')
+  .description('Inspect service identity and ownership')
   .action(async () => {
-    const running = isServerRunning();
-    const portAvailable = await checkPort();
-    
-    if (running && portAvailable) {
-      console.log(chalk.green('✅ Server is running'));
-      console.log(chalk.gray(`   PID: ${readFileSync(PID_FILE, 'utf8').trim()}`));
-      console.log(chalk.gray(`   Port: ${PORT}`));
-      console.log(chalk.gray(`   URL: http://127.0.0.1:${PORT}/sse`));
-    } else if (running && !portAvailable) {
-      console.log(chalk.yellow('⚠️  Server process exists but is not responding'));
-      console.log(chalk.gray('   Try running: vibe-annotations-server restart'));
-    } else {
-      console.log(chalk.gray('○ Server is not running'));
+    const status = await (await lifecycle()).inspectService();
+    if (status.state === 'owned')
+      console.log(
+        `Pinvelto is running (PID ${status.health.pid}, version ${status.health.version})`
+      );
+    else if (status.state === 'stopped') console.log('Pinvelto is not running');
+    else {
+      console.error(
+        `Endpoint occupied: ${status.state} service; Pinvelto does not own it`
+      );
+      process.exitCode = 1;
     }
   });
-
 program
   .command('logs')
-  .description('View server logs')
-  .option('-f, --follow', 'Follow log output')
-  .option('-n, --lines <number>', 'Number of lines to show', '50')
-  .action((options) => {
-    if (!existsSync(LOG_FILE)) {
-      console.log(chalk.gray('No logs available yet'));
-      return;
-    }
-    
-    if (options.follow) {
-      // Use tail -f
-      const tail = spawn('tail', ['-f', LOG_FILE], { stdio: 'inherit' });
-      
-      process.on('SIGINT', () => {
-        tail.kill();
-        process.exit();
-      });
-    } else {
-      // Show last N lines
-      const tail = spawn('tail', ['-n', options.lines, LOG_FILE], { stdio: 'inherit' });
-    }
+  .description('Show local service logs')
+  .option('-n, --lines <number>', 'Number of lines', '50')
+  .action(async (options) => {
+    const { LOG_FILE } = await lifecycle();
+    if (existsSync(LOG_FILE))
+      console.log(
+        readFileSync(LOG_FILE, 'utf8')
+          .split('\n')
+          .slice(-Number(options.lines))
+          .join('\n')
+      );
   });
-
-program.parse(process.argv);
+program
+  .command('init')
+  .description('Configure Pinvelto from the installed local artifact')
+  .option(
+    '--agent <name>',
+    'Agent to configure (repeatable)',
+    (value, previous) => [...previous, value],
+    []
+  )
+  .option('--non-interactive', 'Use defaults without prompts')
+  .option('--skip-extension', 'Skip extension guidance')
+  .option('--skip-server', 'Configure without starting the service')
+  .option('--project', 'Configure at project scope')
+  .action(async (options) => {
+    await (
+      await import('../lib/init/index.js')
+    ).runInit({
+      ...options,
+      agent: options.agent.length ? options.agent : null
+    });
+  });
+await program.parseAsync(process.argv);

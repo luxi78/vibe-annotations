@@ -1,9 +1,9 @@
 import { join } from 'path';
-import { homedir } from 'os';
+import { HOME } from '../../config.js';
 import { existsSync } from 'fs';
 import { hasBinary, MCP_URL, MCP_NAME } from './shared.js';
 
-const USER_PATH = join(homedir(), '.config', 'opencode', 'opencode.json');
+const USER_PATH = join(HOME, '.config', 'opencode', 'opencode.json');
 const PROJECT_PATH = (cwd) => join(cwd, 'opencode.json');
 
 export default {
@@ -11,7 +11,7 @@ export default {
   label: 'OpenCode',
 
   detect() {
-    return hasBinary('opencode') || existsSync(join(homedir(), '.config', 'opencode'));
+    return hasBinary('opencode') || existsSync(join(HOME, '.config', 'opencode'));
   },
 
   userConfig() {
