@@ -80,3 +80,16 @@ the controlled E2E artifact to avoid contacting an existing user service/profile
 No hosted deployment, repository rename, directory relocation, old-data migration,
 or upstream code adoption was performed. Inherited license/provenance exceptions
 and the original terms inconsistency remain explicitly documented.
+
+## Worktree cleanup limitation
+
+All six implementation worktree registrations were removed after confirming
+clean tracked state and that their commits are ancestors of the pushed
+integration branch. Their branches remain available as recovery references.
+`issue-29` was physically removed. Git reported `Directory not empty` for
+`issue-24` through `issue-28`, leaving partially removed directories under
+`.worktrees/`. A subsequent scoped native PowerShell recursive removal was
+rejected by automatic approval review with `blocked by policy`; it was not
+executed or bypassed. Those five residual directories remain. This does not
+affect the clean integration checkout, pushed commits, or product acceptance,
+but physical cleanup of those remnants is unfinished.
