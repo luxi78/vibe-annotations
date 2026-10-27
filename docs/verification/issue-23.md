@@ -15,8 +15,8 @@ relocation remain separate operations after acceptance.
 | Slice | Evidence | Integration verification |
 | --- | --- | --- |
 | #24 — isolated CLI, service, MCP | [Service verification](issue-24.md) | 18 server tests passed; real processes, HTTP, MCP, temporary homes/ports/configurations; offline temporary-prefix installation |
-| #25 — extension-to-MCP Feedback | Pending | Pending |
-| #26 — exports and Variants | Pending | Pending |
+| #25 — extension-to-MCP Feedback | [Browser verification](issue-25.md) | 200 unit tests and 69 browser tests passed; actual screenshot, persisted Feedback, complete MCP identity/tool list, visible MCP update, preserved old state and foreign-service isolation |
+| #26 — exports and Variants | [Export and lifecycle verification](issue-26.md) | 200 extension and 18 server tests, 19 relevant browser checks, final four acceptance rerun; real generated-project finalization/restoration and code-preserving global purge; own exports and missing references |
 | #27 — production brand assets | [Brand evidence](../design/brand/README.md) | 198 unit tests, brand and entry E2E checks, website typecheck/build; independent inspection of native-size, extension, and documentation captures |
 | #28 — internal delivery and documentation | Pending | Pending |
 | #29 — independent maintenance | [Guard verification](issue-29.md) | Four real Git boundary tests passed; clone-local guard activated; upstream fetch retained |
