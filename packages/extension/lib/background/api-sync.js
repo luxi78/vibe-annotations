@@ -146,7 +146,7 @@ export async function saveOne(annotation) {
 
 // Upload an image attachment as a raw binary blob (no base64). kind is 'capture'
 // (the auto element screenshot) or 'user' (paste/upload). The server writes it to
-// ~/.pinvelto-feedback/attachments/ and records { id, kind, mime } on the annotation.
+// ~/.pinvelto/attachments/ and records { id, kind, mime } on the annotation.
 // Retries on 404: for a brand-new annotation the attachment can race ahead of the
 // server-side create (saveOne is fire-and-forget), so the annotation may not exist
 // for a moment. Backs off and retries rather than losing the image.

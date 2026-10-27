@@ -24,6 +24,9 @@ writeFileSync(
   new URL('../.output-e2e/chrome-mv3/.pinvelto-e2e', import.meta.url),
   controlledUrl
 );
+// An extension-origin client exercises the public runtime protocol without adding a production page.
+writeFileSync(new URL('../.output-e2e/chrome-mv3/acceptance.html', import.meta.url),
+  '<!doctype html><html><title>Pinvelto runtime acceptance client</title></html>');
 const specs = process.argv.slice(2);
 const result = spawnSync(
   process.execPath,

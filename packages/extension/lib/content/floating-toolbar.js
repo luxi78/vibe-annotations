@@ -8,6 +8,7 @@ import PinveltoShadowHost from './shadow-host.js';
 import PinveltoKeyboardRouter from './keyboard-router.js';
 import PinveltoToolbarDocs from './toolbar-docs.js';
 import { renderFeedbackMarkdown } from './export-markdown.js';
+import { feedbackExport } from '../feedback-export.js';
 import { isRecordableHotkey } from './hotkey.js';
 import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from './site-utils.js';
 
@@ -1881,18 +1882,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   // is stripped (attachments travel by reference, not inline). Returns a JSON string.
   function buildExportEnvelope(pinveltoFeedback, targetUrlObj) {
     const loc = targetUrlObj || window.location;
-    return JSON.stringify({
-      pinvelto_annotations_export: true,
-      version: '1.0',
-      exported_at: new Date().toISOString(),
-      source: { origin: loc.origin, hostname: loc.hostname, port: loc.port || '' },
-      scope: 'project',
-      pinveltoFeedback: pinveltoFeedback.map(a => {
-        const cleaned = { ...a };
-        delete cleaned.screenshot;
-        return cleaned;
-      })
-    }, null, 2);
+    return JSON.stringify(feedbackExport(pinveltoFeedback, {
+      origin: loc.origin, hostname: loc.hostname, port: loc.port || ''
+    }), null, 2);
   }
 
   function triggerImport() {
@@ -1924,7 +1916,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     if (!root) return;
 
     // Validate envelope
-    if (!data || data.pinvelto_annotations_export !== true || !Array.isArray(data.pinveltoFeedback)) {
+    if (!data || data.product !== 'pinvelto' || data.pinvelto_feedback_export !== true || data.version !== '1.0' || !Array.isArray(data.feedback)) {
       showInfoModal('Invalid format', 'This file is not a Pinvelto export.');
       return;
     }
@@ -1948,7 +1940,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     // Remap URLs if importing from a different origin
     if (remapFrom) {
-      for (const a of data.pinveltoFeedback) {
+      for (const a of data.feedback) {
         if (a.url) a.url = a.url.replace(remapFrom, currentOrigin);
         if (a.url_path) { /* url_path is pathname-only, no origin to remap */ }
       }
@@ -1957,17 +1949,17 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     // Deduplicate against existing
     const existing = await PinveltoAPI.loadProjectFeedback();
     const existingIds = new Set(existing.map(a => a.id));
-    const newFeedback = data.pinveltoFeedback.filter(a => !existingIds.has(a.id));
-    const skipped = data.pinveltoFeedback.length - newFeedback.length;
+    const newFeedback = data.feedback.filter(a => !existingIds.has(a.id));
+    const skipped = data.feedback.length - newFeedback.length;
 
     if (newFeedback.length === 0) {
-      showInfoModal('Nothing to import', `All ${data.pinveltoFeedback.length} Feedback${data.pinveltoFeedback.length !== 1 ? 's' : ''} already exist locally.`);
+      showInfoModal('Nothing to import', `All ${data.feedback.length} Feedback${data.feedback.length !== 1 ? 's' : ''} already exist locally.`);
       return;
     }
 
     // Confirm
     const confirmed = await showImportConfirm(root, {
-      total: data.pinveltoFeedback.length,
+      total: data.feedback.length,
       newCount: newFeedback.length,
       skipped
     });

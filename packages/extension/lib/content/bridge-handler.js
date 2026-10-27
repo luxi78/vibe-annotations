@@ -3,6 +3,7 @@
 // Uses existing internal modules to create/read/delete pinveltoFeedback
 
 import PinveltoAPI from './api-bridge.js';
+import { feedbackExport } from '../feedback-export.js';
 import PinveltoElementContext from './element-context.js';
 import PinveltoEvents, { pinveltoLocationPath } from './event-bus.js';
 
@@ -205,22 +206,9 @@ import PinveltoEvents, { pinveltoLocationPath } from './event-bus.js';
       : await PinveltoAPI.loadProjectFeedback();
 
     const loc = window.location;
-    return {
-      pinvelto_annotations_export: true,
-      version: '1.0',
-      exported_at: new Date().toISOString(),
-      source: {
-        origin: loc.origin,
-        hostname: loc.hostname,
-        port: loc.port || ''
-      },
-      scope: scope || 'project',
-      pinveltoFeedback: pinveltoFeedback.map(a => {
-        const cleaned = { ...a };
-        delete cleaned.screenshot;
-        return cleaned;
-      })
-    };
+    return { ...feedbackExport(pinveltoFeedback, {
+      origin: loc.origin, hostname: loc.hostname, port: loc.port || ''
+    }), scope: scope || 'project' };
   }
 
   async function handleDelete({ id }) {

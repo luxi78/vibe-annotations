@@ -1,10 +1,5 @@
-// Single source of truth for the annotation markdown format — used by both
-// "Copy all" (clipboard) and the .md export. Rendered entirely client-side so it
-// works with no server running; image paths are derived from the attachment
-// metadata (the server-side filename convention) using ~ so an agent can open
-// them without us knowing the absolute home dir.
-
-const EXT_BY_MIME = { 'image/webp': 'webp', 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif' };
+// Shared offline Markdown for Copy all and .md downloads. Images travel as
+// references; the real MCP service verifies availability and resolves local paths.
 
 function camelToKebab(s) {
   return String(s).replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
@@ -13,15 +8,10 @@ function truncate(s, n) {
   s = String(s || '');
   return s.length > n ? s.slice(0, n) + '…' : s;
 }
-function attachmentPath(annotationId, att) {
-  const ext = EXT_BY_MIME[att.mime] || 'bin';
-  return `~/.pinvelto-feedback/attachments/${annotationId}__${att.id}.${ext}`;
-}
-
 export function renderFeedbackMarkdown(pinveltoFeedback, host) {
   const count = pinveltoFeedback.length;
-  let md = `# Pinvelto — ${host} · ${count} Feedback${count === 1 ? '' : 's'}\n\n`;
-  md += `Follow my instructions on these elements. When applying design changes, map values to the project design system (Tailwind classes, CSS variables, or design tokens).\n\n---\n\n`;
+  let md = `# Pinvelto — ${host} · ${count} Feedback\n\n`;
+  md += `This is Pinvelto webpage Feedback. Use pinvelto_list_feedback to read current records and verified local attachment paths; use pinvelto_get_screenshot for available captures. For Variants, follow variant_instructions returned by pinvelto_list_feedback; preserve the preview-and-pick lifecycle instead of implementing a single option. Image references below are not embedded and may be unavailable on another machine. Follow my instructions on these elements. When applying design changes, map values to the project design system (Tailwind classes, CSS variables, or design tokens).\n\n---\n\n`;
 
   const sorted = [...pinveltoFeedback].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   sorted.forEach((a, i) => {
@@ -62,7 +52,7 @@ export function renderFeedbackMarkdown(pinveltoFeedback, host) {
 
     for (const att of (a.attachments || [])) {
       const label = att.kind === 'capture' ? 'Screenshot' : 'Reference';
-      md += `- **${label}:** ![${label}](${attachmentPath(a.id, att)})\n`;
+      md += `- **${label}:** attachment reference \`${att.id}\` (${att.mime || 'image'}); not embedded — verify availability with \`pinvelto_list_feedback\`.\n`;
     }
 
     md += `\n`;
