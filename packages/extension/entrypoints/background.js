@@ -1,11 +1,10 @@
-// Vibe Annotations Background Service Worker — WXT entrypoint.
+// Pinvelto Background Service Worker — WXT entrypoint.
 // Body is unchanged from the pre-WXT build; paths updated + wrapped in defineBackground().
 
 import { isSupportedUrl, isLocalhostUrl } from '../lib/background/url-filter.js';
 import { updateBadge, clearBadge, updateBadgeForUrl, updateAllBadges } from '../lib/background/badge.js';
-import { isConnected, checkConnection, getCachedStatus, syncAll, deleteAllStoredAnnotations, saveOne, deleteOne, smartSync, fetchAnnotations, uploadAttachment, deleteAttachment, fetchExport, fetchWatchers, stopWatchers } from '../lib/background/api-sync.js';
+import { isConnected, checkConnection, getCachedStatus, syncAll, deleteAllStoredFeedback, saveOne, deleteOne, smartSync, fetchFeedback, uploadAttachment, deleteAttachment, fetchExport, fetchWatchers, stopWatchers } from '../lib/background/api-sync.js';
 import { formatExport } from '../lib/background/export.js';
-import { migrateSyncFlags } from '../lib/background/utils.js';
 import SessionCoordinator from '../lib/background/session-coordinator.js';
 import { SESSION_SYNC, SESSION_STATES } from '../lib/session-protocol.js';
 
@@ -26,7 +25,7 @@ async function injectContentScripts(tabId) {
   // (see lib/content/keyboard-router.js).
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
-    func: () => { window.__VIBE_LATE_INJECTION = true; },
+    func: () => { window.__PINVELTO_LATE_INJECTION = true; },
   });
   await chrome.scripting.executeScript({
     target: { tabId, allFrames: true },
@@ -42,12 +41,12 @@ async function injectContentScripts(tabId) {
 async function seedBootIntent(tabId, intent, data) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    func: (i, d) => { window.__VIBE_BOOT_INTENT = i; window.__VIBE_BOOT_DATA = d; },
+    func: (i, d) => { window.__PINVELTO_BOOT_INTENT = i; window.__PINVELTO_BOOT_DATA = d; },
     args: [intent, data],
   });
 }
 
-class VibeAnnotationsBackground {
+class PinveltoFeedbackBackground {
   constructor() {
     this._storageQueue = Promise.resolve();
     // One Annotate session per tab, shared with every frame the extension controls.
@@ -70,7 +69,6 @@ class VibeAnnotationsBackground {
     this.setupTabListener();
     this.setupStorageListener();
     this.restoreEnabledSites();
-    migrateSyncFlags();
     this.startConnectionMonitoring();
   }
 
@@ -86,8 +84,8 @@ class VibeAnnotationsBackground {
   async handleFirstInstall() {
     try {
       await chrome.storage.local.set({
-        annotations: [],
-        settings: { version: '0.1.0', firstInstall: Date.now(), apiEnabled: false }
+        pinveltoFeedback: [],
+        pinveltoSettings: { version: chrome.runtime.getManifest().version, firstInstall: Date.now(), apiEnabled: false }
       });
     } catch (error) {
       console.error('Error setting up initial storage:', error);
@@ -95,36 +93,11 @@ class VibeAnnotationsBackground {
   }
 
   async handleUpdate(previousVersion) {
-    try {
-      const currentVersion = chrome.runtime.getManifest().version;
-      await chrome.storage.local.set({
-        updateInfo: {
-          hasUpdate: true, previousVersion, currentVersion,
-          timestamp: Date.now(),
-          releaseUrl: `https://github.com/RaphaelRegnier/vibe-annotations/releases/tag/v${currentVersion}`
-        }
-      });
-      chrome.action.setBadgeText({ text: 'NEW' });
-      chrome.action.setBadgeBackgroundColor({ color: '#0754FF' });
-
-      const result = await chrome.storage.local.get(['settings']);
-      const settings = result.settings || {};
-      settings.lastUpdate = Date.now();
-      settings.previousVersion = previousVersion;
-      await chrome.storage.local.set({ settings });
-    } catch (error) {
-      console.error('Error during update migration:', error);
-    }
-  }
-
-  async dismissUpdate() {
-    const { updateInfo } = await chrome.storage.local.get(['updateInfo']);
-    if (updateInfo) {
-      await chrome.storage.local.set({
-        updateInfo: { ...updateInfo, hasUpdate: false }
-      });
-    }
-    chrome.action.setBadgeText({ text: '' });
+    const result = await chrome.storage.local.get(['pinveltoSettings']);
+    await chrome.storage.local.set({ pinveltoSettings: {
+      ...(result.pinveltoSettings || {}), version: chrome.runtime.getManifest().version,
+      previousVersion, lastUpdate: Date.now()
+    }});
   }
 
   // --- Message routing ---
@@ -132,72 +105,72 @@ class VibeAnnotationsBackground {
   setupMessageListener() {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       switch (request.action) {
-        case 'getAnnotations':
-          fetchAnnotations(request.url)
-            .then(annotations => sendResponse({ success: true, annotations }))
+        case 'getFeedback':
+          fetchFeedback(request.url)
+            .then(pinveltoFeedback => sendResponse({ success: true, pinveltoFeedback }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'saveAnnotation':
-          this.saveAnnotation(request.annotation)
+        case 'pinvelto:saveFeedback':
+          this.saveFeedback(request.annotation)
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'deleteAnnotation':
-          this.deleteAnnotation(request.id)
+        case 'pinvelto:deleteFeedback':
+          this.deleteFeedback(request.id)
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'deleteAllAnnotations':
-          this.deleteAllAnnotations(request.ids)
+        case 'pinvelto:deleteAllFeedback':
+          this.deleteAllFeedback(request.ids)
             .then(result => sendResponse({ success: true, ...result }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'deleteAnnotationsByUrl':
-          this.deleteAnnotationsByUrl(request.url)
+        case 'pinvelto:deleteFeedbackByUrl':
+          this.deleteFeedbackByUrl(request.url)
             .then(({ count }) => sendResponse({ success: true, count }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'updateAnnotation':
-          this.updateAnnotation(request.id, request.updates)
+        case 'pinvelto:updateFeedback':
+          this.updateFeedback(request.id, request.updates)
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'captureAnnotationScreenshot':
-          this.captureAnnotationScreenshot(request.id, request.crop, sender, request.dataUrl)
+        case 'pinvelto:captureFeedbackScreenshot':
+          this.captureFeedbackScreenshot(request.id, request.crop, sender, request.dataUrl)
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'captureVisibleTab':
+        case 'pinvelto:captureVisibleTab':
           chrome.tabs.captureVisibleTab(sender?.tab?.windowId, { format: 'png' })
             .then(dataUrl => sendResponse({ success: true, dataUrl }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'recordAttachment':
+        case 'pinvelto:recordAttachment':
           this.recordAttachment(request.id, request.att)
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'uploadUserImage':
+        case 'pinvelto:uploadUserImage':
           this.uploadUserImage(request.id, request.mime, request.dataUrl, request.kind)
             .then(attachment => sendResponse({ success: true, attachment }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'removeAttachment':
+        case 'pinvelto:removeAttachment':
           this.removeAttachment(request.id, request.attId)
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'requestScreenshotPermission':
+        case 'pinvelto:requestScreenshotPermission':
           this.requestScreenshotPermission()
             .then(granted => sendResponse({ success: true, granted }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'exportAnnotations':
+        case 'exportFeedback':
           formatExport(request.format)
             .then(data => sendResponse({ success: true, data }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'checkMCPStatus': {
+        case 'pinvelto:checkMCPStatus': {
           // Serve the monitor's cached result unless the caller explicitly wants
           // a live probe (user gesture, tab regaining focus). Keeps idle pages
           // from generating any /health traffic at all — issue #84.
@@ -207,17 +180,17 @@ class VibeAnnotationsBackground {
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
         }
-        case 'fetchExport':
+        case 'pinvelto:fetchExport':
           fetchExport(request.urlPattern, request.format)
             .then(result => sendResponse({ success: true, ...result }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'getWatchers':
+        case 'pinvelto:getWatchers':
           fetchWatchers()
             .then(data => sendResponse({ success: true, ...data }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'stopWatchers':
+        case 'pinvelto:stopWatchers':
           stopWatchers()
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
@@ -227,7 +200,7 @@ class VibeAnnotationsBackground {
             .then(() => sendResponse({ success: true }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'requestSitePermission':
+        case 'pinvelto:requestSitePermission':
           this.requestSitePermission(request, sender)
             .then(result => sendResponse({ success: true, ...result }))
             .catch(error => sendResponse({ success: false, error: error.message }));
@@ -235,21 +208,16 @@ class VibeAnnotationsBackground {
         case 'openPopupWithFocus':
           sendResponse({ success: true });
           break;
-        case 'importAnnotations':
-          this.importAnnotations(request.annotations)
+        case 'pinvelto:importFeedback':
+          this.importFeedback(request.pinveltoFeedback)
             .then(result => sendResponse({ success: true, ...result }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'forceMCPSync':
+        case 'pinvelto:forceMCPSync':
           this.forceAPISync()
             .then(result => sendResponse({ success: true, ...result }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'dismissUpdate':
-          this.dismissUpdate()
-            .then(() => sendResponse({ success: true }))
-            .catch(error => sendResponse({ success: false, error: error.message }));
-          return true;
         case SESSION_SYNC.HELLO:
           this.handleSessionHello(request, sender)
             .then(result => sendResponse(result))
@@ -335,7 +303,7 @@ class VibeAnnotationsBackground {
 
   setupStorageListener() {
     chrome.storage.onChanged.addListener(async (changes, namespace) => {
-      if (namespace === 'local' && changes.annotations) {
+      if (namespace === 'local' && changes.pinveltoFeedback) {
         try {
           const tabs = await chrome.tabs.query({});
           for (const tab of tabs) {
@@ -350,38 +318,38 @@ class VibeAnnotationsBackground {
 
   // --- Storage CRUD ---
 
-  async saveAnnotation(annotation) {
+  async saveFeedback(annotation) {
     return this._withStorageLock(async () => {
       try {
-        const result = await chrome.storage.local.get(['annotations']);
-        const annotations = result.annotations || [];
-        const idx = annotations.findIndex(a => a.id === annotation.id);
-        if (idx >= 0) annotations[idx] = annotation; else annotations.push(annotation);
-        await chrome.storage.local.set({ annotations });
+        const result = await chrome.storage.local.get(['pinveltoFeedback']);
+        const pinveltoFeedback = result.pinveltoFeedback || [];
+        const idx = pinveltoFeedback.findIndex(a => a.id === annotation.id);
+        if (idx >= 0) pinveltoFeedback[idx] = annotation; else pinveltoFeedback.push(annotation);
+        await chrome.storage.local.set({ pinveltoFeedback });
 
         saveOne(annotation).then(async () => {
-          const fresh = await chrome.storage.local.get(['annotations']);
-          const arr = fresh.annotations || [];
+          const fresh = await chrome.storage.local.get(['pinveltoFeedback']);
+          const arr = fresh.pinveltoFeedback || [];
           const target = arr.find(a => a.id === annotation.id);
           if (target && !target._synced) {
             target._synced = true;
-            await chrome.storage.local.set({ annotations: arr });
+            await chrome.storage.local.set({ pinveltoFeedback: arr });
           }
         }).catch(() => {});
         updateBadgeForUrl(annotation.url).catch(() => {});
       } catch (error) {
-        console.error('Error saving annotation:', error);
+        console.error('Error saving Feedback:', error);
         throw error;
       }
     });
   }
 
-  async deleteAnnotation(id) {
+  async deleteFeedback(id) {
     return this._withStorageLock(async () => {
       try {
-        const result = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds']);
-        const annotations = result.annotations || [];
-        const target = annotations.find(a => a.id === id);
+        const result = await chrome.storage.local.get(['pinveltoFeedback', 'pinveltoDeletedFeedbackIds']);
+        const pinveltoFeedback = result.pinveltoFeedback || [];
+        const target = pinveltoFeedback.find(a => a.id === id);
 
         // Protected delete: a variants annotation that has generated scaffolding is
         // NEVER hard-deleted from the client. Tombstoning it would make smartSync
@@ -391,54 +359,54 @@ class VibeAnnotationsBackground {
         // shown in "View all" as pending agent deletion — until the agent resolves it.
         if (target && target.mode === 'variants' && target.variantsPayload && target.status !== 'resolved') {
           if (target.status !== 'variants-discarded') {
-            const updated = annotations.map(a => a.id === id
+            const updated = pinveltoFeedback.map(a => a.id === id
               ? { ...a, status: 'variants-discarded', updated_at: new Date().toISOString() }
               : a);
-            await chrome.storage.local.set({ annotations: updated });
+            await chrome.storage.local.set({ pinveltoFeedback: updated });
           }
           await updateBadgeForUrl(target.url);
           await updateAllBadges();
           return;
         }
 
-        const deletedIds = result.deletedAnnotationIds || [];
-        const filtered = annotations.filter(a => a.id !== id);
+        const deletedIds = result.pinveltoDeletedFeedbackIds || [];
+        const filtered = pinveltoFeedback.filter(a => a.id !== id);
         if (!deletedIds.includes(id)) deletedIds.push(id);
-        await chrome.storage.local.set({ annotations: filtered, deletedAnnotationIds: deletedIds });
+        await chrome.storage.local.set({ pinveltoFeedback: filtered, pinveltoDeletedFeedbackIds: deletedIds });
         try { await deleteOne(id); } catch {}
-        const deleted = annotations.find(a => a.id === id);
+        const deleted = pinveltoFeedback.find(a => a.id === id);
         if (deleted) await updateBadgeForUrl(deleted.url);
         await updateAllBadges();
       } catch (error) {
-        console.error('Error deleting annotation:', error);
+        console.error('Error deleting Feedback:', error);
         throw error;
       }
     });
   }
 
-  async deleteAllAnnotations(ids) {
-    const result = await deleteAllStoredAnnotations(ids, operation => this._withStorageLock(operation));
+  async deleteAllFeedback(ids) {
+    const result = await deleteAllStoredFeedback(ids, operation => this._withStorageLock(operation));
     await updateAllBadges().catch(() => {});
     // Storage listeners can skip a local-save echo. Explicitly refresh all tabs
     // as well so pins/previews disappear after this global operation.
     try {
       const tabs = await chrome.tabs.query({});
       for (const tab of tabs) {
-        if (await isSupportedUrl(tab.url)) chrome.tabs.sendMessage(tab.id, { action: 'annotationsUpdated' }).catch(() => {});
+        if (await isSupportedUrl(tab.url)) chrome.tabs.sendMessage(tab.id, { action: 'pinvelto:annotationsUpdated' }).catch(() => {});
       }
     } catch { /* The local purge succeeded even if a tab closed meanwhile. */ }
     return result;
   }
 
-  async deleteAnnotationsByUrl(url) {
+  async deleteFeedbackByUrl(url) {
     return this._withStorageLock(async () => {
-      const result = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds']);
-      const all = result.annotations || [];
-      const deletedIds = result.deletedAnnotationIds || [];
+      const result = await chrome.storage.local.get(['pinveltoFeedback', 'pinveltoDeletedFeedbackIds']);
+      const all = result.pinveltoFeedback || [];
+      const deletedIds = result.pinveltoDeletedFeedbackIds || [];
       const toDelete = all.filter(a => a.url === url);
       const remaining = all.filter(a => a.url !== url);
       for (const a of toDelete) { if (!deletedIds.includes(a.id)) deletedIds.push(a.id); }
-      await chrome.storage.local.set({ annotations: remaining, deletedAnnotationIds: deletedIds });
+      await chrome.storage.local.set({ pinveltoFeedback: remaining, pinveltoDeletedFeedbackIds: deletedIds });
       for (const a of toDelete) deleteOne(a.id).catch(() => {});
       await updateBadgeForUrl(url);
       await updateAllBadges();
@@ -446,18 +414,18 @@ class VibeAnnotationsBackground {
     });
   }
 
-  async updateAnnotation(id, updates) {
+  async updateFeedback(id, updates) {
     return this._withStorageLock(async () => {
       try {
-        const result = await chrome.storage.local.get(['annotations']);
-        const annotations = result.annotations || [];
-        const idx = annotations.findIndex(a => a.id === id);
-        if (idx === -1) throw new Error('Annotation not found');
-        annotations[idx] = { ...annotations[idx], ...updates, updated_at: new Date().toISOString() };
-        await chrome.storage.local.set({ annotations });
-        updateBadgeForUrl(annotations[idx].url).catch(() => {});
+        const result = await chrome.storage.local.get(['pinveltoFeedback']);
+        const pinveltoFeedback = result.pinveltoFeedback || [];
+        const idx = pinveltoFeedback.findIndex(a => a.id === id);
+        if (idx === -1) throw new Error('Feedback not found');
+        pinveltoFeedback[idx] = { ...pinveltoFeedback[idx], ...updates, updated_at: new Date().toISOString() };
+        await chrome.storage.local.set({ pinveltoFeedback });
+        updateBadgeForUrl(pinveltoFeedback[idx].url).catch(() => {});
       } catch (error) {
-        console.error('Error updating annotation:', error);
+        console.error('Error updating Feedback:', error);
         throw error;
       }
     });
@@ -466,7 +434,7 @@ class VibeAnnotationsBackground {
   // Crop the captured pixels with OffscreenCanvas and upload a raw webp. The
   // content script has already restored the overlay; only transient PNG bytes
   // travel over messaging. Attachment metadata, not image bytes, enters storage.
-  async captureAnnotationScreenshot(id, crop, sender, dataUrl) {
+  async captureFeedbackScreenshot(id, crop, sender, dataUrl) {
     if (!crop || !(crop.sw > 0) || !(crop.sh > 0)) return;
 
     // New callers restore the overlay immediately after capture and send these
@@ -495,15 +463,15 @@ class VibeAnnotationsBackground {
   async recordAttachment(id, att) {
     if (!att) return;
     return this._withStorageLock(async () => {
-      const { annotations = [] } = await chrome.storage.local.get(['annotations']);
-      const idx = annotations.findIndex(a => a.id === id);
+      const { pinveltoFeedback = [] } = await chrome.storage.local.get(['pinveltoFeedback']);
+      const idx = pinveltoFeedback.findIndex(a => a.id === id);
       if (idx === -1) return;
-      const cur = Array.isArray(annotations[idx].attachments) ? annotations[idx].attachments : [];
+      const cur = Array.isArray(pinveltoFeedback[idx].attachments) ? pinveltoFeedback[idx].attachments : [];
       const next = att.kind === 'capture'
         ? [att, ...cur.filter(a => a.kind !== 'capture')]
         : [...cur.filter(a => a.id !== att.id), att];
-      annotations[idx] = { ...annotations[idx], attachments: next };
-      await chrome.storage.local.set({ annotations });
+      pinveltoFeedback[idx] = { ...pinveltoFeedback[idx], attachments: next };
+      await chrome.storage.local.set({ pinveltoFeedback });
     });
   }
 
@@ -534,25 +502,25 @@ class VibeAnnotationsBackground {
   async removeAttachment(id, attId) {
     try { await deleteAttachment(id, attId); } catch (error) { console.warn('Attachment delete failed on server:', error.message); }
     return this._withStorageLock(async () => {
-      const { annotations = [] } = await chrome.storage.local.get(['annotations']);
-      const idx = annotations.findIndex(a => a.id === id);
+      const { pinveltoFeedback = [] } = await chrome.storage.local.get(['pinveltoFeedback']);
+      const idx = pinveltoFeedback.findIndex(a => a.id === id);
       if (idx === -1) return;
-      const cur = Array.isArray(annotations[idx].attachments) ? annotations[idx].attachments : [];
-      annotations[idx] = { ...annotations[idx], attachments: cur.filter(a => a.id !== attId) };
-      await chrome.storage.local.set({ annotations });
+      const cur = Array.isArray(pinveltoFeedback[idx].attachments) ? pinveltoFeedback[idx].attachments : [];
+      pinveltoFeedback[idx] = { ...pinveltoFeedback[idx], attachments: cur.filter(a => a.id !== attId) };
+      await chrome.storage.local.set({ pinveltoFeedback });
     });
   }
 
-  async importAnnotations(newAnnotations) {
-    if (!Array.isArray(newAnnotations) || !newAnnotations.length) return { imported: 0 };
+  async importFeedback(newFeedback) {
+    if (!Array.isArray(newFeedback) || !newFeedback.length) return { imported: 0 };
     return this._withStorageLock(async () => {
-      const result = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds', 'purgedAnnotationIds', 'pendingPurgeAnnotationIds']);
-      const all = result.annotations || [];
-      const deletedIds = result.deletedAnnotationIds || [];
+      const result = await chrome.storage.local.get(['pinveltoFeedback', 'pinveltoDeletedFeedbackIds', 'pinveltoPurgedFeedbackIds', 'pinveltoPendingPurgeFeedbackIds']);
+      const all = result.pinveltoFeedback || [];
+      const deletedIds = result.pinveltoDeletedFeedbackIds || [];
       const existingIds = new Set(all.map(a => a.id));
       let imported = 0;
       const importedIds = [];
-      for (const a of newAnnotations) {
+      for (const a of newFeedback) {
         if (!existingIds.has(a.id)) { all.push(a); existingIds.add(a.id); importedIds.push(a.id); imported++; }
       }
       if (imported > 0) {
@@ -560,16 +528,16 @@ class VibeAnnotationsBackground {
         // A user-confirmed import deliberately restores these identities. Old
         // background/server echoes cannot clear purge intent, but an import can.
         await chrome.storage.local.set({
-          annotations: all, deletedAnnotationIds: cleanedTombstones,
-          purgedAnnotationIds: (result.purgedAnnotationIds || []).filter(id => !importedIds.includes(id)),
-          pendingPurgeAnnotationIds: (result.pendingPurgeAnnotationIds || []).filter(id => !importedIds.includes(id)),
+          pinveltoFeedback: all, pinveltoDeletedFeedbackIds: cleanedTombstones,
+          pinveltoPurgedFeedbackIds: (result.pinveltoPurgedFeedbackIds || []).filter(id => !importedIds.includes(id)),
+          pinveltoPendingPurgeFeedbackIds: (result.pinveltoPendingPurgeFeedbackIds || []).filter(id => !importedIds.includes(id)),
         });
         try {
           await syncAll(all);
           let flagsChanged = false;
           for (const a of all) { if (!a._synced) { a._synced = true; flagsChanged = true; } }
-          if (flagsChanged) await chrome.storage.local.set({ annotations: all });
-        } catch (e) { console.warn('Failed to sync imported annotations to server:', e.message); }
+          if (flagsChanged) await chrome.storage.local.set({ pinveltoFeedback: all });
+        } catch (e) { console.warn('Failed to sync imported Feedback to server:', e.message); }
         await updateAllBadges();
       }
       return { imported, total: all.length };
@@ -578,10 +546,10 @@ class VibeAnnotationsBackground {
 
   async forceAPISync() {
     try {
-      const result = await chrome.storage.local.get(['annotations']);
-      const annotations = result.annotations || [];
-      await syncAll(annotations);
-      return { count: annotations.length, message: `Synced ${annotations.length} annotations to API server` };
+      const result = await chrome.storage.local.get(['pinveltoFeedback']);
+      const pinveltoFeedback = result.pinveltoFeedback || [];
+      await syncAll(pinveltoFeedback);
+      return { count: pinveltoFeedback.length, message: `Synced ${pinveltoFeedback.length} Feedback to API server` };
     } catch (error) {
       console.error('Error in forced API sync:', error);
       throw error;
@@ -614,8 +582,8 @@ class VibeAnnotationsBackground {
 
   async restoreEnabledSites() {
     try {
-      const result = await chrome.storage.local.get(['vibeEnabledSites']);
-      const sites = result.vibeEnabledSites || [];
+      const result = await chrome.storage.local.get(['pinveltoEnabledSites']);
+      const sites = result.pinveltoEnabledSites || [];
       for (const originPattern of sites) {
         const has = await chrome.permissions.contains({ origins: [originPattern] });
         if (has) await this.enableSite(originPattern, null);
@@ -639,10 +607,10 @@ class VibeAnnotationsBackground {
     }
     if (!granted) return { granted: false };
 
-    const { vibeEnabledSites = [] } = await chrome.storage.local.get(['vibeEnabledSites']);
-    if (!vibeEnabledSites.includes(originPattern)) {
-      vibeEnabledSites.push(originPattern);
-      await chrome.storage.local.set({ vibeEnabledSites });
+    const { pinveltoEnabledSites = [] } = await chrome.storage.local.get(['pinveltoEnabledSites']);
+    if (!pinveltoEnabledSites.includes(originPattern)) {
+      pinveltoEnabledSites.push(originPattern);
+      await chrome.storage.local.set({ pinveltoEnabledSites });
     }
     // tabId=null so enableSite skips chrome.tabs.reload — the already-injected content
     // script boots in place via bootNormal() once it sees our grant response.
@@ -658,7 +626,7 @@ class VibeAnnotationsBackground {
     // window capture before the page's own parse-time listeners (A16), and allFrames
     // matches the manifest content script so frames of a dynamically enabled site
     // participate in the shared Annotate session too (A15).
-    const scriptId = 'vibe-' + originPattern.replace(/[^a-zA-Z0-9]/g, '_');
+    const scriptId = 'pinvelto-' + originPattern.replace(/[^a-zA-Z0-9]/g, '_');
     try {
       await chrome.scripting.unregisterContentScripts({ ids: [scriptId] }).catch(() => {});
       await chrome.scripting.registerContentScripts([{
@@ -681,7 +649,7 @@ class VibeAnnotationsBackground {
 
 export default defineBackground(() => {
   // Instantiate the existing class — no behavior change, just wrapped for WXT.
-  const bg = new VibeAnnotationsBackground();
+  const bg = new PinveltoFeedbackBackground();
 
   // Keyboard shortcut commands. Optional-chained: chrome.commands is a Chrome-only
   // capability, undefined in embedded Chromium hosts (Electron, WebView2, CEF) — an
@@ -689,7 +657,7 @@ export default defineBackground(() => {
   chrome.commands?.onCommand?.addListener?.(async (command, tab) => {
     if (command === 'toggle-annotate' && tab?.id && (await isSupportedUrl(tab.url))) {
       try {
-        await chrome.tabs.sendMessage(tab.id, { action: 'toggleAnnotate' });
+        await chrome.tabs.sendMessage(tab.id, { action: 'pinvelto:toggleAnnotate' });
       } catch {
         /* Content script not loaded */
       }
@@ -722,11 +690,11 @@ export default defineBackground(() => {
       // Supported — toggle the overlay. If content scripts haven't loaded (SW restart,
       // freshly-granted non-localhost), inject them now and retry.
       try {
-        await chrome.tabs.sendMessage(tab.id, { action: 'toggleOverlay' });
+        await chrome.tabs.sendMessage(tab.id, { action: 'pinvelto:toggleOverlay' });
       } catch {
         try {
           await injectContentScripts(tab.id);
-          await chrome.tabs.sendMessage(tab.id, { action: 'toggleOverlay' }).catch(() => {});
+          await chrome.tabs.sendMessage(tab.id, { action: 'pinvelto:toggleOverlay' }).catch(() => {});
         } catch (err) {
           console.error('Failed to inject content scripts:', err);
         }

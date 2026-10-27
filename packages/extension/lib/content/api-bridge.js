@@ -1,27 +1,10 @@
+import { serviceFetch, getServiceUrl, loadServiceUrl } from '../service-url.js';
 // Wraps all chrome.runtime.sendMessage and chrome.storage calls
 // Single interface for data operations used by all modules
 
-const SERVER_URL = 'http://127.0.0.1:3846';
 let statusCache = null;
 let statusCacheTime = 0;
 const CACHE_TTL = 2000;
-
-// Oldest server this extension build fully supports (variants MCP contract,
-// image attachments, and the .html export endpoint all landed by here). A
-// connected-but-older server gets a "please update" nudge so new features don't
-// fail silently.
-const MIN_SERVER_VERSION = '0.5.0';
-
-function isServerOutdated(version) {
-  if (!version) return false; // unknown → don't nag
-  const a = String(version).split('.').map(Number);
-  const b = MIN_SERVER_VERSION.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((a[i] || 0) < (b[i] || 0)) return true;
-    if ((a[i] || 0) > (b[i] || 0)) return false;
-  }
-  return false;
-}
 
   function isFileProtocol() {
     return window.location.protocol === 'file:';
@@ -45,7 +28,6 @@ function isServerOutdated(version) {
     if (!fresh && statusCache && (now - statusCacheTime) < CACHE_TTL) return statusCache;
 
     const status = await _checkViaBg(fresh);
-    status.outdated = !!(status.connected && isServerOutdated(status.version));
     statusCache = status;
     statusCacheTime = now;
     return status;
@@ -53,7 +35,7 @@ function isServerOutdated(version) {
 
   async function _checkViaBg(fresh = false) {
     try {
-      const r = await chrome.runtime.sendMessage({ action: 'checkMCPStatus', fresh });
+      const r = await chrome.runtime.sendMessage({ action: 'pinvelto:checkMCPStatus', fresh });
       const s = r && r.success && r.status;
       return { connected: !!(s && s.connected), version: s ? s.server_version : null };
     } catch {
@@ -66,37 +48,38 @@ function isServerOutdated(version) {
     statusCacheTime = 0;
   }
 
-  // --- Annotations CRUD ---
+  // --- Feedback CRUD ---
 
-  async function loadAllStoredAnnotations() {
-    if (typeof document !== 'undefined' && document.documentElement?.hasAttribute('data-vibe-storage-fail')) {
-      throw new Error('[Vibe] Controlled storage read failure');
+  async function loadAllStoredFeedback() {
+    await loadServiceUrl();
+    if (typeof document !== 'undefined' && document.documentElement?.hasAttribute('data-pinvelto-storage-fail')) {
+      throw new Error('[Pinvelto] Controlled storage read failure');
     }
-    const result = await chrome.storage.local.get(['annotations']);
-    return result.annotations || [];
+    const result = await chrome.storage.local.get(['pinveltoFeedback']);
+    return result.pinveltoFeedback || [];
   }
 
-  async function loadAnnotations() {
-    const all = await loadAllStoredAnnotations();
+  async function loadFeedback() {
+    const all = await loadAllStoredFeedback();
     return all.filter(a => a.url === window.location.href);
   }
 
-  async function loadProjectAnnotations(targetOrigin) {
-    const all = await loadAllStoredAnnotations();
+  async function loadProjectFeedback(targetOrigin) {
+    const all = await loadAllStoredFeedback();
     const origin = targetOrigin || window.location.origin;
     return all.filter(a => {
       try { return new URL(a.url).origin === origin; } catch { return false; }
     });
   }
 
-  async function saveAnnotation(annotation) {
-    const r = await chrome.runtime.sendMessage({ action: 'saveAnnotation', annotation });
+  async function saveFeedback(annotation) {
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:saveFeedback', annotation });
     if (!r || !r.success) throw new Error(r?.error || 'save failed');
     return true;
   }
 
-  async function updateAnnotation(id, updates) {
-    const r = await chrome.runtime.sendMessage({ action: 'updateAnnotation', id, updates });
+  async function updateFeedback(id, updates) {
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:updateFeedback', id, updates });
     if (!r || !r.success) throw new Error(r?.error || 'update failed');
     return true;
   }
@@ -105,23 +88,23 @@ function isServerOutdated(version) {
   // periodic sync would otherwise lag). Used e.g. after choosing a variant so the
   // agent can finalize immediately.
   async function forceSync() {
-    try { await chrome.runtime.sendMessage({ action: 'forceMCPSync' }); } catch { /* ignore */ }
+    try { await chrome.runtime.sendMessage({ action: 'pinvelto:forceMCPSync' }); } catch { /* ignore */ }
   }
 
-  async function deleteAnnotation(id) {
-    const r = await chrome.runtime.sendMessage({ action: 'deleteAnnotation', id });
+  async function deleteFeedback(id) {
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:deleteFeedback', id });
     if (!r || !r.success) throw new Error(r?.error || 'delete failed');
     return true;
   }
 
-  async function deleteAllAnnotations(ids) {
-    const r = await chrome.runtime.sendMessage({ action: 'deleteAllAnnotations', ids });
+  async function deleteAllFeedback(ids) {
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:deleteAllFeedback', ids });
     if (!r || !r.success) throw new Error(r?.error || 'global delete failed');
     return r;
   }
 
-  async function deleteAnnotationsByUrl() {
-    const r = await chrome.runtime.sendMessage({ action: 'deleteAnnotationsByUrl', url: window.location.href });
+  async function deleteFeedbackByUrl() {
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:deleteFeedbackByUrl', url: window.location.href });
     if (!r || !r.success) throw new Error(r?.error || 'bulk delete failed');
     return r.count || 0;
   }
@@ -129,7 +112,7 @@ function isServerOutdated(version) {
   // Crop+store the already captured pixels after the overlay is restored.
   // `crop` is a device-pixel rect { sx, sy, sw, sh } within the visible viewport.
   async function captureScreenshot(id, crop, dataUrl) {
-    const r = await chrome.runtime.sendMessage({ action: 'captureAnnotationScreenshot', id, crop, dataUrl });
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:captureFeedbackScreenshot', id, crop, dataUrl });
     if (!r || !r.success) throw new Error(r?.error || 'screenshot capture failed');
     return r;
   }
@@ -138,7 +121,7 @@ function isServerOutdated(version) {
 
   // Server URL that serves an attachment's bytes (img src on localhost, open-in-tab anywhere).
   function attachmentUrl(annotationId, attId) {
-    return `${SERVER_URL}/api/annotations/${annotationId}/attachments/${attId}`;
+    return `${getServiceUrl()}/api/annotations/${annotationId}/attachments/${attId}`;
   }
 
   // Upload a user image (paste/drop/file-picker). On local origins we POST the
@@ -152,7 +135,7 @@ function isServerOutdated(version) {
       // this upload, so the annotation may not exist for a moment.
       let res;
       for (let i = 0; i < 5; i++) {
-        res = await fetch(`${SERVER_URL}/api/annotations/${annotationId}/attachments`, {
+        res = await serviceFetch(`/api/annotations/${annotationId}/attachments`, {
           method: 'POST',
           headers: { 'Content-Type': mime, 'X-Attachment-Kind': kind },
           body: blob,
@@ -162,11 +145,11 @@ function isServerOutdated(version) {
         throw new Error(`attachment upload failed: ${res.status}`);
       }
       const { attachment } = await res.json();
-      chrome.runtime.sendMessage({ action: 'recordAttachment', id: annotationId, att: attachment }).catch(() => {});
+      chrome.runtime.sendMessage({ action: 'pinvelto:recordAttachment', id: annotationId, att: attachment }).catch(() => {});
       return attachment;
     }
     const dataUrl = await blobToDataUrl(blob);
-    const r = await chrome.runtime.sendMessage({ action: 'uploadUserImage', id: annotationId, mime, dataUrl, kind });
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:uploadUserImage', id: annotationId, mime, dataUrl, kind });
     if (!r || !r.success) throw new Error(r?.error || 'attachment upload failed');
     return r.attachment;
   }
@@ -174,13 +157,13 @@ function isServerOutdated(version) {
   // Grab the full visible tab as a PNG data URL (the caller crops it). Needs the
   // screenshot host permission — request it first via requestScreenshotPermission.
   async function captureVisibleTab() {
-    const r = await chrome.runtime.sendMessage({ action: 'captureVisibleTab' });
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:captureVisibleTab' });
     if (!r || !r.success) throw new Error(r?.error || 'capture failed');
     return r.dataUrl;
   }
 
   async function removeAttachment(annotationId, attId) {
-    const r = await chrome.runtime.sendMessage({ action: 'removeAttachment', id: annotationId, attId });
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:removeAttachment', id: annotationId, attId });
     if (!r || !r.success) throw new Error(r?.error || 'attachment remove failed');
     return true;
   }
@@ -196,18 +179,18 @@ function isServerOutdated(version) {
 
   // --- Storage listeners ---
 
-  function onAnnotationsChanged(cb) {
+  function onFeedbackChanged(cb) {
     chrome.storage.onChanged.addListener((changes, ns) => {
-      if (ns === 'local' && changes.annotations) {
-        cb(changes.annotations.newValue || []);
+      if (ns === 'local' && changes.pinveltoFeedback) {
+        cb(changes.pinveltoFeedback.newValue || []);
       }
     });
   }
 
   async function getPendingPurgeStatus() {
     try {
-      const result = await chrome.storage.local.get(['pendingPurgeAnnotationIds', 'annotationPurgeError']);
-      return { pending: (result.pendingPurgeAnnotationIds || []).length > 0, error: String(result.annotationPurgeError || '') };
+      const result = await chrome.storage.local.get(['pinveltoPendingPurgeFeedbackIds', 'pinveltoPurgeError']);
+      return { pending: (result.pinveltoPendingPurgeFeedbackIds || []).length > 0, error: String(result.pinveltoPurgeError || '') };
     } catch {
       return { pending: false, error: '' };
     }
@@ -215,7 +198,7 @@ function isServerOutdated(version) {
 
   function onPurgeStatusChanged(cb) {
     chrome.storage.onChanged.addListener((changes, ns) => {
-      if (ns === 'local' && (changes.pendingPurgeAnnotationIds || changes.annotationPurgeError)) cb();
+      if (ns === 'local' && (changes.pinveltoPendingPurgeFeedbackIds || changes.pinveltoPurgeError)) cb();
     });
   }
 
@@ -225,8 +208,8 @@ function isServerOutdated(version) {
 
   async function getScreenshotEnabled() {
     try {
-      const r = await chrome.storage.local.get(['screenshotEnabled']);
-      _screenshotEnabledCache = r.screenshotEnabled !== undefined ? r.screenshotEnabled : false;
+      const r = await chrome.storage.local.get(['pinveltoScreenshotEnabled']);
+      _screenshotEnabledCache = r.pinveltoScreenshotEnabled !== undefined ? r.pinveltoScreenshotEnabled : false;
       return _screenshotEnabledCache;
     } catch {
       return false;
@@ -238,7 +221,7 @@ function isServerOutdated(version) {
   // localhost host permission doesn't satisfy it). Request it when the user turns
   // screenshots on. Returns true if granted (or already held).
   async function requestScreenshotPermission() {
-    const r = await chrome.runtime.sendMessage({ action: 'requestScreenshotPermission' });
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:requestScreenshotPermission' });
     return !!(r && r.success && r.granted);
   }
 
@@ -249,14 +232,14 @@ function isServerOutdated(version) {
   async function saveScreenshotEnabled(enabled) {
     _screenshotEnabledCache = enabled;
     try {
-      await chrome.storage.local.set({ screenshotEnabled: enabled });
+      await chrome.storage.local.set({ pinveltoScreenshotEnabled: enabled });
     } catch { /* ignore */ }
   }
 
   async function getToolbarPosition() {
     try {
-      const r = await chrome.storage.local.get(['vibeToolbarPos']);
-      return r.vibeToolbarPos || null;
+      const r = await chrome.storage.local.get(['pinveltoToolbarPos']);
+      return r.pinveltoToolbarPos || null;
     } catch {
       return null;
     }
@@ -264,14 +247,14 @@ function isServerOutdated(version) {
 
   async function saveToolbarPosition(pos) {
     try {
-      await chrome.storage.local.set({ vibeToolbarPos: pos });
+      await chrome.storage.local.set({ pinveltoToolbarPos: pos });
     } catch { /* ignore */ }
   }
 
   async function getToolbarCollapsed() {
     try {
-      const r = await chrome.storage.local.get(['vibeToolbarCollapsed']);
-      return !!r.vibeToolbarCollapsed;
+      const r = await chrome.storage.local.get(['pinveltoToolbarCollapsed']);
+      return !!r.pinveltoToolbarCollapsed;
     } catch {
       return false;
     }
@@ -279,14 +262,14 @@ function isServerOutdated(version) {
 
   async function saveToolbarCollapsed(collapsed) {
     try {
-      await chrome.storage.local.set({ vibeToolbarCollapsed: collapsed });
+      await chrome.storage.local.set({ pinveltoToolbarCollapsed: collapsed });
     } catch { /* ignore */ }
   }
 
   async function getClearOnCopy() {
     try {
-      const r = await chrome.storage.local.get(['vibeClearOnCopy']);
-      return !!r.vibeClearOnCopy;
+      const r = await chrome.storage.local.get(['pinveltoClearOnCopy']);
+      return !!r.pinveltoClearOnCopy;
     } catch {
       return false;
     }
@@ -294,14 +277,14 @@ function isServerOutdated(version) {
 
   async function saveClearOnCopy(enabled) {
     try {
-      await chrome.storage.local.set({ vibeClearOnCopy: enabled });
+      await chrome.storage.local.set({ pinveltoClearOnCopy: enabled });
     } catch { /* ignore */ }
   }
 
   async function getBadgeColor() {
     try {
-      const r = await chrome.storage.local.get(['vibeBadgeColor']);
-      return r.vibeBadgeColor || '#0754FF';
+      const r = await chrome.storage.local.get(['pinveltoBadgeColor']);
+      return r.pinveltoBadgeColor || '#0754FF';
     } catch {
       return '#0754FF';
     }
@@ -309,14 +292,14 @@ function isServerOutdated(version) {
 
   async function saveBadgeColor(color) {
     try {
-      await chrome.storage.local.set({ vibeBadgeColor: color });
+      await chrome.storage.local.set({ pinveltoBadgeColor: color });
     } catch { /* ignore */ }
   }
 
   async function getOverlayHidden() {
     try {
-      const r = await chrome.storage.local.get(['vibeOverlayHidden']);
-      return !!r.vibeOverlayHidden;
+      const r = await chrome.storage.local.get(['pinveltoOverlayHidden']);
+      return !!r.pinveltoOverlayHidden;
     } catch {
       return false;
     }
@@ -324,14 +307,14 @@ function isServerOutdated(version) {
 
   async function saveOverlayHidden(hidden) {
     try {
-      await chrome.storage.local.set({ vibeOverlayHidden: !!hidden });
+      await chrome.storage.local.set({ pinveltoOverlayHidden: !!hidden });
     } catch { /* ignore */ }
   }
 
   async function getSkipDeleteConfirm() {
     try {
-      const r = await chrome.storage.local.get(['vibeSkipDeleteConfirm']);
-      return !!r.vibeSkipDeleteConfirm;
+      const r = await chrome.storage.local.get(['pinveltoSkipDeleteConfirm']);
+      return !!r.pinveltoSkipDeleteConfirm;
     } catch {
       return false;
     }
@@ -339,14 +322,14 @@ function isServerOutdated(version) {
 
   async function saveSkipDeleteConfirm(skip) {
     try {
-      await chrome.storage.local.set({ vibeSkipDeleteConfirm: skip });
+      await chrome.storage.local.set({ pinveltoSkipDeleteConfirm: skip });
     } catch { /* ignore */ }
   }
 
   async function getCustomShortcut() {
     try {
-      const r = await chrome.storage.local.get(['vibeCustomShortcut']);
-      return r.vibeCustomShortcut || null;
+      const r = await chrome.storage.local.get(['pinveltoCustomShortcut']);
+      return r.pinveltoCustomShortcut || null;
     } catch {
       return null;
     }
@@ -354,7 +337,7 @@ function isServerOutdated(version) {
 
   async function saveCustomShortcut(shortcut) {
     try {
-      await chrome.storage.local.set({ vibeCustomShortcut: shortcut });
+      await chrome.storage.local.set({ pinveltoCustomShortcut: shortcut });
     } catch { /* ignore */ }
   }
 
@@ -367,8 +350,8 @@ function isServerOutdated(version) {
   async function getShareExport(urlPattern, format) {
     if (isLocalOrigin() && !isFileProtocol()) {
       try {
-        const res = await fetch(
-          `${SERVER_URL}/api/export?url=${encodeURIComponent(urlPattern)}&format=${encodeURIComponent(format)}`,
+        const res = await serviceFetch(
+          `/api/export?url=${encodeURIComponent(urlPattern)}&format=${encodeURIComponent(format)}`,
           { signal: AbortSignal.timeout(15000) }
         );
         if (!res.ok) throw new Error(`export failed: ${res.status}`);
@@ -381,7 +364,7 @@ function isServerOutdated(version) {
   }
 
   async function _exportViaBg(urlPattern, format) {
-    const r = await chrome.runtime.sendMessage({ action: 'fetchExport', urlPattern, format });
+    const r = await chrome.runtime.sendMessage({ action: 'pinvelto:fetchExport', urlPattern, format });
     if (!r || !r.success) throw new Error(r?.error || 'export failed');
     return { content: r.content, mime: r.mime || 'text/plain' };
   }
@@ -391,13 +374,13 @@ function isServerOutdated(version) {
   // works on non-local origins, where a direct localhost fetch is blocked.
   async function stopWatchers() {
     try {
-      await chrome.runtime.sendMessage({ action: 'stopWatchers' });
+      await chrome.runtime.sendMessage({ action: 'pinvelto:stopWatchers' });
     } catch { /* ignore */ }
   }
 
   async function getWatchers() {
     try {
-      const r = await chrome.runtime.sendMessage({ action: 'getWatchers' });
+      const r = await chrome.runtime.sendMessage({ action: 'pinvelto:getWatchers' });
       if (!r || !r.success) return { watchers: [], watching: false };
       return { watchers: r.watchers || [], watching: !!r.watching };
     } catch {
@@ -405,26 +388,26 @@ function isServerOutdated(version) {
     }
   }
 
-const VibeAPI = {
+const PinveltoAPI = {
   checkServerStatus,
   clearStatusCache,
   isFileProtocol,
   isLocalOrigin,
-  loadAnnotations,
-  loadAllStoredAnnotations,
-  loadProjectAnnotations,
-  saveAnnotation,
-  updateAnnotation,
+  loadFeedback,
+  loadAllStoredFeedback,
+  loadProjectFeedback,
+  saveFeedback,
+  updateFeedback,
   forceSync,
-  deleteAnnotation,
-  deleteAllAnnotations,
-  deleteAnnotationsByUrl,
+  deleteFeedback,
+  deleteAllFeedback,
+  deleteFeedbackByUrl,
   captureScreenshot,
   captureVisibleTab,
   attachmentUrl,
   uploadUserImage,
   removeAttachment,
-  onAnnotationsChanged,
+  onFeedbackChanged,
   getPendingPurgeStatus,
   onPurgeStatusChanged,
   getScreenshotEnabled,
@@ -449,4 +432,4 @@ const VibeAPI = {
   stopWatchers,
   getShareExport,
 };
-export default VibeAPI;
+export default PinveltoAPI;

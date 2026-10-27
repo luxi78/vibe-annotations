@@ -14,7 +14,7 @@ function createElement(id, options = {}) {
   };
 }
 
-test('VibeSessionFocus unit tests', async (t) => {
+test('PinveltoSessionFocus unit tests', async (t) => {
   const documentListeners = {};
 
   globalThis.document = {
@@ -30,13 +30,13 @@ test('VibeSessionFocus unit tests', async (t) => {
     },
   };
 
-  const { default: VibeEvents } = await import('../lib/content/event-bus.js');
-  const { default: VibeShadowHost } = await import('../lib/content/shadow-host.js');
-  const { default: VibeSessionFocus } = await import('../lib/content/session-focus.js');
+  const { default: PinveltoEvents } = await import('../lib/content/event-bus.js');
+  const { default: PinveltoShadowHost } = await import('../lib/content/shadow-host.js');
+  const { default: PinveltoSessionFocus } = await import('../lib/content/session-focus.js');
 
-  const vibeHost = createElement('vibe-annotations-root');
-  const originalGetHost = VibeShadowHost.getHost;
-  VibeShadowHost.getHost = () => vibeHost;
+  const pinveltoHost = createElement('pinvelto-feedback-root');
+  const originalGetHost = PinveltoShadowHost.getHost;
+  PinveltoShadowHost.getHost = () => pinveltoHost;
 
   function fireFocusIn(element) {
     for (const fn of [...(documentListeners.focusin || [])]) {
@@ -45,16 +45,16 @@ test('VibeSessionFocus unit tests', async (t) => {
   }
 
   function startSession() {
-    document.activeElement = vibeHost;
-    VibeEvents.emit('inspection:start');
+    document.activeElement = pinveltoHost;
+    PinveltoEvents.emit('inspection:start');
   }
 
   function endSession() {
     document.activeElement = document.body;
-    VibeEvents.emit('inspection:stopped');
+    PinveltoEvents.emit('inspection:stopped');
   }
 
-  VibeSessionFocus.init();
+  PinveltoSessionFocus.init();
 
   await t.test('Restores the element focused before entry, without scrolling', () => {
     const hostInput = createElement('host-input', { tagName: 'INPUT' });
@@ -104,7 +104,7 @@ test('VibeSessionFocus unit tests', async (t) => {
     const programmatic = createElement('canvas-rect');
     document.activeElement = programmatic;
 
-    VibeEvents.emit('inspection:stopped');
+    PinveltoEvents.emit('inspection:stopped');
     assert.strictEqual(original.focusCalls.length, 0, 'Focus moved by the host must be respected');
   });
 
@@ -114,28 +114,28 @@ test('VibeSessionFocus unit tests', async (t) => {
 
     // Entry moves focus to a control inside the extension's shadow root
     const shadowButton = createElement('', { tagName: 'BUTTON' });
-    shadowButton.getRootNode = () => ({ host: vibeHost });
+    shadowButton.getRootNode = () => ({ host: pinveltoHost });
     document.activeElement = shadowButton;
 
-    VibeEvents.emit('inspection:start');
-    VibeEvents.emit('inspection:stopped');
+    PinveltoEvents.emit('inspection:start');
+    PinveltoEvents.emit('inspection:stopped');
 
     assert.strictEqual(hostInput.focusCalls.length, 1, 'Shadow-root focus must fall back to the original host element');
     assert.strictEqual(shadowButton.focusCalls.length, 0, 'A shadow control must never be captured as the restore target');
   });
 
   await t.test('Restores nothing when the page had no focus before entry', () => {
-    VibeSessionFocus.teardown();
-    VibeSessionFocus.init();
+    PinveltoSessionFocus.teardown();
+    PinveltoSessionFocus.init();
 
     startSession();
     endSession();
 
-    assert.strictEqual(vibeHost.focusCalls.length, 0, 'Toolbar-only entry has no original element to restore');
+    assert.strictEqual(pinveltoHost.focusCalls.length, 0, 'Toolbar-only entry has no original element to restore');
   });
 
   await t.test('teardown removes focus tracking and session hooks', () => {
-    VibeSessionFocus.teardown();
+    PinveltoSessionFocus.teardown();
     assert.strictEqual((documentListeners.focusin || []).length, 0, 'Focus tracking must be removed');
 
     const late = createElement('host-input');
@@ -144,8 +144,8 @@ test('VibeSessionFocus unit tests', async (t) => {
     endSession();
     assert.strictEqual(late.focusCalls.length, 0, 'Teardown must stop restoring focus');
 
-    VibeSessionFocus.init();
+    PinveltoSessionFocus.init();
   });
 
-  VibeShadowHost.getHost = originalGetHost;
+  PinveltoShadowHost.getHost = originalGetHost;
 });

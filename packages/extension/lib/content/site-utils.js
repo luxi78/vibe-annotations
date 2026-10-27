@@ -1,7 +1,7 @@
 // Utilities for discovering, disambiguating, and formatting site origins in View all
 
-export function getAvailableSiteOrigins(allAnnotations, currentOrigin) {
-  const eligible = (allAnnotations || []).filter(a => a && a.status !== 'resolved');
+export function getAvailableSiteOrigins(allFeedback, currentOrigin) {
+  const eligible = (allFeedback || []).filter(a => a && a.status !== 'resolved');
   const origins = new Set();
 
   for (const a of eligible) {

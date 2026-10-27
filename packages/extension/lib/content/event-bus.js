@@ -2,7 +2,7 @@
 
 const listeners = new Map();
 
-const VibeEvents = {
+const PinveltoEvents = {
   on(event, fn) {
     if (!listeners.has(event)) listeners.set(event, new Set());
     listeners.get(event).add(fn);
@@ -21,14 +21,14 @@ const VibeEvents = {
   once(event, fn) {
     const wrapper = (data) => {
       fn(data);
-      VibeEvents.off(event, wrapper);
+      PinveltoEvents.off(event, wrapper);
     };
-    VibeEvents.on(event, wrapper);
+    PinveltoEvents.on(event, wrapper);
   },
 };
 
-export default VibeEvents;
+export default PinveltoEvents;
 
 /** Full display path: pathname + search + hash (supports hash routers & query params). */
-export const vibeLocationPath = (loc) =>
+export const pinveltoLocationPath = (loc) =>
   (loc.pathname || '/') + (loc.search || '') + (loc.hash || '') || '/';

@@ -3,11 +3,11 @@ import { test, expect, FIXTURE_ORIGIN } from './fixtures.js';
 test('late-element discovery renders lazy components without recreating existing pins and respects overlay closure', async ({ page, backgroundWorker }) => {
   const pageUrl = `${FIXTURE_ORIGIN}/selected-rectangle.html`;
 
-  // Pre-seed storage with 2 annotations: 1 existing element (#canvas-rect) and 1 late element (#lazy-target)
+  // Pre-seed storage with 2 pinveltoFeedback: 1 existing element (#canvas-rect) and 1 late element (#lazy-target)
   await backgroundWorker.evaluate(async (url) => {
     await chrome.storage.local.clear();
     await chrome.storage.local.set({
-      annotations: [
+      pinveltoFeedback: [
         {
           id: 'pin-existing',
           url,
@@ -30,15 +30,15 @@ test('late-element discovery renders lazy components without recreating existing
 
   await page.goto(pageUrl);
 
-  const shadowHost = page.locator('#vibe-annotations-root');
+  const shadowHost = page.locator('#pinvelto-feedback-root');
   await expect(shadowHost).toBeAttached();
 
   // The existing pin #canvas-rect must render promptly
-  const pin1 = shadowHost.locator('.vibe-badge[data-annotation-id="pin-existing"]');
+  const pin1 = shadowHost.locator('.pinvelto-badge[data-annotation-id="pin-existing"]');
   await expect(pin1).toBeVisible();
 
   // The late pin #lazy-target is not yet rendered because element does not exist
-  const pin2 = shadowHost.locator('.vibe-badge[data-annotation-id="pin-late"]');
+  const pin2 = shadowHost.locator('.pinvelto-badge[data-annotation-id="pin-late"]');
   await expect(pin2).toHaveCount(0);
 
   // Mark existing pin with a unique DOM attribute to verify node continuity
@@ -65,10 +65,10 @@ test('late-element discovery renders lazy components without recreating existing
   expect(marker).toBe('true');
 
   // Verify overlay toggle closes pins and cancels discovery work
-  const closeBtn = shadowHost.locator('.vibe-tb-close');
+  const closeBtn = shadowHost.locator('.pinvelto-tb-close');
   if (await closeBtn.isVisible()) {
     await closeBtn.click();
-    await expect(shadowHost.locator('.vibe-badge')).toHaveCount(0);
+    await expect(shadowHost.locator('.pinvelto-badge')).toHaveCount(0);
   }
 });
 
@@ -78,7 +78,7 @@ test('finding all eligible targets renders immediately without unnecessary retri
   await backgroundWorker.evaluate(async (url) => {
     await chrome.storage.local.clear();
     await chrome.storage.local.set({
-      annotations: [
+      pinveltoFeedback: [
         {
           id: 'pin-direct',
           url,
@@ -91,8 +91,8 @@ test('finding all eligible targets renders immediately without unnecessary retri
           id: 'pin-stylesheet',
           url,
           type: 'stylesheet',
-          css: 'body { --vibe-e2e-test: 1; }',
-          comment: 'Stylesheet annotation',
+          css: 'body { --pinvelto-e2e-test: 1; }',
+          comment: 'Stylesheet Feedback',
           status: 'open',
           created_at: new Date('2026-01-01T00:01:00.000Z').toISOString(),
         },
@@ -109,14 +109,14 @@ test('finding all eligible targets renders immediately without unnecessary retri
 
   await page.goto(pageUrl);
 
-  const shadowHost = page.locator('#vibe-annotations-root');
+  const shadowHost = page.locator('#pinvelto-feedback-root');
   await expect(shadowHost).toBeAttached();
 
-  const pin = shadowHost.locator('.vibe-badge[data-annotation-id="pin-direct"]');
+  const pin = shadowHost.locator('.pinvelto-badge[data-annotation-id="pin-direct"]');
   await expect(pin).toBeVisible();
 
   // Total badges must be exactly 1 (stylesheet and resolved do not get badge pins)
-  await expect(shadowHost.locator('.vibe-badge')).toHaveCount(1);
+  await expect(shadowHost.locator('.pinvelto-badge')).toHaveCount(1);
 });
 
 test('SPA route change cancels in-flight discovery and tears down obsolete pins cleanly', async ({ page, backgroundWorker }) => {
@@ -125,7 +125,7 @@ test('SPA route change cancels in-flight discovery and tears down obsolete pins 
   await backgroundWorker.evaluate(async (url) => {
     await chrome.storage.local.clear();
     await chrome.storage.local.set({
-      annotations: [
+      pinveltoFeedback: [
         {
           id: 'pin-route-1',
           url,
@@ -140,10 +140,10 @@ test('SPA route change cancels in-flight discovery and tears down obsolete pins 
 
   await page.goto(pageUrl);
 
-  const shadowHost = page.locator('#vibe-annotations-root');
+  const shadowHost = page.locator('#pinvelto-feedback-root');
   await expect(shadowHost).toBeAttached();
 
-  const pin1 = shadowHost.locator('.vibe-badge[data-annotation-id="pin-route-1"]');
+  const pin1 = shadowHost.locator('.pinvelto-badge[data-annotation-id="pin-route-1"]');
   await expect(pin1).toBeVisible();
 
   // Navigate to new route via SPA pushState and title mutation
@@ -153,5 +153,5 @@ test('SPA route change cancels in-flight discovery and tears down obsolete pins 
   });
 
   // Old route pins must be cleared cleanly and not restored
-  await expect(shadowHost.locator('.vibe-badge')).toHaveCount(0);
+  await expect(shadowHost.locator('.pinvelto-badge')).toHaveCount(0);
 });

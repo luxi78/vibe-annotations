@@ -1,30 +1,30 @@
-// Vibe Annotations content-script entrypoint.
+// Pinvelto content-script entrypoint.
 // Orchestrates all modules that used to be IIFEs sharing globals.
 
-import VibeAPI from '../../lib/content/api-bridge.js';
-import VibeEvents from '../../lib/content/event-bus.js';
-import VibeShadowHost from '../../lib/content/shadow-host.js';
-import VibeThemeManager from '../../lib/content/theme-manager.js';
-import VibeBadgeManager from '../../lib/content/badge-manager.js';
-import VibeInspectionMode from '../../lib/content/inspection-mode.js';
-import VibeAnnotationPopover from '../../lib/content/annotation-popover.js';
-import VibeBridgeHandler from '../../lib/content/bridge-handler.js';
-import VibeToolbar from '../../lib/content/floating-toolbar.js';
-import VibeScreenshot from '../../lib/content/screenshot.js';
-import VibeKeyboardRouter from '../../lib/content/keyboard-router.js';
-import VibeSessionFocus from '../../lib/content/session-focus.js';
-import VibePinDiscovery from '../../lib/content/pin-discovery.js';
+import PinveltoAPI from '../../lib/content/api-bridge.js';
+import PinveltoEvents from '../../lib/content/event-bus.js';
+import PinveltoShadowHost from '../../lib/content/shadow-host.js';
+import PinveltoThemeManager from '../../lib/content/theme-manager.js';
+import PinveltoBadgeManager from '../../lib/content/badge-manager.js';
+import PinveltoInspectionMode from '../../lib/content/inspection-mode.js';
+import PinveltoFeedbackPopover from '../../lib/content/annotation-popover.js';
+import PinveltoBridgeHandler from '../../lib/content/bridge-handler.js';
+import PinveltoToolbar from '../../lib/content/floating-toolbar.js';
+import PinveltoScreenshot from '../../lib/content/screenshot.js';
+import PinveltoKeyboardRouter from '../../lib/content/keyboard-router.js';
+import PinveltoSessionFocus from '../../lib/content/session-focus.js';
+import PinveltoPinDiscovery from '../../lib/content/pin-discovery.js';
 
 // --- State ---
-let annotations = [];
+let pinveltoFeedback = [];
 let localSaveCount = 0;
 let badgesShown = false;
 
 // --- Font injection (on main document — fonts cascade into shadow DOM) ---
 function injectFontFace() {
-  if (document.querySelector('[data-vibe-font]')) return;
+  if (document.querySelector('[data-pinvelto-font]')) return;
   const style = document.createElement('style');
-  style.setAttribute('data-vibe-font', 'true');
+  style.setAttribute('data-pinvelto-font', 'true');
   const fontUrl = chrome.runtime.getURL('assets/fonts/InterVariable.woff2');
   style.textContent = `
     @font-face {
@@ -43,38 +43,38 @@ function injectFontFace() {
 // world can read, so the router's install evidence is published there for the E2E
 // suite and for anyone inspecting why keyboard protection is limited.
 function publishKeyboardEvidence() {
-  const host = VibeShadowHost.getHost();
-  const evidence = VibeKeyboardRouter.getInstallEvidence();
+  const host = PinveltoShadowHost.getHost();
+  const evidence = PinveltoKeyboardRouter.getInstallEvidence();
   if (!host || !evidence) return;
 
-  host.setAttribute('data-vibe-keyboard-world', evidence.world);
-  host.setAttribute('data-vibe-keyboard-run-at', evidence.runAt);
-  host.setAttribute('data-vibe-keyboard-installed-at', String(evidence.installedAt));
-  host.setAttribute('data-vibe-keyboard-early-capture', String(evidence.earlyCapture));
-  host.setAttribute('data-vibe-keyboard-late-injection', String(evidence.lateInjection));
+  host.setAttribute('data-pinvelto-keyboard-world', evidence.world);
+  host.setAttribute('data-pinvelto-keyboard-run-at', evidence.runAt);
+  host.setAttribute('data-pinvelto-keyboard-installed-at', String(evidence.installedAt));
+  host.setAttribute('data-pinvelto-keyboard-early-capture', String(evidence.earlyCapture));
+  host.setAttribute('data-pinvelto-keyboard-late-injection', String(evidence.lateInjection));
 }
 
 // --- Initialize all modules ---
 async function init() {
   // Controlled fault injection for the E2E suite (tests/fixtures/selected-rectangle.html
   // sets this attribute). Absent on real pages, so the boot path is unchanged.
-  if (document.documentElement?.hasAttribute('data-vibe-boot-fail')) {
-    throw new Error('[Vibe] Controlled initialization failure');
+  if (document.documentElement?.hasAttribute('data-pinvelto-boot-fail')) {
+    throw new Error('[Pinvelto] Controlled initialization failure');
   }
 
   injectFontFace();
-  VibeShadowHost.init();
+  PinveltoShadowHost.init();
   publishKeyboardEvidence();
 
   // Boot intent set by the background when it injected us for a one-off reason
   // (currently: permission prompt on a non-auto-enabled site). Consumed and cleared.
-  const bootIntent = window.__VIBE_BOOT_INTENT;
-  const bootData = window.__VIBE_BOOT_DATA;
-  delete window.__VIBE_BOOT_INTENT;
-  delete window.__VIBE_BOOT_DATA;
+  const bootIntent = window.__PINVELTO_BOOT_INTENT;
+  const bootData = window.__PINVELTO_BOOT_DATA;
+  delete window.__PINVELTO_BOOT_INTENT;
+  delete window.__PINVELTO_BOOT_DATA;
 
   if (bootIntent === 'show-permission-prompt') {
-    VibeShadowHost.show();
+    PinveltoShadowHost.show();
     showPermissionOverlay(bootData || {});
     return;
   }
@@ -87,69 +87,69 @@ async function bootNormal() {
   if (normalBooted) return;
   normalBooted = true;
 
-  const overlayClosed = await VibeAPI.getOverlayHidden();
-  if (!overlayClosed) VibeShadowHost.show();
+  const overlayClosed = await PinveltoAPI.getOverlayHidden();
+  if (!overlayClosed) PinveltoShadowHost.show();
 
-  await VibeThemeManager.init();
-  annotations = await VibeAPI.loadAnnotations();
+  await PinveltoThemeManager.init();
+  pinveltoFeedback = await PinveltoAPI.loadFeedback();
 
-  VibeBadgeManager.init();
-  VibeInspectionMode.init();
-  VibeSessionFocus.init();
-  VibeAnnotationPopover.init();
-  VibeBridgeHandler.init(() => annotations);
-  VibeScreenshot.init();
-  await VibeToolbar.init();
+  PinveltoBadgeManager.init();
+  PinveltoInspectionMode.init();
+  PinveltoSessionFocus.init();
+  PinveltoFeedbackPopover.init();
+  PinveltoBridgeHandler.init(() => pinveltoFeedback);
+  PinveltoScreenshot.init();
+  await PinveltoToolbar.init();
 
   setupMessageListener();
   setupStorageListener();
   setupRouteChangeDetection();
-  setupAnnotationEvents();
+  setupFeedbackEvents();
 
   // The router mirrors the tab's Annotate session from document_start, before any
   // of this UI existed. Now that it does, a mirrored session can drive the local
   // overlay (cursor, hover, click-to-annotate) instead of only owning the keyboard.
-  VibeKeyboardRouter.onUiReady();
+  PinveltoKeyboardRouter.onUiReady();
 
   if (!overlayClosed) {
-    waitForHydrationAndShowAnnotations();
+    waitForHydrationAndShowFeedback();
   }
 }
 
 // --- Permission modal (non-localhost sites before the user grants access) ---
 function showPermissionOverlay({ originPattern, hostname } = {}) {
-  const root = VibeShadowHost.getRoot();
+  const root = PinveltoShadowHost.getRoot();
   if (!root) return;
   const logoUrl = chrome.runtime.getURL('assets/icons/icon-hq.png');
 
   const backdrop = document.createElement('div');
-  backdrop.className = 'vibe-permission-backdrop';
+  backdrop.className = 'pinvelto-permission-backdrop';
   backdrop.innerHTML = `
-    <div class="vibe-permission-modal">
-      <img class="vibe-permission-logo" src="${logoUrl}" alt="">
-      <h2 class="vibe-permission-title">Enable Vibe Annotations?</h2>
-      <p class="vibe-permission-body">Grant access to <strong>${escapeForModal(hostname || 'this site')}</strong> so the annotation toolbar can load here.</p>
-      <div class="vibe-permission-actions">
-        <button class="vibe-permission-btn vibe-permission-primary" data-scope="site" type="button">Enable on this site</button>
-        <button class="vibe-permission-btn vibe-permission-secondary" data-scope="all" type="button">Enable on all sites</button>
-        <button class="vibe-permission-btn vibe-permission-cancel" type="button">Cancel</button>
+    <div class="pinvelto-permission-modal">
+      <img class="pinvelto-permission-logo" src="${logoUrl}" alt="">
+      <h2 class="pinvelto-permission-title">Enable Pinvelto?</h2>
+      <p class="pinvelto-permission-body">Grant access to <strong>${escapeForModal(hostname || 'this site')}</strong> so the Feedback toolbar can load here.</p>
+      <div class="pinvelto-permission-actions">
+        <button class="pinvelto-permission-btn pinvelto-permission-primary" data-scope="site" type="button">Enable on this site</button>
+        <button class="pinvelto-permission-btn pinvelto-permission-secondary" data-scope="all" type="button">Enable on all sites</button>
+        <button class="pinvelto-permission-btn pinvelto-permission-cancel" type="button">Cancel</button>
       </div>
-      <div class="vibe-permission-status" aria-live="polite"></div>
+      <div class="pinvelto-permission-status" aria-live="polite"></div>
     </div>
   `;
   root.appendChild(backdrop);
 
-  const statusEl = backdrop.querySelector('.vibe-permission-status');
+  const statusEl = backdrop.querySelector('.pinvelto-permission-status');
   const dismiss = () => { backdrop.remove(); };
 
-  backdrop.querySelector('.vibe-permission-cancel').addEventListener('click', dismiss);
+  backdrop.querySelector('.pinvelto-permission-cancel').addEventListener('click', dismiss);
 
   async function request(allSites) {
     setBusy(true);
     statusEl.textContent = 'Requesting permission…';
     try {
       const response = await chrome.runtime.sendMessage({
-        action: 'requestSitePermission',
+        action: 'pinvelto:requestSitePermission',
         originPattern,
         allSites,
       });
@@ -171,8 +171,8 @@ function showPermissionOverlay({ originPattern, hostname } = {}) {
   }
 
   function setBusy(busy) {
-    backdrop.querySelectorAll('.vibe-permission-btn').forEach(b => { b.disabled = busy; });
-    backdrop.classList.toggle('vibe-permission-busy', busy);
+    backdrop.querySelectorAll('.pinvelto-permission-btn').forEach(b => { b.disabled = busy; });
+    backdrop.classList.toggle('pinvelto-permission-busy', busy);
   }
 
   backdrop.querySelectorAll('[data-scope]').forEach(btn => {
@@ -190,63 +190,63 @@ function escapeForModal(str) {
 function setupMessageListener() {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     switch (request.action) {
-      case 'startAnnotationMode':
-        VibeEvents.emit('inspection:start');
+      case 'startFeedbackMode':
+        PinveltoEvents.emit('inspection:start');
         sendResponse({ success: true });
         break;
 
-      case 'stopAnnotationMode':
-        VibeEvents.emit('inspection:stop');
+      case 'stopFeedbackMode':
+        PinveltoEvents.emit('inspection:stop');
         sendResponse({ success: true });
         break;
 
-      case 'getAnnotationModeStatus':
-        sendResponse({ success: true, isAnnotationMode: VibeInspectionMode.isActive() });
+      case 'getFeedbackModeStatus':
+        sendResponse({ success: true, isFeedbackMode: PinveltoInspectionMode.isActive() });
         break;
 
-      case 'toggleOverlay':
-        if (VibeShadowHost.isVisible()) {
+      case 'pinvelto:toggleOverlay':
+        if (PinveltoShadowHost.isVisible()) {
           // Animate out — toolbar handles the actual hide via animateToolbarOut
-          VibeToolbar.animateOut();
+          PinveltoToolbar.animateOut();
           sendResponse({ success: true, visible: false });
         } else {
-          VibeShadowHost.show();
+          PinveltoShadowHost.show();
           // Badges were cleared on close (overlay:closed) — re-render so they
           // re-anchor to their elements at the current scroll/layout position.
-          VibeEvents.emit('overlay:opened');
+          PinveltoEvents.emit('overlay:opened');
           sendResponse({ success: true, visible: true });
         }
         break;
 
       case 'getOverlayState':
-        sendResponse({ success: true, visible: VibeShadowHost.isVisible() });
+        sendResponse({ success: true, visible: PinveltoShadowHost.isVisible() });
         break;
 
-      case 'toggleAnnotate':
-        if (VibeInspectionMode.isActive()) {
-          VibeEvents.emit('inspection:stop');
+      case 'pinvelto:toggleAnnotate':
+        if (PinveltoInspectionMode.isActive()) {
+          PinveltoEvents.emit('inspection:stop');
         } else {
-          VibeEvents.emit('inspection:start');
+          PinveltoEvents.emit('inspection:start');
         }
         sendResponse({ success: true });
         break;
 
-      case 'highlightAnnotation':
-        VibeBadgeManager.highlightElement(request.annotation);
+      case 'highlightFeedback':
+        PinveltoBadgeManager.highlightElement(request.annotation);
         sendResponse({ success: true });
         break;
 
-      case 'targetAnnotationElement':
-        VibeBadgeManager.targetBadge(request.annotation?.id);
+      case 'targetFeedbackElement':
+        PinveltoBadgeManager.targetBadge(request.annotation?.id);
         sendResponse({ success: true });
         break;
 
-      case 'annotationsUpdated':
+      case 'pinvelto:annotationsUpdated':
         // Server sync detected changes (e.g. MCP deletion) — reload from storage
-        VibeAPI.loadAnnotations().then((fresh) => {
-          annotations = fresh;
-          if (VibeShadowHost.isVisible()) {
-            VibeEvents.emit('annotations:render', annotations);
+        PinveltoAPI.loadFeedback().then((fresh) => {
+          pinveltoFeedback = fresh;
+          if (PinveltoShadowHost.isVisible()) {
+            PinveltoEvents.emit('Feedback:render', pinveltoFeedback);
           }
         }).catch(() => {});
         sendResponse({ success: true });
@@ -267,7 +267,7 @@ function setupRouteChangeDetection() {
     const newURL = window.location.href;
     if (newURL === currentURL) return;
     currentURL = newURL;
-    reloadAnnotationsForCurrentRoute();
+    reloadFeedbackForCurrentRoute();
   }
 
   window.addEventListener('popstate', onRouteChange);
@@ -285,81 +285,81 @@ function setupRouteChangeDetection() {
   }
 }
 
-async function reloadAnnotationsForCurrentRoute() {
+async function reloadFeedbackForCurrentRoute() {
   cancelStabilityWait();
-  VibePinDiscovery.cancelDiscovery('route-change');
-  annotations = await VibeAPI.loadAnnotations();
+  PinveltoPinDiscovery.cancelDiscovery('route-change');
+  pinveltoFeedback = await PinveltoAPI.loadFeedback();
   badgesShown = false;
-  if (VibeShadowHost.isVisible()) {
-    VibeBadgeManager.clearAll();
-    VibeEvents.emit('badges:rendered', { count: 0, total: annotations.length });
+  if (PinveltoShadowHost.isVisible()) {
+    PinveltoBadgeManager.clearAll();
+    PinveltoEvents.emit('badges:rendered', { count: 0, total: pinveltoFeedback.length });
 
     waitForDOMStability(() => {
       badgesShown = true;
-      showAnnotationsWithRetry();
+      showFeedbackWithRetry();
     });
   }
 }
 
 // --- Storage listener ---
 function setupStorageListener() {
-  VibeAPI.onAnnotationsChanged((allAnnotations) => {
+  PinveltoAPI.onFeedbackChanged((allFeedback) => {
     if (localSaveCount > 0) {
       localSaveCount--;
       return;
     }
-    annotations = (allAnnotations || []).filter((a) => a.url === window.location.href);
-    if (VibeShadowHost.isVisible()) {
-      VibeEvents.emit('annotations:render', annotations);
+    pinveltoFeedback = (allFeedback || []).filter((a) => a.url === window.location.href);
+    if (PinveltoShadowHost.isVisible()) {
+      PinveltoEvents.emit('Feedback:render', pinveltoFeedback);
     }
   });
 }
 
-// --- Annotation lifecycle ---
-function setupAnnotationEvents() {
-  VibeEvents.on('annotation:saved', ({ annotation }) => {
+// --- Feedback lifecycle ---
+function setupFeedbackEvents() {
+  PinveltoEvents.on('Feedback:saved', ({ annotation }) => {
     localSaveCount++;
-    if (!annotations.some((a) => a.id === annotation.id)) {
-      annotations.push(annotation);
+    if (!pinveltoFeedback.some((a) => a.id === annotation.id)) {
+      pinveltoFeedback.push(annotation);
     }
-    VibeEvents.emit('annotations:render', annotations);
+    PinveltoEvents.emit('Feedback:render', pinveltoFeedback);
   });
 
-  VibeEvents.on('annotation:updated', ({ id, comment, pending_changes, css }) => {
+  PinveltoEvents.on('Feedback:updated', ({ id, comment, pending_changes, css }) => {
     localSaveCount++;
-    const idx = annotations.findIndex((a) => a.id === id);
+    const idx = pinveltoFeedback.findIndex((a) => a.id === id);
     if (idx !== -1) {
       const updates = { comment, updated_at: new Date().toISOString() };
       if (pending_changes !== undefined) updates.pending_changes = pending_changes;
       if (css !== undefined) updates.css = css;
-      annotations[idx] = { ...annotations[idx], ...updates };
+      pinveltoFeedback[idx] = { ...pinveltoFeedback[idx], ...updates };
     }
   });
 
-  VibeEvents.on('annotation:deleted', ({ id }) => {
+  PinveltoEvents.on('Feedback:deleted', ({ id }) => {
     localSaveCount++;
-    annotations = annotations.filter((a) => a.id !== id);
-    VibeEvents.emit('annotations:render', annotations);
+    pinveltoFeedback = pinveltoFeedback.filter((a) => a.id !== id);
+    PinveltoEvents.emit('Feedback:render', pinveltoFeedback);
   });
 
-  VibeEvents.on('overlay:closed', () => {
+  PinveltoEvents.on('overlay:closed', () => {
     cancelStabilityWait();
-    VibePinDiscovery.cancelDiscovery('overlay-closed');
-    VibeBadgeManager.clearAll(annotations);
+    PinveltoPinDiscovery.cancelDiscovery('overlay-closed');
+    PinveltoBadgeManager.clearAll(pinveltoFeedback);
   });
 
-  VibeEvents.on('overlay:opened', () => {
+  PinveltoEvents.on('overlay:opened', () => {
     badgesShown = false;
-    showAnnotationsWithRetry();
+    showFeedbackWithRetry();
   });
 
-  VibeEvents.on('annotations:cleared', ({ count } = {}) => {
-    localSaveCount += count || annotations.length || 1;
+  PinveltoEvents.on('Feedback:cleared', ({ count } = {}) => {
+    localSaveCount += count || pinveltoFeedback.length || 1;
     cancelStabilityWait();
-    VibePinDiscovery.cancelDiscovery('annotations-cleared');
-    VibeBadgeManager.clearAll(annotations);
-    annotations = [];
-    VibeEvents.emit('badges:rendered', { count: 0, total: 0 });
+    PinveltoPinDiscovery.cancelDiscovery('Feedback-cleared');
+    PinveltoBadgeManager.clearAll(pinveltoFeedback);
+    pinveltoFeedback = [];
+    PinveltoEvents.emit('badges:rendered', { count: 0, total: 0 });
   });
 }
 
@@ -383,11 +383,11 @@ function cancelStabilityWait() {
   }
 }
 
-function waitForHydrationAndShowAnnotations() {
+function waitForHydrationAndShowFeedback() {
   const showBadges = () => {
     if (badgesShown) return;
     badgesShown = true;
-    showAnnotationsWithRetry();
+    showFeedbackWithRetry();
   };
 
   if (document.readyState === 'complete') {
@@ -443,11 +443,11 @@ function waitForDOMStability(callback) {
   }, stabilityDelay);
 }
 
-function showAnnotationsWithRetry(maxAttempts = 5, delay = 500) {
-  if (!VibeShadowHost.isVisible()) return;
+function showFeedbackWithRetry(maxAttempts = 5, delay = 500) {
+  if (!PinveltoShadowHost.isVisible()) return;
 
-  VibePinDiscovery.startDiscovery({
-    annotations,
+  PinveltoPinDiscovery.startDiscovery({
+    pinveltoFeedback,
     maxAttempts,
     delay,
     coalesce: true,
@@ -498,14 +498,14 @@ export default defineContentScript({
   cssInjectionMode: 'manual',
   main() {
     // Install lightweight early synchronous capture router immediately
-    VibeKeyboardRouter.init();
+    PinveltoKeyboardRouter.init();
 
     // Initialize body-dependent UI when DOM is ready
     onDOMReady(() => {
       init().catch((err) => {
-        console.error('[Vibe] Init failed:', err);
+        console.error('[Pinvelto] Init failed:', err);
         // A failed boot must leave the page untouched: no UI, no keyboard ownership.
-        VibeKeyboardRouter.teardown();
+        PinveltoKeyboardRouter.teardown();
       });
     });
   },

@@ -3,7 +3,7 @@ import assert from 'node:assert';
 
 const mockStorage = {
   clearOnCopy: false,
-  screenshotEnabled: false,
+  pinveltoScreenshotEnabled: false,
   badgeColor: '#e06c75',
   customShortcut: null
 };
@@ -282,7 +282,7 @@ function parseHTML(html, rootParent) {
 }
 
 const rootElement = new MockElement('div');
-rootElement.id = 'vibe-annotations-root';
+rootElement.id = 'pinvelto-feedback-root';
 const shadowRootMock = new MockElement('div');
 shadowRootMock.host = rootElement;
 rootElement.attachShadow = () => shadowRootMock;
@@ -314,204 +314,204 @@ globalThis.document = {
   querySelector: () => null
 };
 
-const { default: VibeShadowHost } = await import('../lib/content/shadow-host.js');
-VibeShadowHost.getRoot = () => shadowRootMock;
+const { default: PinveltoShadowHost } = await import('../lib/content/shadow-host.js');
+PinveltoShadowHost.getRoot = () => shadowRootMock;
 
-const { default: VibeEvents } = await import('../lib/content/event-bus.js');
-const { default: VibeToolbar } = await import('../lib/content/floating-toolbar.js');
+const { default: PinveltoEvents } = await import('../lib/content/event-bus.js');
+const { default: PinveltoToolbar } = await import('../lib/content/floating-toolbar.js');
 
 test('Settings and Documentation persistent shell navigation', async (t) => {
-  await VibeToolbar.init();
-  const toolbar = shadowRootMock.querySelector('.vibe-toolbar');
+  await PinveltoToolbar.init();
+  const toolbar = shadowRootMock.querySelector('.pinvelto-toolbar');
   assert.ok(toolbar, 'Toolbar mounted');
 
   t.after(() => {
-    VibeEvents.emit('overlay:closed');
+    PinveltoEvents.emit('overlay:closed');
   });
 
   t.afterEach(() => {
-    VibeToolbar.closeSettings?.();
-    const settingsBtn = toolbar.querySelector('.vibe-tb-settings');
+    PinveltoToolbar.closeSettings?.();
+    const settingsBtn = toolbar.querySelector('.pinvelto-tb-settings');
     if (settingsBtn && settingsBtn.classList.contains('active')) {
       settingsBtn.click();
     }
   });
 
   await t.test('navigating from Settings to Documentation and back keeps the exact same dropdown shell mounted', async () => {
-    const settingsBtn = toolbar.querySelector('.vibe-tb-settings');
+    const settingsBtn = toolbar.querySelector('.pinvelto-tb-settings');
     assert.ok(settingsBtn, 'Settings button exists');
     settingsBtn.click();
 
-    const dropdown = toolbar.querySelector('.vibe-settings-dropdown');
+    const dropdown = toolbar.querySelector('.pinvelto-settings-dropdown');
     assert.ok(dropdown, 'Settings dropdown is open');
 
     // Verify initial settings view has Documentation button
-    const docsBtn = dropdown.querySelector('.vibe-get-started-btn');
+    const docsBtn = dropdown.querySelector('.pinvelto-get-started-btn');
     assert.ok(docsBtn, 'Documentation button exists in settings view');
 
     // Navigate to Documentation
     docsBtn.click();
 
     // Verify documentation view is displayed inside dropdown
-    const backBtn = dropdown.querySelector('.vibe-guide-back-btn');
+    const backBtn = dropdown.querySelector('.pinvelto-guide-back-btn');
     assert.ok(backBtn, 'Back button exists in documentation view');
-    assert.strictEqual(toolbar.querySelector('.vibe-settings-dropdown'), dropdown, 'Dropdown shell is preserved when navigating forward');
+    assert.strictEqual(toolbar.querySelector('.pinvelto-settings-dropdown'), dropdown, 'Dropdown shell is preserved when navigating forward');
 
     // Click back button to return to Settings
     backBtn.click();
 
     // Verify dropdown shell is STILL the exact same DOM node instance (not destroyed and recreated)
-    const dropdownAfterBack = toolbar.querySelector('.vibe-settings-dropdown');
+    const dropdownAfterBack = toolbar.querySelector('.pinvelto-settings-dropdown');
     assert.strictEqual(dropdownAfterBack, dropdown, 'Dropdown shell must be the exact same DOM node instance after back navigation');
 
     // Verify Settings view contents are restored
-    assert.ok(dropdown.querySelector('.vibe-get-started-btn'), 'Documentation entry button is restored in Settings view');
-    assert.ok(dropdown.querySelector('.vibe-clear-on-copy-toggle'), 'Clear-on-copy toggle is restored in Settings view');
+    assert.ok(dropdown.querySelector('.pinvelto-get-started-btn'), 'Documentation entry button is restored in Settings view');
+    assert.ok(dropdown.querySelector('.pinvelto-clear-on-copy-toggle'), 'Clear-on-copy toggle is restored in Settings view');
   });
 
   await t.test('multi-level navigation restores scroll position and entry-button focus at each level', async () => {
-    const settingsBtn = toolbar.querySelector('.vibe-tb-settings');
+    const settingsBtn = toolbar.querySelector('.pinvelto-tb-settings');
     settingsBtn.click();
-    const dropdown = toolbar.querySelector('.vibe-settings-dropdown');
+    const dropdown = toolbar.querySelector('.pinvelto-settings-dropdown');
     assert.ok(dropdown);
 
-    const settingsBody = dropdown.querySelector('.vibe-settings-body');
+    const settingsBody = dropdown.querySelector('.pinvelto-settings-body');
     settingsBody.scrollHeight = 300;
     settingsBody.clientHeight = 100;
     settingsBody.scrollTop = 45;
 
-    const docsBtn = dropdown.querySelector('.vibe-get-started-btn');
+    const docsBtn = dropdown.querySelector('.pinvelto-get-started-btn');
     docsBtn.focus();
     docsBtn.click();
 
     // In Documentation view
-    const docsBody = dropdown.querySelector('.vibe-settings-body');
+    const docsBody = dropdown.querySelector('.pinvelto-settings-body');
     assert.strictEqual(docsBody.scrollTop, 0, 'New view starts at top scroll position');
     docsBody.scrollHeight = 500;
     docsBody.clientHeight = 100;
     docsBody.scrollTop = 80;
 
-    const mcpBtn = dropdown.querySelector('.vibe-mcp-server-btn');
+    const mcpBtn = dropdown.querySelector('.pinvelto-mcp-server-btn');
     assert.ok(mcpBtn, 'MCP Server button exists in documentation view');
     mcpBtn.focus();
     mcpBtn.click();
 
     // In MCP setup Guide view
-    const guideBody = dropdown.querySelector('.vibe-settings-body');
+    const guideBody = dropdown.querySelector('.pinvelto-settings-body');
     assert.strictEqual(guideBody.scrollTop, 0, 'Guide view starts at top scroll position');
-    assert.ok(dropdown.querySelector('.vibe-guide'), 'Guide view is rendered');
-    const guideBackBtn = dropdown.querySelector('.vibe-guide-back-btn');
+    assert.ok(dropdown.querySelector('.pinvelto-guide'), 'Guide view is rendered');
+    const guideBackBtn = dropdown.querySelector('.pinvelto-guide-back-btn');
     assert.ok(guideBackBtn, 'Guide back button exists');
 
     // Click back to return to Documentation
     guideBackBtn.click();
 
     // Verify back in Documentation view
-    assert.strictEqual(toolbar.querySelector('.vibe-settings-dropdown'), dropdown, 'Shell remained mounted');
-    const docsBodyAfter = dropdown.querySelector('.vibe-settings-body');
+    assert.strictEqual(toolbar.querySelector('.pinvelto-settings-dropdown'), dropdown, 'Shell remained mounted');
+    const docsBodyAfter = dropdown.querySelector('.pinvelto-settings-body');
     assert.strictEqual(docsBodyAfter.scrollTop, 80, 'Documentation scroll position is restored');
-    assert.strictEqual(shadowRootMock.activeElement, dropdown.querySelector('.vibe-mcp-server-btn'), 'Focus returned to MCP entry button');
+    assert.strictEqual(shadowRootMock.activeElement, dropdown.querySelector('.pinvelto-mcp-server-btn'), 'Focus returned to MCP entry button');
 
     // Click back to return to Settings root
-    const docsBackBtn = dropdown.querySelector('.vibe-guide-back-btn');
+    const docsBackBtn = dropdown.querySelector('.pinvelto-guide-back-btn');
     assert.ok(docsBackBtn, 'Docs back button exists');
     docsBackBtn.click();
 
     // Verify back in Settings view
-    assert.strictEqual(toolbar.querySelector('.vibe-settings-dropdown'), dropdown, 'Shell remained mounted');
-    const settingsBodyAfter = dropdown.querySelector('.vibe-settings-body');
+    assert.strictEqual(toolbar.querySelector('.pinvelto-settings-dropdown'), dropdown, 'Shell remained mounted');
+    const settingsBodyAfter = dropdown.querySelector('.pinvelto-settings-body');
     assert.strictEqual(settingsBodyAfter.scrollTop, 45, 'Settings scroll position is restored');
-    assert.strictEqual(shadowRootMock.activeElement, dropdown.querySelector('.vibe-get-started-btn'), 'Focus returned to Documentation entry button');
+    assert.strictEqual(shadowRootMock.activeElement, dropdown.querySelector('.pinvelto-get-started-btn'), 'Focus returned to Documentation entry button');
   });
 
   await t.test('server-status shortcut directly opens MCP guide without intermediate views', async () => {
-    const statusBtn = toolbar.querySelector('.vibe-tb-status');
+    const statusBtn = toolbar.querySelector('.pinvelto-tb-status');
     assert.ok(statusBtn, 'Status button exists');
 
     statusBtn.click();
 
-    const dropdown = toolbar.querySelector('.vibe-settings-dropdown');
+    const dropdown = toolbar.querySelector('.pinvelto-settings-dropdown');
     assert.ok(dropdown, 'Settings dropdown shell is opened');
 
     // Immediately in MCP guide
-    const guideHeader = dropdown.querySelector('.vibe-settings-header');
+    const guideHeader = dropdown.querySelector('.pinvelto-settings-header');
     assert.ok(guideHeader.textContent.includes('MCP Server'), 'MCP guide title rendered directly');
-    const guidePanel = dropdown.querySelector('.vibe-guide-panel[data-panel="claude"]');
+    const guidePanel = dropdown.querySelector('.pinvelto-guide-panel[data-panel="claude"]');
     assert.ok(guidePanel, 'MCP guide content rendered directly');
 
     // Back button in MCP guide returns to Documentation
-    const guideBackBtn = dropdown.querySelector('.vibe-guide-back-btn');
+    const guideBackBtn = dropdown.querySelector('.pinvelto-guide-back-btn');
     assert.ok(guideBackBtn);
     guideBackBtn.click();
 
-    assert.strictEqual(toolbar.querySelector('.vibe-settings-dropdown'), dropdown, 'Shell remained mounted');
-    assert.ok(dropdown.querySelector('.vibe-mcp-server-btn'), 'Documentation view rendered on back');
-    assert.strictEqual(shadowRootMock.activeElement, dropdown.querySelector('.vibe-mcp-server-btn'), 'Focus returned to MCP entry button');
+    assert.strictEqual(toolbar.querySelector('.pinvelto-settings-dropdown'), dropdown, 'Shell remained mounted');
+    assert.ok(dropdown.querySelector('.pinvelto-mcp-server-btn'), 'Documentation view rendered on back');
+    assert.strictEqual(shadowRootMock.activeElement, dropdown.querySelector('.pinvelto-mcp-server-btn'), 'Focus returned to MCP entry button');
 
     // Back button in Documentation returns to Settings root
-    const docsBackBtn = dropdown.querySelector('.vibe-guide-back-btn');
+    const docsBackBtn = dropdown.querySelector('.pinvelto-guide-back-btn');
     docsBackBtn.click();
 
-    assert.strictEqual(toolbar.querySelector('.vibe-settings-dropdown'), dropdown, 'Shell remained mounted');
-    assert.ok(dropdown.querySelector('.vibe-get-started-btn'), 'Settings root view rendered on second back');
-    assert.strictEqual(shadowRootMock.activeElement, dropdown.querySelector('.vibe-get-started-btn'), 'Focus returned to Documentation entry button');
+    assert.strictEqual(toolbar.querySelector('.pinvelto-settings-dropdown'), dropdown, 'Shell remained mounted');
+    assert.ok(dropdown.querySelector('.pinvelto-get-started-btn'), 'Settings root view rendered on second back');
+    assert.strictEqual(shadowRootMock.activeElement, dropdown.querySelector('.pinvelto-get-started-btn'), 'Focus returned to Documentation entry button');
   });
 
   await t.test('closing shell ends session and reopening starts fresh at Settings root', async () => {
     // Open via status shortcut into MCP guide
-    const statusBtn = toolbar.querySelector('.vibe-tb-status');
+    const statusBtn = toolbar.querySelector('.pinvelto-tb-status');
     statusBtn.click();
-    let dropdown = toolbar.querySelector('.vibe-settings-dropdown');
+    let dropdown = toolbar.querySelector('.pinvelto-settings-dropdown');
     assert.ok(dropdown);
-    assert.ok(dropdown.querySelector('.vibe-guide'));
+    assert.ok(dropdown.querySelector('.pinvelto-guide'));
 
     // Close settings explicitly
-    VibeToolbar.closeSettings();
-    assert.strictEqual(toolbar.querySelector('.vibe-settings-dropdown'), null, 'Dropdown unmounted on close');
+    PinveltoToolbar.closeSettings();
+    assert.strictEqual(toolbar.querySelector('.pinvelto-settings-dropdown'), null, 'Dropdown unmounted on close');
 
     // Reopen settings via settings button
-    const settingsBtn = toolbar.querySelector('.vibe-tb-settings');
+    const settingsBtn = toolbar.querySelector('.pinvelto-tb-settings');
     settingsBtn.click();
-    dropdown = toolbar.querySelector('.vibe-settings-dropdown');
+    dropdown = toolbar.querySelector('.pinvelto-settings-dropdown');
     assert.ok(dropdown, 'Dropdown mounted on reopen');
-    assert.ok(dropdown.querySelector('.vibe-get-started-btn'), 'Reopened at root settings view');
-    assert.strictEqual(dropdown.querySelector('.vibe-guide'), null, 'No leftover guide view in fresh session');
+    assert.ok(dropdown.querySelector('.pinvelto-get-started-btn'), 'Reopened at root settings view');
+    assert.strictEqual(dropdown.querySelector('.pinvelto-guide'), null, 'No leftover guide view in fresh session');
   });
 
   await t.test('settings controls, guide tabs, and copy buttons remain fully functional', async () => {
     // 1. Settings toggles and color selection
-    const settingsBtn = toolbar.querySelector('.vibe-tb-settings');
+    const settingsBtn = toolbar.querySelector('.pinvelto-tb-settings');
     settingsBtn.click();
-    const dropdown = toolbar.querySelector('.vibe-settings-dropdown');
+    const dropdown = toolbar.querySelector('.pinvelto-settings-dropdown');
 
-    const clearToggle = dropdown.querySelector('.vibe-clear-on-copy-toggle');
+    const clearToggle = dropdown.querySelector('.pinvelto-clear-on-copy-toggle');
     assert.ok(clearToggle);
     clearToggle.click();
     await new Promise(r => setTimeout(r, 10));
     assert.ok(clearToggle.classList.contains('on'), 'Clear-on-copy toggled on');
-    assert.strictEqual(mockStorage.vibeClearOnCopy, true, 'Clear-on-copy saved to storage');
+    assert.strictEqual(mockStorage.pinveltoClearOnCopy, true, 'Clear-on-copy saved to storage');
 
-    const colorDot = dropdown.querySelectorAll('.vibe-color-dot').find(d => d.dataset.color === '#3b82f6');
+    const colorDot = dropdown.querySelectorAll('.pinvelto-color-dot').find(d => d.dataset.color === '#3b82f6');
     assert.ok(colorDot);
     colorDot.click();
     await new Promise(r => setTimeout(r, 10));
     assert.ok(colorDot.classList.contains('active'), 'Blue color dot active');
-    assert.strictEqual(mockStorage.vibeBadgeColor, '#3b82f6', 'Badge color saved to storage');
+    assert.strictEqual(mockStorage.pinveltoBadgeColor, '#3b82f6', 'Badge color saved to storage');
 
     // 2. Guide tab switching and copy buttons
-    const docsBtn = dropdown.querySelector('.vibe-get-started-btn');
+    const docsBtn = dropdown.querySelector('.pinvelto-get-started-btn');
     docsBtn.click();
-    const mcpBtn = dropdown.querySelector('.vibe-mcp-server-btn');
+    const mcpBtn = dropdown.querySelector('.pinvelto-mcp-server-btn');
     mcpBtn.click();
 
-    const cursorTab = dropdown.querySelector('.vibe-guide-tab[data-tab="cursor"]');
+    const cursorTab = dropdown.querySelector('.pinvelto-guide-tab[data-tab="cursor"]');
     assert.ok(cursorTab, 'Cursor guide tab exists');
     cursorTab.click();
     assert.ok(cursorTab.classList.contains('active'), 'Cursor tab activated');
-    const cursorPanel = dropdown.querySelector('.vibe-guide-panel[data-panel="cursor"]');
+    const cursorPanel = dropdown.querySelector('.pinvelto-guide-panel[data-panel="cursor"]');
     assert.ok(cursorPanel.classList.contains('active'), 'Cursor panel activated');
 
-    const copyBtn = cursorPanel.querySelector('.vibe-guide-copy');
+    const copyBtn = cursorPanel.querySelector('.pinvelto-guide-copy');
     assert.ok(copyBtn, 'Guide copy button exists');
     let copiedText = '';
     globalThis.navigator.clipboard = {
@@ -519,6 +519,6 @@ test('Settings and Documentation persistent shell navigation', async (t) => {
     };
     copyBtn.click();
     await new Promise(r => setTimeout(r, 10));
-    assert.ok(copiedText.includes('vibe-annotations'), 'Copy button copied command text');
+    assert.deepStrictEqual(JSON.parse(copiedText), {mcpServers:{pinvelto:{url:'http://127.0.0.1:3847/mcp'}}}, 'Copy button copies the actual Pinvelto MCP configuration');
   });
 });

@@ -22,8 +22,8 @@ import {
 
 const COMPOSITION_TEXT = 'にほん';
 
-async function readAnnotations(backgroundWorker) {
-  return backgroundWorker.evaluate(async () => (await chrome.storage.local.get(['annotations'])).annotations || []);
+async function readFeedback(backgroundWorker) {
+  return backgroundWorker.evaluate(async () => (await chrome.storage.local.get(['pinveltoFeedback'])).pinveltoFeedback || []);
 }
 
 test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
@@ -73,12 +73,12 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
 
     // Normal commands work again: Esc closes the editor back to selection
     await page.keyboard.press('Escape');
-    await expect(page.locator('.vibe-popover')).not.toBeAttached({ timeout: 3000 });
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached();
+    await expect(page.locator('.pinvelto-popover')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached();
 
     // The host never saw composition keys, and nothing was saved by accident
     expect(await page.evaluate(() => window.__EVENT_LOG.length), 'Host must receive zero keyboard events').toBe(0);
-    expect((await readAnnotations(backgroundWorker)).length).toBe(0);
+    expect((await readFeedback(backgroundWorker)).length).toBe(0);
   });
 
   test('A7: Enter and Escape during composition do not save, close the editor, or exit Annotate', async ({
@@ -102,7 +102,7 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
     // Editor stays open, Annotate mode stays active, focus stays in the editor
     await expect(popover).toBeAttached();
     await expect(textarea).toBeFocused();
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached();
     await expect(textarea).toHaveValue(COMPOSITION_TEXT);
 
     // The extension did not confirm or cancel the composition on its own
@@ -114,7 +114,7 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
     await expect(textarea).toHaveValue(`${COMPOSITION_TEXT}ご`);
 
     // Nothing was saved and the host saw no keyboard events
-    expect((await readAnnotations(backgroundWorker)).length).toBe(0);
+    expect((await readFeedback(backgroundWorker)).length).toBe(0);
     const state = await page.evaluate(() => window.__FIXTURE_STATE);
     expect(state.cancelCount, 'Host Esc commands must not run').toBe(0);
     expect(state.deleteCount).toBe(0);
@@ -129,10 +129,10 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
     // Esc closes the editor, a second Esc exits Annotate, a fresh Esc reaches the host
     await page.keyboard.press('Escape');
     await expect(popover).not.toBeAttached({ timeout: 3000 });
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached();
 
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
 
     const stateAfterExit = await page.evaluate(() => window.__FIXTURE_STATE);
     expect(stateAfterExit.cancelCount, 'Exiting Annotate must not leak Esc to the host').toBe(0);
@@ -148,14 +148,14 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
     const resumeLog = await page.evaluate(() => window.__EVENT_LOG);
     expect(resumeLog.some((e) => e.type === 'keydown' && e.key === 'Escape'), 'Host must receive the post-exit Esc').toBe(true);
 
-    expect((await readAnnotations(backgroundWorker)).length).toBe(0);
+    expect((await readFeedback(backgroundWorker)).length).toBe(0);
   });
 
   test('A7: an aborted composition is discarded and does not save or exit, then save shortcut saves exactly once', async ({
     page,
     backgroundWorker,
   }) => {
-    const vibeRoot = page.locator('#vibe-annotations-root');
+    const pinveltoRoot = page.locator('#pinvelto-feedback-root');
     await enterAnnotateMode(page);
     const { popover, textarea } = await openPopover(page);
     await instrumentEditor(page);
@@ -169,7 +169,7 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
     await cdp.send('Input.imeSetComposition', { text: '', selectionStart: 0, selectionEnd: 0 });
     await expect(textarea).toHaveValue('');
     await expect(popover).toBeAttached();
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached();
 
     // Type a plain comment and save with the save shortcut
     await page.keyboard.type('plain comment');
@@ -181,12 +181,12 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
 
     // Saved exactly once: one annotation, one badge, popover dismissed, still annotating
     await expect(popover).not.toBeAttached({ timeout: 5000 });
-    await expect(vibeRoot.locator('.vibe-badge')).toHaveCount(1, { timeout: 5000 });
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached();
+    await expect(pinveltoRoot.locator('.pinvelto-badge')).toHaveCount(1, { timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached();
 
-    const annotations = await readAnnotations(backgroundWorker);
-    expect(annotations.length, 'Save shortcut must save exactly once').toBe(1);
-    expect(annotations[0].comment).toBe('plain comment');
+    const pinveltoFeedback = await readFeedback(backgroundWorker);
+    expect(pinveltoFeedback.length, 'Save shortcut must save exactly once').toBe(1);
+    expect(pinveltoFeedback[0].comment).toBe('plain comment');
 
     expect(await page.evaluate(() => window.__EVENT_LOG.length), 'Host must receive zero keyboard events').toBe(0);
   });
@@ -195,12 +195,12 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
     page,
     backgroundWorker,
   }) => {
-    const vibeRoot = page.locator('#vibe-annotations-root');
+    const pinveltoRoot = page.locator('#pinvelto-feedback-root');
 
     await backgroundWorker.evaluate(async (data) => {
       await chrome.storage.local.set(data);
     }, {
-      annotations: [
+      pinveltoFeedback: [
         {
           id: 'ime_standalone_annotation',
           url: `${FIXTURE_ORIGIN}/selected-rectangle.html`,
@@ -216,12 +216,12 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
     await page.goto(`${FIXTURE_ORIGIN}/selected-rectangle.html`);
     await page.evaluate(() => window.__resetFixtureState());
 
-    const badge = vibeRoot.locator('.vibe-badge[data-annotation-id="ime_standalone_annotation"]');
+    const badge = pinveltoRoot.locator('.pinvelto-badge[data-annotation-id="ime_standalone_annotation"]');
     await expect(badge).toBeVisible({ timeout: 5000 });
     await badge.click();
 
-    const popover = vibeRoot.locator('.vibe-popover');
-    const textarea = popover.locator('.vibe-textarea');
+    const popover = pinveltoRoot.locator('.pinvelto-popover');
+    const textarea = popover.locator('.pinvelto-textarea');
     await expect(popover).toBeVisible({ timeout: 5000 });
     await expect(textarea).toBeFocused();
     await textarea.fill('');
@@ -237,7 +237,7 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
 
     await expect(popover).toBeAttached();
     await expect(textarea).toBeFocused();
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached();
     const imeLog = await readImeLog(page);
     expect(imeLog.filter((e) => e.type === 'compositionend').length, 'composition must still be active').toBe(0);
 
@@ -249,7 +249,7 @@ test.describe('A7: IME Composition & Candidate Handling (Ticket #9)', () => {
     // and the host is reachable again afterwards
     await page.keyboard.press('Escape');
     await expect(popover).not.toBeAttached({ timeout: 3000 });
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached();
 
     expect(await page.evaluate(() => window.__EVENT_LOG.length), 'Host must receive zero keyboard events from the standalone editor').toBe(0);
 

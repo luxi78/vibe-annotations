@@ -1,5 +1,5 @@
 // Page-world bridge API for coding-agent integration.
-// Runs in the MAIN world so window.__vibeAnnotations is accessible to the page and to
+// Runs in the MAIN world so window.__pinvelto is accessible to the page and to
 // browser-automation tools. Communicates with the content-script (ISOLATED) world via
 // CustomEvents handled in lib/content/bridge-handler.js.
 
@@ -22,60 +22,60 @@ export default defineContentScript({
   world: 'MAIN',
   runAt: 'document_start',
   main() {
-    if (window.__vibeAnnotations) return;
+    if (window.__pinvelto) return;
 
     const TIMEOUT = 5000;
     let reqId = 0;
 
     function request(method, args) {
       return new Promise((resolve, reject) => {
-        const id = '__vibe_' + ++reqId + '_' + Date.now();
+        const id = '__pinvelto_' + ++reqId + '_' + Date.now();
         const timer = setTimeout(() => {
-          document.removeEventListener('vibe-bridge:response', handler);
-          reject(new Error('Vibe Annotations: request timed out'));
+          document.removeEventListener('pinvelto-bridge:response', handler);
+          reject(new Error('Pinvelto: request timed out'));
         }, TIMEOUT);
 
         function handler(e) {
           if (e.detail?.id !== id) return;
-          document.removeEventListener('vibe-bridge:response', handler);
+          document.removeEventListener('pinvelto-bridge:response', handler);
           clearTimeout(timer);
           if (e.detail.error) reject(new Error(e.detail.error));
           else resolve(e.detail.result);
         }
 
-        document.addEventListener('vibe-bridge:response', handler);
+        document.addEventListener('pinvelto-bridge:response', handler);
         document.dispatchEvent(
-          new CustomEvent('vibe-bridge:request', {
+          new CustomEvent('pinvelto-bridge:request', {
             detail: { id, method, args },
           }),
         );
       });
     }
 
-    window.__vibeAnnotations = {
+    window.__pinvelto = {
       help() {
         return {
           overview:
-            'Vibe Annotations API — record visual design changes as annotations. A coding agent will later read these annotations and implement them in source code. You handle the visual preview, the coding agent handles the source files.',
+            'Pinvelto API — record visual design changes as Feedback. A coding agent will later read these Feedback and implement them in source code. You handle the visual preview, the coding agent handles the source files.',
           workflow: {
-            step1: 'Call getAnnotations() first to see what already exists — avoid duplicates.',
+            step1: 'Call getFeedback() first to see what already exists — avoid duplicates.',
             step2: 'Assess the requested changes — split them into global styling vs component-level edits vs structural changes.',
-            step3: 'Apply global/theme CSS with createStyleAnnotation (one call for all related rules).',
-            step4: 'Apply component-level CSS/text tweaks with createAnnotation (target by simple selector — the API auto-captures full element context).',
+            step3: 'Apply global/theme CSS with createStyleFeedback (one call for all related rules).',
+            step4: 'Apply component-level CSS/text tweaks with createFeedback (target by simple selector — the API auto-captures full element context).',
             step5: 'For text changes, use textChange param — CSS cannot change text content.',
-            step6: 'For structural changes (add/remove elements, reorder layout), use createAnnotation with comment only — describe what the coding agent should do, do NOT attempt DOM surgery.',
+            step6: 'For structural changes (add/remove elements, reorder layout), use createFeedback with comment only — describe what the coding agent should do, do NOT attempt DOM surgery.',
           },
           methods: {
-            createStyleAnnotation: {
+            createStyleFeedback: {
               when: 'Global/broad CSS only: themes, color palettes, typography, spacing resets, animations — anything targeting :root, body, tag selectors, or many elements at once.',
-              signature: 'createStyleAnnotation(css, { comment })',
+              signature: 'createStyleFeedback(css, { comment })',
               example:
-                'createStyleAnnotation(":root { --primary: #0066FF; --primary-hover: #0052CC; } button, .btn { background-color: var(--primary); } button:hover, .btn:hover { background-color: var(--primary-hover); }", { comment: "Blue primary color rebrand" })',
-              note: 'Group ALL related rules into ONE call. Do not create multiple stylesheet annotations for the same theme — update or delete the old one first.',
+                'createStyleFeedback(":root { --primary: #0066FF; --primary-hover: #0052CC; } button, .btn { background-color: var(--primary); } button:hover, .btn:hover { background-color: var(--primary-hover); }", { comment: "Blue primary color rebrand" })',
+              note: 'Group ALL related rules into ONE call. Do not create multiple stylesheet Feedback for the same theme — update or delete the old one first.',
             },
-            createAnnotation: {
+            createFeedback: {
               when: "Single-element edits: restyle one button, change one heading's text, tweak one card's layout. Use cssChanges for inline property overrides, textChange for text content, and css only when that specific element needs pseudo-elements or :hover states.",
-              signature: 'createAnnotation(selector, { comment, cssChanges, textChange, css })',
+              signature: 'createFeedback(selector, { comment, cssChanges, textChange, css })',
               params: {
                 selector: 'CSS selector targeting ONE element — e.g. ".hero h1", "#signup-btn"',
                 comment: 'Describe the intent for the coding agent (required for structural changes)',
@@ -84,23 +84,23 @@ export default defineContentScript({
                 css: 'Raw CSS rules ONLY for pseudo-elements (::before, ::after), states (:hover, :focus), or @media on this element. Do NOT use this for simple property changes — use cssChanges instead.',
               },
               examples: [
-                'createAnnotation(".hero h1", { comment: "Bigger heading", cssChanges: { fontSize: "48px" }, textChange: "New Title" })',
-                'createAnnotation(".pricing-section", { comment: "Add a third pricing tier card between Pro and Enterprise, matching the existing card design" })',
-                'createAnnotation(".cta-btn", { comment: "Hover glow + larger padding", cssChanges: { padding: "16px 32px" }, css: ".cta-btn:hover { box-shadow: 0 0 20px gold; }" })',
+                'createFeedback(".hero h1", { comment: "Bigger heading", cssChanges: { fontSize: "48px" }, textChange: "New Title" })',
+                'createFeedback(".pricing-section", { comment: "Add a third pricing tier card between Pro and Enterprise, matching the existing card design" })',
+                'createFeedback(".cta-btn", { comment: "Hover glow + larger padding", cssChanges: { padding: "16px 32px" }, css: ".cta-btn:hover { box-shadow: 0 0 20px gold; }" })',
               ],
               note: 'Use simple selectors (tag, class, id). Do NOT trace CSS module hashes or source files — the API captures element context automatically.',
             },
-            getAnnotations: { when: 'Read existing annotations BEFORE creating new ones — prevents duplicates.', signature: 'getAnnotations()' },
-            deleteAnnotation: { when: 'Remove an annotation by ID. Use this to clean up before replacing with an updated version.', signature: 'deleteAnnotation(id)' },
-            exportAnnotations: { when: 'Export all annotations as a portable JSON object.', signature: 'exportAnnotations(scope?)', example: 'exportAnnotations("project")' },
+            getFeedback: { when: 'Read existing Feedback BEFORE creating new ones — prevents duplicates.', signature: 'getFeedback()' },
+            deleteFeedback: { when: 'Remove an Feedback by ID. Use this to clean up before replacing with an updated version.', signature: 'deleteFeedback(id)' },
+            exportFeedback: { when: 'Export all Feedback as a portable JSON object.', signature: 'exportFeedback(scope?)', example: 'exportFeedback("project")' },
             status: { when: 'Check if extension and server are active.', signature: 'status()' },
           },
           rules: [
-            'ALWAYS call getAnnotations() first to check for existing annotations. If one already covers what you need, delete it before creating an updated replacement. Never stack duplicate annotations.',
-            'To change text content, you MUST use createAnnotation with textChange. CSS cannot change text — a stylesheet annotation with a comment is not a text change.',
+            'ALWAYS call getFeedback() first to check for existing Feedback. If one already covers what you need, delete it before creating an updated replacement. Never stack duplicate Feedback.',
+            'To change text content, you MUST use createFeedback with textChange. CSS cannot change text — a stylesheet Feedback with a comment is not a text change.',
             'Use cssChanges (inline overrides) for simple property changes on a single element. Only use the css param when you need pseudo-elements, :hover/:focus, or @media for that element.',
-            'Use createStyleAnnotation for broad/global CSS only. If you are targeting a specific element, use createAnnotation instead.',
-            'Group related global CSS into ONE createStyleAnnotation call. Do not split a color theme across multiple annotations.',
+            'Use createStyleFeedback for broad/global CSS only. If you are targeting a specific element, use createFeedback instead.',
+            'Group related global CSS into ONE createStyleFeedback call. Do not split a color theme across multiple Feedback.',
             'Avoid !important — it creates specificity wars. Use precise selectors instead.',
             'Avoid wildcard attribute selectors like [class*="button"] — they match unrelated elements. Use the actual class names visible in the DOM.',
             'Write descriptive comments — they are the primary signal the coding agent uses to understand intent.',
@@ -110,24 +110,24 @@ export default defineContentScript({
         };
       },
 
-      createAnnotation(selector, options = {}) {
-        return request('createAnnotation', { selector, ...options });
+      createFeedback(selector, options = {}) {
+        return request('createFeedback', { selector, ...options });
       },
 
-      createStyleAnnotation(css, options = {}) {
-        return request('createStyleAnnotation', { css, ...options });
+      createStyleFeedback(css, options = {}) {
+        return request('createStyleFeedback', { css, ...options });
       },
 
-      getAnnotations() {
-        return request('getAnnotations');
+      getFeedback() {
+        return request('getFeedback');
       },
 
-      exportAnnotations(scope = 'project') {
-        return request('exportAnnotations', { scope });
+      exportFeedback(scope = 'project') {
+        return request('exportFeedback', { scope });
       },
 
-      deleteAnnotation(id) {
-        return request('deleteAnnotation', { id });
+      deleteFeedback(id) {
+        return request('pinvelto:deleteFeedback', { id });
       },
 
       status() {
@@ -141,9 +141,9 @@ export default defineContentScript({
     // listener reads framework source/identity info off a node the isolated world
     // tags with a temporary probe attribute, then returns the result across the bridge.
 
-    const PROBE_ATTR = 'data-vibe-fiber-probe';
+    const PROBE_ATTR = 'data-pinvelto-fiber-probe';
 
-    document.addEventListener('vibe-bridge:main-request', (e) => {
+    document.addEventListener('pinvelto-bridge:main-request', (e) => {
       const { id, method, args } = e.detail || {};
       if (!id || !method) return;
 
@@ -156,7 +156,7 @@ export default defineContentScript({
         error = err && err.message ? err.message : String(err);
       }
 
-      document.dispatchEvent(new CustomEvent('vibe-bridge:main-response', {
+      document.dispatchEvent(new CustomEvent('pinvelto-bridge:main-response', {
         detail: error ? { id, error } : { id, result },
       }));
     });

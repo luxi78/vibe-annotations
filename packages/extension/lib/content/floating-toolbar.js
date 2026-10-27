@@ -2,12 +2,12 @@
 // Draggable, collapsible, position persisted to storage
 // Settings dropdown with theme toggle, MCP status, clear-on-copy
 
-import VibeAPI from './api-bridge.js';
-import VibeEvents, { vibeLocationPath } from './event-bus.js';
-import VibeShadowHost from './shadow-host.js';
-import VibeKeyboardRouter from './keyboard-router.js';
-import VibeToolbarDocs from './toolbar-docs.js';
-import { renderAnnotationsMarkdown } from './export-markdown.js';
+import PinveltoAPI from './api-bridge.js';
+import PinveltoEvents, { pinveltoLocationPath } from './event-bus.js';
+import PinveltoShadowHost from './shadow-host.js';
+import PinveltoKeyboardRouter from './keyboard-router.js';
+import PinveltoToolbarDocs from './toolbar-docs.js';
+import { renderFeedbackMarkdown } from './export-markdown.js';
 import { isRecordableHotkey } from './hotkey.js';
 import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from './site-utils.js';
 
@@ -19,11 +19,10 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   let toolbarModeTarget = null;
   let toolbarModeSeq = 0;
   let serverOnline = false;
-  let serverOutdated = false; // connected but older than the extension needs
   let annotationCount = 0;
   let countRefreshSeq = 0;
   let clearOnCopy = false;
-  let screenshotEnabled = false;
+  let pinveltoScreenshotEnabled = false;
   let badgeColor = '#0754FF';
   let watcherActive = false;
   let isOverlayVisible = true;
@@ -50,7 +49,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     crosshair: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M22 12h-4"/><path d="M6 12H2"/><path d="M12 6V2"/><path d="M12 22v-4"/></svg>',
     serverRack: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>',
     collapse: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
-    // Vibe logo — actual icon (set dynamically in buildToolbar)
+    // Pinvelto logo — actual icon (set dynamically in buildToolbar)
     logo: '',
     // Links
     github: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>',
@@ -76,14 +75,14 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   };
 
   async function init() {
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     if (!root) return;
 
-    clearOnCopy = await VibeAPI.getClearOnCopy();
-    screenshotEnabled = await VibeAPI.getScreenshotEnabled();
-    badgeColor = await VibeAPI.getBadgeColor();
+    clearOnCopy = await PinveltoAPI.getClearOnCopy();
+    pinveltoScreenshotEnabled = await PinveltoAPI.getScreenshotEnabled();
+    badgeColor = await PinveltoAPI.getBadgeColor();
     applyBadgeColor(badgeColor);
-    customShortcut = await VibeAPI.getCustomShortcut();
+    customShortcut = await PinveltoAPI.getCustomShortcut();
     if (customShortcut) shortcutHint = formatShortcut(customShortcut);
     await refreshServerStatus();
 
@@ -92,17 +91,17 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     await restorePosition();
 
     // Listen for events
-    VibeEvents.on('inspection:started', () => { isAnnotating = true; updateUI(); });
-    VibeEvents.on('inspection:stopped', () => { isAnnotating = false; updateUI(); });
+    PinveltoEvents.on('inspection:started', () => { isAnnotating = true; updateUI(); });
+    PinveltoEvents.on('inspection:stopped', () => { isAnnotating = false; updateUI(); });
     // Page pins have a site-scoped total. The toolbar counts every stored site,
     // including changes from other tabs or the server that render no local pins.
-    VibeEvents.on('badges:rendered', refreshAnnotationCount);
-    VibeEvents.on('annotations:cleared', refreshAnnotationCount);
-    VibeAPI.onAnnotationsChanged(setAnnotationCount);
-    VibeAPI.onPurgeStatusChanged(updateGlobalDeleteStatus);
-    await refreshAnnotationCount();
-    VibeEvents.on('overlay:closed', () => { overlayOpen = false; isOverlayVisible = false; stopPolling(); });
-    VibeEvents.on('overlay:shown', async () => { overlayOpen = true; isOverlayVisible = true; startPolling(); await restorePosition(); animateToolbarIn(); });
+    PinveltoEvents.on('badges:rendered', refreshFeedbackCount);
+    PinveltoEvents.on('Feedback:cleared', refreshFeedbackCount);
+    PinveltoAPI.onFeedbackChanged(setFeedbackCount);
+    PinveltoAPI.onPurgeStatusChanged(updateGlobalDeleteStatus);
+    await refreshFeedbackCount();
+    PinveltoEvents.on('overlay:closed', () => { overlayOpen = false; isOverlayVisible = false; stopPolling(); });
+    PinveltoEvents.on('overlay:shown', async () => { overlayOpen = true; isOverlayVisible = true; startPolling(); await restorePosition(); animateToolbarIn(); });
 
     window.removeEventListener('resize', handleWindowResize);
     window.addEventListener('resize', handleWindowResize, { passive: true });
@@ -117,7 +116,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     // Start periodic checks only when the overlay is actually up and the tab is
     // visible. A closed overlay resumes on 'overlay:shown', a background tab via
     // the visibilitychange handler above.
-    overlayOpen = !(await VibeAPI.getOverlayHidden());
+    overlayOpen = !(await PinveltoAPI.getOverlayHidden());
     if (overlayOpen && !document.hidden) startPolling();
   }
 
@@ -174,47 +173,47 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const logoUrl = chrome.runtime.getURL('assets/icons/icon-hq.png');
 
     toolbarEl = document.createElement('div');
-    toolbarEl.className = 'vibe-toolbar';
+    toolbarEl.className = 'pinvelto-toolbar';
     toolbarModeTarget = null;
 
     // pi-lens-ignore: no-inner-html-js
     toolbarEl.innerHTML = `
-      <img class="vibe-toolbar-logo" src="${logoUrl}" alt="Pinvelto" />
-      <div class="vibe-toolbar-separator"></div>
-      <div class="vibe-toolbar-middle">
-        <div class="vibe-toolbar-default">
-          <button class="vibe-toolbar-btn vibe-tb-annotate" title="Annotate (${escapeHTML(shortcutHint)})">
+      <img class="pinvelto-toolbar-logo" src="${logoUrl}" alt="Pinvelto" />
+      <div class="pinvelto-toolbar-separator"></div>
+      <div class="pinvelto-toolbar-middle">
+        <div class="pinvelto-toolbar-default">
+          <button class="pinvelto-toolbar-btn pinvelto-tb-annotate" title="Annotate (${escapeHTML(shortcutHint)})">
             ${ICONS.annotate}
             <span>Annotate</span>
           </button>
-          <button class="vibe-toolbar-btn vibe-tb-viewall" title="View all annotations">
+          <button class="pinvelto-toolbar-btn pinvelto-tb-viewall" title="View all Feedback">
             ${ICONS.list}
             <span>View all</span>
-            <span class="vibe-toolbar-pill" style="display:none">0</span>
+            <span class="pinvelto-toolbar-pill" style="display:none">0</span>
           </button>
-          <button class="vibe-toolbar-btn vibe-tb-settings" title="Settings">
+          <button class="pinvelto-toolbar-btn pinvelto-tb-settings" title="Settings">
             ${ICONS.settings}
             <span>Settings</span>
           </button>
-          <button class="vibe-toolbar-status vibe-tb-status" title="Offline" style="margin-left:4px;">
+          <button class="pinvelto-toolbar-status pinvelto-tb-status" title="Offline" style="margin-left:4px;">
             ${ICONS.serverRack}
           </button>
         </div>
-        <div class="vibe-toolbar-annotating">
-          <span class="vibe-toolbar-instruction">Click to capture</span>
-          <span class="vibe-toolbar-dot"></span>
-          <kbd class="vibe-toolbar-kbd">↑</kbd>
-          <kbd class="vibe-toolbar-kbd">↓</kbd>
-          <kbd class="vibe-toolbar-kbd">⏎</kbd>
-          <span class="vibe-toolbar-instruction">to fine-tune target</span>
-          <span class="vibe-toolbar-dot"></span>
-          <kbd class="vibe-toolbar-kbd">Esc</kbd>
-          <span class="vibe-toolbar-instruction">to stop</span>
+        <div class="pinvelto-toolbar-annotating">
+          <span class="pinvelto-toolbar-instruction">Click to capture</span>
+          <span class="pinvelto-toolbar-dot"></span>
+          <kbd class="pinvelto-toolbar-kbd">↑</kbd>
+          <kbd class="pinvelto-toolbar-kbd">↓</kbd>
+          <kbd class="pinvelto-toolbar-kbd">⏎</kbd>
+          <span class="pinvelto-toolbar-instruction">to fine-tune target</span>
+          <span class="pinvelto-toolbar-dot"></span>
+          <kbd class="pinvelto-toolbar-kbd">Esc</kbd>
+          <span class="pinvelto-toolbar-instruction">to stop</span>
         </div>
       </div>
       ${isEmbeddedHost ? '' : `
-      <div class="vibe-toolbar-separator"></div>
-      <button class="vibe-toolbar-close vibe-tb-close" title="Close Vibe Annotations">
+      <div class="pinvelto-toolbar-separator"></div>
+      <button class="pinvelto-toolbar-close pinvelto-tb-close" title="Close Pinvelto">
         ${ICONS.close}
       </button>`}
     `;
@@ -223,7 +222,6 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     wireButtons();
     setupDrag();
     updateUI();
-    injectUpdateBanner();
     injectRefreshBanner();
   }
 
@@ -232,20 +230,20 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   // after the page's own parse-time listeners, so shortcuts can still reach the
   // host during Annotate. Never claim complete isolation silently.
   function injectRefreshBanner() {
-    const evidence = VibeKeyboardRouter.getInstallEvidence();
+    const evidence = PinveltoKeyboardRouter.getInstallEvidence();
     if (!evidence || evidence.earlyCapture || !toolbarEl) return;
 
     const banner = document.createElement('div');
-    banner.className = 'vibe-update-banner vibe-refresh-banner';
+    banner.className = 'pinvelto-update-banner pinvelto-refresh-banner';
     banner.innerHTML = `
-      <span class="vibe-update-text">
+      <span class="pinvelto-update-text">
         <strong>Reload for full keyboard protection.</strong>
-        Vibe Annotations loaded after this page, so page shortcuts can still fire until you reload.
+        Pinvelto loaded after this page, so page shortcuts can still fire until you reload.
       </span>
-      <button class="vibe-refresh-action" type="button">Reload page</button>
+      <button class="pinvelto-refresh-action" type="button">Reload page</button>
     `;
 
-    banner.querySelector('.vibe-refresh-action').addEventListener('click', (e) => {
+    banner.querySelector('.pinvelto-refresh-action').addEventListener('click', (e) => {
       e.stopPropagation();
       window.location.reload();
     });
@@ -253,94 +251,52 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     toolbarEl.appendChild(banner);
   }
 
-  // --- Release banner (shown once after an update, until dismissed) ---
-
-  async function injectUpdateBanner() {
-    try {
-      const { updateInfo } = await chrome.storage.local.get(['updateInfo']);
-      if (!updateInfo || !updateInfo.hasUpdate || !toolbarEl) return;
-
-      const version = updateInfo.currentVersion || '';
-      const releaseUrl = updateInfo.releaseUrl
-        || 'https://github.com/RaphaelRegnier/vibe-annotations/releases';
-
-      const banner = document.createElement('div');
-      banner.className = 'vibe-update-banner';
-      // pi-lens-ignore: no-inner-html-js
-      banner.innerHTML = `
-        <span class="vibe-update-text">
-          <strong>Vibe Annotations${version ? ` ${version}` : ''}</strong>
-          — variants generation improvements. Update your MCP server to get them.
-        </span>
-        <a class="vibe-update-link" href="${releaseUrl}" target="_blank" rel="noopener">See what's new</a>
-        <button class="vibe-update-dismiss" title="Dismiss">${ICONS.close}</button>
-      `;
-
-      const dismiss = () => {
-        banner.classList.add('vibe-update-banner-out');
-        setTimeout(() => banner.remove(), 200);
-        chrome.runtime.sendMessage({ action: 'dismissUpdate' }).catch(() => {});
-      };
-
-      banner.querySelector('.vibe-update-dismiss').addEventListener('click', (e) => {
-        e.stopPropagation();
-        dismiss();
-      });
-      // Opening the release note also clears the "NEW" state.
-      banner.querySelector('.vibe-update-link').addEventListener('click', () => {
-        chrome.runtime.sendMessage({ action: 'dismissUpdate' }).catch(() => {});
-      });
-
-      toolbarEl.appendChild(banner);
-    } catch { /* storage unavailable — skip banner */ }
-  }
-
   function wireButtons() {
     // Annotate toggle
-    toolbarEl.querySelector('.vibe-tb-annotate').addEventListener('click', () => {
+    toolbarEl.querySelector('.pinvelto-tb-annotate').addEventListener('click', () => {
       if (isAnnotating) {
-        VibeEvents.emit('inspection:stop');
+        PinveltoEvents.emit('inspection:stop');
       } else {
-        VibeEvents.emit('inspection:start');
+        PinveltoEvents.emit('inspection:start');
       }
     });
 
     // View all
-    toolbarEl.querySelector('.vibe-tb-viewall').addEventListener('click', (e) => {
+    toolbarEl.querySelector('.pinvelto-tb-viewall').addEventListener('click', (e) => {
       e.stopPropagation();
       toggleViewAll();
     });
 
     // Settings
-    toolbarEl.querySelector('.vibe-tb-settings').addEventListener('click', (e) => {
+    toolbarEl.querySelector('.pinvelto-tb-settings').addEventListener('click', (e) => {
       e.stopPropagation();
       toggleSettings();
     });
 
     // Close — animate out then hide. Absent in embedded hosts (see isEmbeddedHost).
-    toolbarEl.querySelector('.vibe-tb-close')?.addEventListener('click', () => {
+    toolbarEl.querySelector('.pinvelto-tb-close')?.addEventListener('click', () => {
       animateToolbarOut();
     });
 
     // Status — watching: stop watchers; offline/online: open MCP setup docs
-    toolbarEl.querySelector('.vibe-tb-status').addEventListener('click', async (e) => {
+    toolbarEl.querySelector('.pinvelto-tb-status').addEventListener('click', async (e) => {
       e.stopPropagation();
       if (watcherActive) {
-        await VibeAPI.stopWatchers();
+        await PinveltoAPI.stopWatchers();
         watcherActive = false;
         updateUI();
-        VibeEvents.emit('watch:changed', { active: false });
+        PinveltoEvents.emit('watch:changed', { active: false });
         return;
       }
       closeViewAll();
       closeSettings();
       ensureSettingsShell();
       settingsNavStack = [
-        { view: 'root', scrollTop: 0, focusSelector: '.vibe-get-started-btn' },
-        { view: 'docs', scrollTop: 0, focusSelector: '.vibe-mcp-server-btn' }
+        { view: 'root', scrollTop: 0, focusSelector: '.pinvelto-get-started-btn' },
+        { view: 'docs', scrollTop: 0, focusSelector: '.pinvelto-mcp-server-btn' }
       ];
-      VibeToolbarDocs.showWorkflow(settingsDropdown, 'mcp-setup', ICONS, _docsCallbacks);
-      const newBody = settingsDropdown?.querySelector('.vibe-settings-body');
+      PinveltoToolbarDocs.showWorkflow(settingsDropdown, 'mcp-setup', ICONS, _docsCallbacks);
+      const newBody = settingsDropdown?.querySelector('.pinvelto-settings-body');
       if (newBody) newBody.scrollTop = 0;
     });
   }
@@ -354,9 +310,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   const VIEWALL_SPARKLE_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>';
 
   let viewAllRenderSeq = 0;
-  let viewAllCurrentAnnotations = [];
+  let viewAllCurrentFeedback = [];
   let viewAllAvailableOrigins = [];
-  let viewAllLastRenderedAnnotations = null;
+  let viewAllLastRenderedFeedback = null;
   const viewAllScrollPositions = new Map();
   const viewAllSessionOrigins = new Set();
 
@@ -381,32 +337,32 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     let cardHeaderHTML;
     if (isStylesheet) {
-      cardHeaderHTML = `<div class="vibe-viewall-design">${VIEWALL_SPARKLE_ICON}<span>Stylesheet change</span></div>`;
+      cardHeaderHTML = `<div class="pinvelto-viewall-design">${VIEWALL_SPARKLE_ICON}<span>Stylesheet change</span></div>`;
     } else {
-      cardHeaderHTML = `<div class="vibe-viewall-selector">${escapeHTML(selector)}</div>`;
+      cardHeaderHTML = `<div class="pinvelto-viewall-selector">${escapeHTML(selector)}</div>`;
     }
 
     let bodyHTML;
     if (hasPendingChanges && !comment) {
-      bodyHTML = `<div class="vibe-viewall-design">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
+      bodyHTML = `<div class="pinvelto-viewall-design">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
     } else if (comment) {
-      bodyHTML = `<div class="vibe-viewall-comment">${escapeHTML(comment)}</div>`;
+      bodyHTML = `<div class="pinvelto-viewall-comment">${escapeHTML(comment)}</div>`;
       if (hasPendingChanges) {
-        bodyHTML += `<div class="vibe-viewall-design" style="margin-top:2px;">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
+        bodyHTML += `<div class="pinvelto-viewall-design" style="margin-top:2px;">${VIEWALL_SPARKLE_ICON}<span>${changeCount} design change${changeCount !== 1 ? 's' : ''}</span></div>`;
       }
     } else if (!isStylesheet) {
-      bodyHTML = `<div class="vibe-viewall-comment empty">No comment</div>`;
+      bodyHTML = `<div class="pinvelto-viewall-comment empty">No comment</div>`;
     } else {
       bodyHTML = '';
     }
 
     const variantStatus = variantStatusLabel(a);
-    const statusHTML = variantStatus ? `<div class="vibe-viewall-status ${variantStatus.cls}">${variantStatus.text}</div>` : '';
+    const statusHTML = variantStatus ? `<div class="pinvelto-viewall-status ${variantStatus.cls}">${variantStatus.text}</div>` : '';
 
     return `${cardHeaderHTML}${bodyHTML}${statusHTML}`;
   }
 
-  function areAnnotationsEqual(listA, listB) {
+  function areFeedbackEqual(listA, listB) {
     if (!listA || !listB || listA.length !== listB.length) return false;
     for (let i = 0; i < listA.length; i++) {
       if (getCardDataHash(listA[i]) !== getCardDataHash(listB[i])) return false;
@@ -420,7 +376,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
   function saveCurrentScroll() {
     if (!viewAllPanel || !viewAllSelectedOrigin) return;
-    const routesEl = viewAllPanel.querySelector('.vibe-viewall-routes');
+    const routesEl = viewAllPanel.querySelector('.pinvelto-viewall-routes');
     if (routesEl) {
       const key = getReviewPositionKey(viewAllSelectedOrigin, viewAllActiveFilter);
       viewAllScrollPositions.set(key, routesEl.scrollTop || 0);
@@ -429,7 +385,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
   function restoreScrollForCurrentView() {
     if (!viewAllPanel) return;
-    const routesEl = viewAllPanel.querySelector('.vibe-viewall-routes');
+    const routesEl = viewAllPanel.querySelector('.pinvelto-viewall-routes');
     if (routesEl) {
       const key = getReviewPositionKey(viewAllSelectedOrigin, viewAllActiveFilter);
       const saved = viewAllScrollPositions.get(key) || 0;
@@ -450,41 +406,41 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   function ensureViewAllPanelShell() {
     if (viewAllPanel) return;
 
-    const btn = toolbarEl.querySelector('.vibe-tb-viewall');
+    const btn = toolbarEl.querySelector('.pinvelto-tb-viewall');
     if (btn) btn.classList.add('active');
 
     viewAllPanel = document.createElement('div');
     const rect = toolbarEl.getBoundingClientRect();
     const inLowerHalf = rect.top > window.innerHeight / 2;
-    viewAllPanel.className = 'vibe-viewall-panel' + (inLowerHalf ? ' above' : '');
+    viewAllPanel.className = 'pinvelto-viewall-panel' + (inLowerHalf ? ' above' : '');
 
     // pi-lens-ignore: no-inner-html-js
     viewAllPanel.innerHTML = `
-      <div class="vibe-viewall-header">
-        <div class="vibe-viewall-actions">
-          <button class="vibe-viewall-copy" title="Copy all">${VIEWALL_COPY_ICON}</button>
-          <button class="vibe-viewall-export" title="Share / Export">${VIEWALL_SHARE_ICON}</button>
-          <button class="vibe-viewall-deleteall" title="Delete annotations for this site">${VIEWALL_TRASH_ICON}</button>
+      <div class="pinvelto-viewall-header">
+        <div class="pinvelto-viewall-actions">
+          <button class="pinvelto-viewall-copy" title="Copy all">${VIEWALL_COPY_ICON}</button>
+          <button class="pinvelto-viewall-export" title="Share / Export">${VIEWALL_SHARE_ICON}</button>
+          <button class="pinvelto-viewall-deleteall" title="Delete Feedback for this site">${VIEWALL_TRASH_ICON}</button>
         </div>
       </div>
-      <div class="vibe-viewall-tabs">
-        <button class="vibe-viewall-tab active" data-filter="all" type="button">All (0)</button>
-        <button class="vibe-viewall-tab" data-filter="current" type="button">This page (0)</button>
+      <div class="pinvelto-viewall-tabs">
+        <button class="pinvelto-viewall-tab active" data-filter="all" type="button">All (0)</button>
+        <button class="pinvelto-viewall-tab" data-filter="current" type="button">This page (0)</button>
       </div>
-      <div class="vibe-viewall-routes"></div>
-      <div class="vibe-viewall-footer">
-        <div class="vibe-viewall-global-action">
-          <span class="vibe-viewall-global-caption">Delete all annotations across all sites</span>
-          <button class="vibe-viewall-delete-global" type="button" aria-label="Delete all annotations across all sites" title="Delete all annotations across all sites" data-count="0" disabled>${VIEWALL_TRASH_ICON}</button>
+      <div class="pinvelto-viewall-routes"></div>
+      <div class="pinvelto-viewall-footer">
+        <div class="pinvelto-viewall-global-action">
+          <span class="pinvelto-viewall-global-caption">Delete all Feedback across all sites</span>
+          <button class="pinvelto-viewall-delete-global" type="button" aria-label="Delete all Feedback across all sites" title="Delete all Feedback across all sites" data-count="0" disabled>${VIEWALL_TRASH_ICON}</button>
         </div>
-        <div class="vibe-viewall-global-status" role="status"></div>
+        <div class="pinvelto-viewall-global-status" role="status"></div>
       </div>
     `;
 
     toolbarEl.appendChild(viewAllPanel);
 
     // Filter tabs listener
-    viewAllPanel.querySelectorAll('.vibe-viewall-tab').forEach(tabBtn => {
+    viewAllPanel.querySelectorAll('.pinvelto-viewall-tab').forEach(tabBtn => {
       tabBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const filter = tabBtn.dataset.filter;
@@ -497,49 +453,49 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     });
 
     // Global delete listener
-    viewAllPanel.querySelector('.vibe-viewall-delete-global').addEventListener('click', async () => {
+    viewAllPanel.querySelector('.pinvelto-viewall-delete-global').addEventListener('click', async () => {
       if (globalDeleteBusy) return;
       globalDeleteBusy = true;
-      const button = viewAllPanel.querySelector('.vibe-viewall-delete-global');
+      const button = viewAllPanel.querySelector('.pinvelto-viewall-delete-global');
       button.disabled = true;
       try {
-        const stored = await VibeAPI.loadAllStoredAnnotations();
+        const stored = await PinveltoAPI.loadAllStoredFeedback();
         const ids = (stored || []).filter(a => a && typeof a.id === 'string' && a.id).map(a => a.id);
         if (!ids.length) return;
-        const root = VibeShadowHost.getRoot();
+        const root = PinveltoShadowHost.getRoot();
         if (!root) return;
         const confirmed = await showDeleteConfirm(root, { allSites: true, count: ids.length });
         if (!confirmed) return;
         if (viewAllPanel) viewAllPanel._suppressRefresh = true;
-        const result = await VibeAPI.deleteAllAnnotations(ids);
-        await refreshAnnotationCount();
-        VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
+        const result = await PinveltoAPI.deleteAllFeedback(ids);
+        await refreshFeedbackCount();
+        PinveltoEvents.emit('Feedback:render', await PinveltoAPI.loadFeedback());
         if (viewAllPanel) {
           await updateViewAll(viewAllSelectedOrigin, viewAllActiveFilter);
           if (result.pendingSync) {
-            const status = viewAllPanel?.querySelector('.vibe-viewall-global-status');
+            const status = viewAllPanel?.querySelector('.pinvelto-viewall-global-status');
             if (status) status.textContent = `Deleted locally. ${result.syncError || 'Server sync is pending.'}`;
           }
         }
       } catch (error) {
-        showInfoModal('Could not delete annotations', error?.message || 'Please try again.');
+        showInfoModal('Could not delete Feedback', error?.message || 'Please try again.');
       } finally {
         globalDeleteBusy = false;
         if (viewAllPanel) {
           viewAllPanel._suppressRefresh = false;
-          const currentButton = viewAllPanel.querySelector('.vibe-viewall-delete-global');
+          const currentButton = viewAllPanel.querySelector('.pinvelto-viewall-delete-global');
           if (currentButton) currentButton.disabled = currentButton.dataset.count === '0';
         }
       }
     });
 
     // Copy all (selected site)
-    const copyBtn = viewAllPanel.querySelector('.vibe-viewall-copy');
+    const copyBtn = viewAllPanel.querySelector('.pinvelto-viewall-copy');
     copyBtn.addEventListener('click', async () => {
-      if (!viewAllCurrentAnnotations.length) return;
+      if (!viewAllCurrentFeedback.length) return;
       let siteHost;
       try { siteHost = new URL(viewAllSelectedOrigin).host; } catch { siteHost = window.location.host; }
-      const text = renderAnnotationsMarkdown(viewAllCurrentAnnotations, siteHost);
+      const text = renderFeedbackMarkdown(viewAllCurrentFeedback, siteHost);
       try { await navigator.clipboard.writeText(text); } catch {
         const ta = document.createElement('textarea'); ta.value = text;
         document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
@@ -551,15 +507,15 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       // pi-lens-ignore: no-inner-html-js
       setTimeout(() => { copyBtn.innerHTML = origHTML; copyBtn.style.color = ''; }, 1500);
 
-      const shouldClear = clearOnCopy || (await VibeAPI.getClearOnCopy());
+      const shouldClear = clearOnCopy || (await PinveltoAPI.getClearOnCopy());
       if (shouldClear) {
         if (viewAllPanel) viewAllPanel._suppressRefresh = true;
         try {
-          const toDelete = [...viewAllCurrentAnnotations];
-          for (const a of toDelete) await VibeAPI.deleteAnnotation(a.id);
+          const toDelete = [...viewAllCurrentFeedback];
+          for (const a of toDelete) await PinveltoAPI.deleteFeedback(a.id);
           await syncAfterDeletion(toDelete.length);
         } catch (err) {
-          console.error('[Vibe] clear-after-copy failed:', err);
+          console.error('[Pinvelto] clear-after-copy failed:', err);
           updateViewAll(viewAllSelectedOrigin);
         } finally {
           if (viewAllPanel) viewAllPanel._suppressRefresh = false;
@@ -568,59 +524,59 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     });
 
     // Share / Export
-    const shareBtn = viewAllPanel.querySelector('.vibe-viewall-export');
+    const shareBtn = viewAllPanel.querySelector('.pinvelto-viewall-export');
     let shareMenu = null;
     const closeShareMenu = () => { if (shareMenu) { shareMenu.remove(); shareMenu = null; } };
     shareBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (shareMenu) { closeShareMenu(); return; }
-      const root = VibeShadowHost.getRoot();
+      const root = PinveltoShadowHost.getRoot();
       if (!root) return;
       const r = shareBtn.getBoundingClientRect();
       shareMenu = document.createElement('div');
-      shareMenu.className = 'vibe-viewall-share-menu';
+      shareMenu.className = 'pinvelto-viewall-share-menu';
       shareMenu.style.top = `${Math.round(r.bottom + 6)}px`;
       shareMenu.style.left = `${Math.round(Math.max(8, r.right - 200))}px`;
       shareMenu.innerHTML = `
-        <button class="vibe-share-opt" data-format="md" type="button"><strong>.md</strong><span>for personal use</span></button>
-        <button class="vibe-share-opt" data-format="html" type="button"><strong>.html</strong><span>to share externally</span></button>
-        <button class="vibe-share-opt" data-format="json" type="button"><strong>.json</strong><span>to re-import later</span></button>
+        <button class="pinvelto-share-opt" data-format="md" type="button"><strong>.md</strong><span>for personal use</span></button>
+        <button class="pinvelto-share-opt" data-format="html" type="button"><strong>.html</strong><span>to share externally</span></button>
+        <button class="pinvelto-share-opt" data-format="json" type="button"><strong>.json</strong><span>to re-import later</span></button>
       `;
       root.appendChild(shareMenu);
-      shareMenu.querySelectorAll('.vibe-share-opt').forEach(opt => {
+      shareMenu.querySelectorAll('.pinvelto-share-opt').forEach(opt => {
         opt.addEventListener('click', async (ev) => {
           ev.stopPropagation();
           const fmt = opt.dataset.format;
           closeShareMenu();
-          await downloadShare(fmt, viewAllSelectedOrigin, viewAllCurrentAnnotations);
+          await downloadShare(fmt, viewAllSelectedOrigin, viewAllCurrentFeedback);
         });
       });
     });
     const onOutsideClick = (ev) => { if (shareMenu && !shareMenu.contains(ev.target) && ev.target !== shareBtn) closeShareMenu(); };
-    VibeShadowHost.getRoot()?.addEventListener('click', onOutsideClick);
+    PinveltoShadowHost.getRoot()?.addEventListener('click', onOutsideClick);
     document.addEventListener('click', closeShareMenu);
 
     // Delete all for selected site
-    viewAllPanel.querySelector('.vibe-viewall-deleteall').addEventListener('click', async () => {
-      if (!viewAllCurrentAnnotations.length) return;
-      const root = VibeShadowHost.getRoot();
+    viewAllPanel.querySelector('.pinvelto-viewall-deleteall').addEventListener('click', async () => {
+      if (!viewAllCurrentFeedback.length) return;
+      const root = PinveltoShadowHost.getRoot();
       if (!root) return;
       const siteLabel = formatSiteLabel(viewAllSelectedOrigin, viewAllAvailableOrigins);
-      const confirmed = await showDeleteConfirm(root, { siteName: siteLabel, count: viewAllCurrentAnnotations.length });
+      const confirmed = await showDeleteConfirm(root, { siteName: siteLabel, count: viewAllCurrentFeedback.length });
       if (!confirmed) return;
-      const allCards = viewAllPanel.querySelectorAll('.vibe-viewall-card');
+      const allCards = viewAllPanel.querySelectorAll('.pinvelto-viewall-card');
       allCards.forEach((card, i) => {
         setTimeout(() => card.classList.add('deleting'), i * 40);
       });
       await new Promise(r => setTimeout(r, allCards.length * 40 + 300));
       if (viewAllPanel) viewAllPanel._suppressRefresh = true;
       try {
-        for (const a of viewAllCurrentAnnotations) {
-          await VibeAPI.deleteAnnotation(a.id);
+        for (const a of viewAllCurrentFeedback) {
+          await PinveltoAPI.deleteFeedback(a.id);
         }
-        await syncAfterDeletion(viewAllCurrentAnnotations.length);
+        await syncAfterDeletion(viewAllCurrentFeedback.length);
       } catch (err) {
-        console.error('[Vibe] delete all failed:', err);
+        console.error('[Pinvelto] delete all failed:', err);
         updateViewAll(viewAllSelectedOrigin);
       } finally {
         if (viewAllPanel) viewAllPanel._suppressRefresh = false;
@@ -641,7 +597,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     };
 
     const storageListener = (changes, ns) => {
-      if (ns === 'local' && changes.annotations) {
+      if (ns === 'local' && changes.pinveltoFeedback) {
         scheduleRefresh();
       }
     };
@@ -651,7 +607,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     const badgeHandler = () => {
       scheduleRefresh();
     };
-    VibeEvents.on('badges:rendered', badgeHandler);
+    PinveltoEvents.on('badges:rendered', badgeHandler);
 
     // Store cleanup reference
     viewAllPanel._cleanupEvents = () => {
@@ -662,9 +618,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
         chrome.storage.onChanged.removeListener(storageListener);
       }
-      VibeEvents.off('badges:rendered', badgeHandler);
+      PinveltoEvents.off('badges:rendered', badgeHandler);
       document.removeEventListener('click', closeShareMenu);
-      VibeShadowHost.getRoot()?.removeEventListener('click', onOutsideClick);
+      PinveltoShadowHost.getRoot()?.removeEventListener('click', onOutsideClick);
       closeShareMenu();
     };
   }
@@ -675,14 +631,14 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     let stored = null;
     let readFailed = false;
     try {
-      stored = await VibeAPI.loadAllStoredAnnotations();
+      stored = await PinveltoAPI.loadAllStoredFeedback();
     } catch (err) {
       readFailed = true;
-      console.error('[Vibe] syncAfterDeletion loadAllStoredAnnotations failed:', err);
+      console.error('[Pinvelto] syncAfterDeletion loadAllStoredFeedback failed:', err);
     }
 
     try {
-      await refreshAnnotationCount();
+      await refreshFeedbackCount();
     } catch {}
 
     if (!readFailed && Array.isArray(stored)) {
@@ -692,10 +648,10 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       });
       if (deletedOrigin === currentOrigin) {
         try {
-          VibeEvents.emit('annotations:render', await VibeAPI.loadAnnotations());
+          PinveltoEvents.emit('Feedback:render', await PinveltoAPI.loadFeedback());
         } catch {}
         if (remaining.length === 0) {
-          VibeEvents.emit('annotations:cleared', { count: deletedCount });
+          PinveltoEvents.emit('Feedback:cleared', { count: deletedCount });
         }
       }
     }
@@ -715,20 +671,20 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   }
 
   function bindCardEvents(cardEl) {
-    const deleteBtn = cardEl.querySelector('.vibe-viewall-card-delete');
+    const deleteBtn = cardEl.querySelector('.pinvelto-viewall-card-delete');
     if (deleteBtn) {
       bindCardDelete(deleteBtn, cardEl);
     }
     cardEl.addEventListener('click', (e) => {
-      if (e.target && e.target.closest && e.target.closest('.vibe-viewall-card-delete')) return;
+      if (e.target && e.target.closest && e.target.closest('.pinvelto-viewall-card-delete')) return;
       const targetId = cardEl.getAttribute('data-id') || cardEl.dataset.id;
-      const a = viewAllCurrentAnnotations.find(x => x.id === targetId);
+      const a = viewAllCurrentFeedback.find(x => x.id === targetId);
       if (a && a.url === window.location.href && a.selector) {
         try {
           const el = document.querySelector(a.selector);
           if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            VibeEvents.emit('badge:target', { id: targetId });
+            PinveltoEvents.emit('badge:target', { id: targetId });
           }
         } catch {}
       }
@@ -739,18 +695,18 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const id = btn.getAttribute('data-id') || btn.dataset.id;
-      const card = cardEl || (btn.closest ? btn.closest('.vibe-viewall-card') : null);
+      const card = cardEl || (btn.closest ? btn.closest('.pinvelto-viewall-card') : null);
       if (card) {
         card.classList.add('deleting');
         await new Promise(r => setTimeout(r, 300));
       }
       if (viewAllPanel) viewAllPanel._suppressRefresh = true;
       try {
-        await VibeAPI.deleteAnnotation(id);
+        await PinveltoAPI.deleteFeedback(id);
         await syncAfterDeletion(1);
       } catch (err) {
         if (card) card.classList.remove('deleting');
-        console.error('[Vibe] deleteAnnotation failed:', err);
+        console.error('[Pinvelto] deleteFeedback failed:', err);
       } finally {
         if (viewAllPanel) viewAllPanel._suppressRefresh = false;
       }
@@ -760,12 +716,12 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   function bindRouteClear(btn, path) {
     btn.addEventListener('click', async () => {
       const clearPath = btn.getAttribute('data-path') || path;
-      const routeAnnotations = viewAllCurrentAnnotations.filter(a => {
+      const routeFeedback = viewAllCurrentFeedback.filter(a => {
         try { return new URL(a.url).pathname === clearPath; } catch { return clearPath === '/'; }
       });
-      const routeEl = btn.closest ? btn.closest('.vibe-viewall-route') : null;
+      const routeEl = btn.closest ? btn.closest('.pinvelto-viewall-route') : null;
       if (routeEl) {
-        const cards = routeEl.querySelectorAll('.vibe-viewall-card');
+        const cards = routeEl.querySelectorAll('.pinvelto-viewall-card');
         cards.forEach((card, i) => {
           setTimeout(() => card.classList.add('deleting'), i * 50);
         });
@@ -773,12 +729,12 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       }
       if (viewAllPanel) viewAllPanel._suppressRefresh = true;
       try {
-        for (const a of routeAnnotations) {
-          await VibeAPI.deleteAnnotation(a.id);
+        for (const a of routeFeedback) {
+          await PinveltoAPI.deleteFeedback(a.id);
         }
-        await syncAfterDeletion(routeAnnotations.length);
+        await syncAfterDeletion(routeFeedback.length);
       } catch (err) {
-        console.error('[Vibe] clear route failed:', err);
+        console.error('[Pinvelto] clear route failed:', err);
         updateViewAll(viewAllSelectedOrigin);
       } finally {
         if (viewAllPanel) viewAllPanel._suppressRefresh = false;
@@ -801,39 +757,39 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       viewAllActiveFilter = targetFilter;
     }
 
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     const activeEl = root?.activeElement || (typeof document !== 'undefined' ? document.activeElement : null);
-    const wasFilterTabFocused = !!(activeEl && activeEl.classList && activeEl.classList.contains('vibe-viewall-tab'));
-    const wasSiteSelectFocused = !!(activeEl && activeEl.classList && activeEl.classList.contains('vibe-viewall-site-select'));
+    const wasFilterTabFocused = !!(activeEl && activeEl.classList && activeEl.classList.contains('pinvelto-viewall-tab'));
+    const wasSiteSelectFocused = !!(activeEl && activeEl.classList && activeEl.classList.contains('pinvelto-viewall-site-select'));
 
     let allStored = null;
     let readFailed = false;
     try {
-      allStored = await VibeAPI.loadAllStoredAnnotations();
+      allStored = await PinveltoAPI.loadAllStoredFeedback();
     } catch (err) {
       readFailed = true;
-      console.error('[Vibe] loadAllStoredAnnotations failed:', err);
+      console.error('[Pinvelto] loadAllStoredFeedback failed:', err);
     }
 
     if (seq !== viewAllRenderSeq || !viewAllPanel) return;
 
     if (readFailed) {
       // In-place recoverable read failure feedback
-      let errorEl = viewAllPanel.querySelector('.vibe-viewall-error');
+      let errorEl = viewAllPanel.querySelector('.pinvelto-viewall-error');
       if (!errorEl) {
         errorEl = document.createElement('div');
-        errorEl.className = 'vibe-viewall-error';
+        errorEl.className = 'pinvelto-viewall-error';
         errorEl.setAttribute('role', 'alert');
         // pi-lens-ignore: no-inner-html-js
         errorEl.innerHTML = `
-          <span>Failed to load annotations</span>
-          <button class="vibe-viewall-retry" type="button">Retry</button>
+          <span>Failed to load Feedback</span>
+          <button class="pinvelto-viewall-retry" type="button">Retry</button>
         `;
-        const routesEl = viewAllPanel.querySelector('.vibe-viewall-routes');
+        const routesEl = viewAllPanel.querySelector('.pinvelto-viewall-routes');
         if (routesEl) viewAllPanel.insertBefore(errorEl, routesEl);
         else viewAllPanel.appendChild(errorEl);
 
-        errorEl.querySelector('.vibe-viewall-retry')?.addEventListener('click', (e) => {
+        errorEl.querySelector('.pinvelto-viewall-retry')?.addEventListener('click', (e) => {
           e.stopPropagation();
           updateViewAll(viewAllSelectedOrigin, viewAllActiveFilter);
         });
@@ -843,7 +799,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     }
 
     // Clear error feedback if previous read had failed
-    const existingError = viewAllPanel.querySelector('.vibe-viewall-error');
+    const existingError = viewAllPanel.querySelector('.pinvelto-viewall-error');
     if (existingError) existingError.remove();
 
     // Exclude resolved (agent finalized/cleaned them — done). variants-discarded and
@@ -865,23 +821,23 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     });
     viewAllAvailableOrigins = sessionAvailableOrigins;
 
-    const annotations = allEligible.filter(a => {
+    const pinveltoFeedback = allEligible.filter(a => {
       try { return new URL(a.url).origin === viewAllSelectedOrigin; } catch { return false; }
     });
-    viewAllCurrentAnnotations = annotations;
+    viewAllCurrentFeedback = pinveltoFeedback;
 
-    const allCount = annotations.length;
+    const allCount = pinveltoFeedback.length;
     const currentUrl = window.location.href;
-    const currentPageAnnotations = annotations.filter(a => a.url === currentUrl);
-    const currentCount = currentPageAnnotations.length;
+    const currentPageFeedback = pinveltoFeedback.filter(a => a.url === currentUrl);
+    const currentCount = currentPageFeedback.length;
 
-    const displayedAnnotations = viewAllActiveFilter === 'current'
-      ? currentPageAnnotations
-      : annotations;
+    const displayedFeedback = viewAllActiveFilter === 'current'
+      ? currentPageFeedback
+      : pinveltoFeedback;
 
     // Group by route (path)
     const routeGroups = {};
-    for (const a of displayedAnnotations) {
+    for (const a of displayedFeedback) {
       try {
         const path = new URL(a.url).pathname;
         if (!routeGroups[path]) routeGroups[path] = [];
@@ -894,15 +850,15 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     }
 
     // 1. Update Header Left
-    const headerEl = viewAllPanel.querySelector('.vibe-viewall-header');
+    const headerEl = viewAllPanel.querySelector('.pinvelto-viewall-header');
     if (headerEl) {
-      const actionsEl = headerEl.querySelector('.vibe-viewall-actions');
+      const actionsEl = headerEl.querySelector('.pinvelto-viewall-actions');
       const existingLeft = headerEl.firstElementChild !== actionsEl ? headerEl.firstElementChild : null;
 
       if (viewAllAvailableOrigins.length <= 1) {
-        if (!existingLeft || !existingLeft.classList.contains('vibe-viewall-url')) {
+        if (!existingLeft || !existingLeft.classList.contains('pinvelto-viewall-url')) {
           const newLeftEl = document.createElement('span');
-          newLeftEl.className = 'vibe-viewall-url';
+          newLeftEl.className = 'pinvelto-viewall-url';
           newLeftEl.textContent = window.location.host || window.location.hostname;
           if (existingLeft) headerEl.replaceChild(newLeftEl, existingLeft);
           else if (actionsEl) headerEl.insertBefore(newLeftEl, actionsEl);
@@ -911,7 +867,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
           existingLeft.textContent = window.location.host || window.location.hostname;
         }
       } else {
-        const existingSelect = existingLeft?.querySelector('.vibe-viewall-site-select');
+        const existingSelect = existingLeft?.querySelector('.pinvelto-viewall-site-select');
         const populateSiteOptions = (selectEl) => {
           selectEl.textContent = '';
           for (const orig of viewAllAvailableOrigins) {
@@ -931,9 +887,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
           existingSelect.value = viewAllSelectedOrigin;
         } else {
           const picker = document.createElement('div');
-          picker.className = 'vibe-viewall-site-picker';
+          picker.className = 'pinvelto-viewall-site-picker';
           const select = document.createElement('select');
-          select.className = 'vibe-viewall-site-select';
+          select.className = 'pinvelto-viewall-site-select';
           select.setAttribute('aria-label', 'Select site; green check marks the current site');
           populateSiteOptions(select);
           select.value = viewAllSelectedOrigin;
@@ -952,8 +908,8 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     }
 
     // 2. Update Tabs
-    const allTab = viewAllPanel.querySelector('.vibe-viewall-tab[data-filter="all"]');
-    const currentTab = viewAllPanel.querySelector('.vibe-viewall-tab[data-filter="current"]');
+    const allTab = viewAllPanel.querySelector('.pinvelto-viewall-tab[data-filter="all"]');
+    const currentTab = viewAllPanel.querySelector('.pinvelto-viewall-tab[data-filter="current"]');
     if (allTab) {
       allTab.textContent = `All (${allCount})`;
       allTab.classList.toggle('active', viewAllActiveFilter === 'all');
@@ -964,17 +920,17 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     }
 
     // 3. Reconcile Routes & Cards
-    const listUnchanged = areAnnotationsEqual(displayedAnnotations, viewAllLastRenderedAnnotations);
-    const routesContainer = viewAllPanel.querySelector('.vibe-viewall-routes');
+    const listUnchanged = areFeedbackEqual(displayedFeedback, viewAllLastRenderedFeedback);
+    const routesContainer = viewAllPanel.querySelector('.pinvelto-viewall-routes');
     const sortedPaths = Object.keys(routeGroups).sort();
 
     if (!listUnchanged && routesContainer) {
       const hadFocusedChild = Boolean(activeEl && routesContainer.contains(activeEl));
-      if (displayedAnnotations.length === 0) {
+      if (displayedFeedback.length === 0) {
         routesContainer.textContent = '';
-        const message = viewAllActiveFilter === 'current' ? 'No annotations on this page' : 'No annotations yet';
+        const message = viewAllActiveFilter === 'current' ? 'No Feedback on this page' : 'No Feedback yet';
         const emptyEl = document.createElement('div');
-        emptyEl.className = 'vibe-viewall-empty';
+        emptyEl.className = 'pinvelto-viewall-empty';
         emptyEl.textContent = message;
         routesContainer.appendChild(emptyEl);
 
@@ -983,22 +939,22 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
           if (activeTab && typeof activeTab.focus === 'function') activeTab.focus();
         }
       } else {
-        const emptyNotice = routesContainer.querySelector('.vibe-viewall-empty');
+        const emptyNotice = routesContainer.querySelector('.pinvelto-viewall-empty');
         if (emptyNotice) emptyNotice.remove();
 
         let focusNeedsReturnToTab = false;
         if (activeEl) {
-          const focusedCard = activeEl.closest?.('.vibe-viewall-card');
+          const focusedCard = activeEl.closest?.('.pinvelto-viewall-card');
           if (focusedCard) {
             const cardId = focusedCard.getAttribute('data-id') || focusedCard.dataset.id;
-            const survives = displayedAnnotations.some(a => a.id === cardId);
+            const survives = displayedFeedback.some(a => a.id === cardId);
             if (!survives) {
               focusNeedsReturnToTab = true;
             }
           }
         }
 
-        const existingRouteEls = Array.from(routesContainer.children).filter(el => el.classList && el.classList.contains('vibe-viewall-route'));
+        const existingRouteEls = Array.from(routesContainer.children).filter(el => el.classList && el.classList.contains('pinvelto-viewall-route'));
         const existingRouteMap = new Map();
         for (const el of existingRouteEls) {
           const routePath = el.getAttribute('data-path') || el.dataset.path;
@@ -1018,34 +974,34 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
           let routeEl = existingRouteMap.get(path);
           if (!routeEl) {
             routeEl = document.createElement('div');
-            routeEl.className = 'vibe-viewall-route';
+            routeEl.className = 'pinvelto-viewall-route';
             routeEl.setAttribute('data-path', path);
             const clearBtnHTML = items.length > 1
-              ? `<button class="vibe-viewall-route-clear" data-path="${escapeHTML(path)}" title="Clear route">${VIEWALL_SMALL_TRASH}</button>`
+              ? `<button class="pinvelto-viewall-route-clear" data-path="${escapeHTML(path)}" title="Clear route">${VIEWALL_SMALL_TRASH}</button>`
               : '';
             // pi-lens-ignore: no-inner-html-js
             routeEl.innerHTML = `
-              <div class="vibe-viewall-route-header">
-                <div class="vibe-viewall-route-left">
-                  <span class="vibe-viewall-route-path">${escapeHTML(path)}</span>
-                  <span class="vibe-viewall-route-count">${items.length}</span>
+              <div class="pinvelto-viewall-route-header">
+                <div class="pinvelto-viewall-route-left">
+                  <span class="pinvelto-viewall-route-path">${escapeHTML(path)}</span>
+                  <span class="pinvelto-viewall-route-count">${items.length}</span>
                 </div>
                 ${clearBtnHTML}
               </div>
             `;
             routesContainer.appendChild(routeEl);
-            const clearBtn = routeEl.querySelector('.vibe-viewall-route-clear');
+            const clearBtn = routeEl.querySelector('.pinvelto-viewall-route-clear');
             if (clearBtn) bindRouteClear(clearBtn, path);
           } else {
             routeEl.setAttribute('data-path', path);
-            const countEl = routeEl.querySelector('.vibe-viewall-route-count');
+            const countEl = routeEl.querySelector('.pinvelto-viewall-route-count');
             if (countEl) countEl.textContent = String(items.length);
-            const routeHeader = routeEl.querySelector('.vibe-viewall-route-header');
-            let clearBtn = routeHeader?.querySelector('.vibe-viewall-route-clear');
+            const routeHeader = routeEl.querySelector('.pinvelto-viewall-route-header');
+            let clearBtn = routeHeader?.querySelector('.pinvelto-viewall-route-clear');
             if (items.length > 1) {
               if (!clearBtn && routeHeader) {
                 clearBtn = document.createElement('button');
-                clearBtn.className = 'vibe-viewall-route-clear';
+                clearBtn.className = 'pinvelto-viewall-route-clear';
                 clearBtn.setAttribute('data-path', path);
                 clearBtn.title = 'Clear route';
                 // pi-lens-ignore: no-inner-html-js
@@ -1059,7 +1015,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
             routesContainer.appendChild(routeEl);
           }
 
-          const existingCards = Array.from(routeEl.children).filter(el => el.classList && el.classList.contains('vibe-viewall-card'));
+          const existingCards = Array.from(routeEl.children).filter(el => el.classList && el.classList.contains('pinvelto-viewall-card'));
           const existingCardMap = new Map();
           for (const card of existingCards) {
             const cardId = card.getAttribute('data-id') || card.dataset.id;
@@ -1081,16 +1037,16 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
             const contentHTML = buildCardContentHTML(a);
             const deleteHTML = a.status === 'variants-discarded'
               ? ''
-              : `<button class="vibe-viewall-card-delete" data-id="${escapeHTML(a.id)}" title="Delete">${VIEWALL_TRASH_ICON}</button>`;
+              : `<button class="pinvelto-viewall-card-delete" data-id="${escapeHTML(a.id)}" title="Delete">${VIEWALL_TRASH_ICON}</button>`;
 
             if (!cardEl) {
               cardEl = document.createElement('div');
-              cardEl.className = `vibe-viewall-card${isCurrentPage ? ' current-page' : ''}`;
+              cardEl.className = `pinvelto-viewall-card${isCurrentPage ? ' current-page' : ''}`;
               cardEl.setAttribute('data-id', a.id);
               cardEl.setAttribute('data-current-page', String(isCurrentPage));
               // pi-lens-ignore: no-inner-html-js
               cardEl.innerHTML = `
-                <div class="vibe-viewall-card-content">
+                <div class="pinvelto-viewall-card-content">
                   ${contentHTML}
                 </div>
                 ${deleteHTML}
@@ -1103,12 +1059,12 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
               cardEl.setAttribute('data-current-page', String(isCurrentPage));
               const newHash = getCardDataHash(a);
               if (cardEl._cardDataHash !== newHash) {
-                const contentEl = cardEl.querySelector('.vibe-viewall-card-content');
+                const contentEl = cardEl.querySelector('.pinvelto-viewall-card-content');
                 if (contentEl) {
                   // pi-lens-ignore: no-inner-html-js
                   contentEl.innerHTML = contentHTML;
                 }
-                let delBtn = cardEl.querySelector('.vibe-viewall-card-delete');
+                let delBtn = cardEl.querySelector('.pinvelto-viewall-card-delete');
                 if (a.status === 'variants-discarded') {
                   if (delBtn) delBtn.remove();
                 } else if (!delBtn) {
@@ -1117,7 +1073,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
                   temp.innerHTML = deleteHTML;
                   if (temp.firstElementChild) {
                     cardEl.appendChild(temp.firstElementChild);
-                    const newDelBtn = cardEl.querySelector('.vibe-viewall-card-delete');
+                    const newDelBtn = cardEl.querySelector('.pinvelto-viewall-card-delete');
                     if (newDelBtn) bindCardDelete(newDelBtn, cardEl);
                   }
                 }
@@ -1135,11 +1091,11 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         }
       }
 
-      viewAllLastRenderedAnnotations = [...displayedAnnotations];
+      viewAllLastRenderedFeedback = [...displayedFeedback];
     }
 
     // 4. Update Footer global delete button
-    const globalDeleteBtn = viewAllPanel.querySelector('.vibe-viewall-delete-global');
+    const globalDeleteBtn = viewAllPanel.querySelector('.pinvelto-viewall-delete-global');
     if (globalDeleteBtn) {
       globalDeleteBtn.dataset.count = String((allStored || []).length);
       const shouldDisable = globalDeleteBusy || !(allStored || []).length;
@@ -1159,7 +1115,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       const activeTab = viewAllActiveFilter === 'all' ? allTab : currentTab;
       if (activeTab && typeof activeTab.focus === 'function') activeTab.focus();
     } else if (wasSiteSelectFocused) {
-      const siteSelect = viewAllPanel.querySelector('.vibe-viewall-site-select');
+      const siteSelect = viewAllPanel.querySelector('.pinvelto-viewall-site-select');
       if (siteSelect && typeof siteSelect.focus === 'function') siteSelect.focus();
     }
 
@@ -1169,9 +1125,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   async function updateGlobalDeleteStatus() {
     if (!viewAllPanel) return;
     const seq = ++purgeStatusSeq;
-    const status = await VibeAPI.getPendingPurgeStatus();
+    const status = await PinveltoAPI.getPendingPurgeStatus();
     if (seq !== purgeStatusSeq || !viewAllPanel) return;
-    const el = viewAllPanel?.querySelector('.vibe-viewall-global-status');
+    const el = viewAllPanel?.querySelector('.pinvelto-viewall-global-status');
     if (el) el.textContent = status.pending ? `Deleted locally. ${status.error || 'Server sync is pending.'}` : '';
   }
 
@@ -1184,10 +1140,10 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     }
     viewAllSelectedOrigin = null;
     viewAllActiveFilter = 'all';
-    viewAllLastRenderedAnnotations = null;
+    viewAllLastRenderedFeedback = null;
     viewAllScrollPositions.clear();
     viewAllSessionOrigins.clear();
-    const btn = toolbarEl.querySelector('.vibe-tb-viewall');
+    const btn = toolbarEl.querySelector('.pinvelto-tb-viewall');
     if (btn) btn.classList.remove('active');
   }
 
@@ -1200,17 +1156,17 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   function ensureSettingsShell() {
     if (settingsDropdown) return;
 
-    const btn = toolbarEl.querySelector('.vibe-tb-settings');
+    const btn = toolbarEl.querySelector('.pinvelto-tb-settings');
     if (btn) btn.classList.add('active');
 
     settingsDropdown = document.createElement('div');
     const rect = toolbarEl.getBoundingClientRect();
     const inLowerHalf = rect.top > window.innerHeight / 2;
-    settingsDropdown.className = 'vibe-settings-dropdown' + (inLowerHalf ? ' above' : '');
+    settingsDropdown.className = 'pinvelto-settings-dropdown' + (inLowerHalf ? ' above' : '');
 
     settingsDropdown.innerHTML = `
-      <div class="vibe-settings-header"></div>
-      <div class="vibe-settings-body"></div>
+      <div class="pinvelto-settings-header"></div>
+      <div class="pinvelto-settings-body"></div>
     `;
 
     settingsDropdown.addEventListener('click', (e) => {
@@ -1227,90 +1183,90 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   function renderSettingsRootView() {
     if (!settingsDropdown) return;
 
-    const header = settingsDropdown.querySelector('.vibe-settings-header');
-    const body = settingsDropdown.querySelector('.vibe-settings-body');
+    const header = settingsDropdown.querySelector('.pinvelto-settings-header');
+    const body = settingsDropdown.querySelector('.pinvelto-settings-body');
     if (!header || !body) return;
 
     const version = chrome.runtime.getManifest().version;
-    const route = vibeLocationPath(window.location);
+    const route = pinveltoLocationPath(window.location);
 
     // pi-lens-ignore: no-inner-html-js
     header.innerHTML = `
       <div>
-        <span class="vibe-settings-title">${escapeHTML(route)}</span>
-        <a href="https://github.com/RaphaelRegnier/vibe-annotations/releases/tag/v${escapeHTML(version)}" target="_blank" rel="noopener" class="vibe-settings-version">v${escapeHTML(version)}</a>
+        <span class="pinvelto-settings-title">${escapeHTML(route)}</span>
+        <a href="https://github.com/luxi78/vibe-annotations/releases/tag/v${escapeHTML(version)}" target="_blank" rel="noopener" class="pinvelto-settings-version">v${escapeHTML(version)}</a>
       </div>
     `;
 
     // pi-lens-ignore: no-inner-html-js
     body.innerHTML = `
-      <button class="vibe-settings-link vibe-get-started-btn" type="button">
+      <button class="pinvelto-settings-link pinvelto-get-started-btn" type="button">
         ${ICONS.book}
         <span>Documentation</span>
         <span style="margin-left:auto;color:var(--v-text-secondary);">${ICONS.chevronRight}</span>
       </button>
-      <div class="vibe-settings-separator"></div>
-      <div class="vibe-settings-item">
-        <div class="vibe-settings-item-left">
+      <div class="pinvelto-settings-separator"></div>
+      <div class="pinvelto-settings-item">
+        <div class="pinvelto-settings-item-left">
           ${ICONS.palette}
           <span>Pin color</span>
         </div>
-        <div class="vibe-color-picker" style="display:flex;gap:6px;">
-          ${BADGE_COLORS.map(c => `<button class="vibe-color-dot${c === badgeColor ? ' active' : ''}" data-color="${c}" style="background:${c};" type="button"></button>`).join('')}
+        <div class="pinvelto-color-picker" style="display:flex;gap:6px;">
+          ${BADGE_COLORS.map(c => `<button class="pinvelto-color-dot${c === badgeColor ? ' active' : ''}" data-color="${c}" style="background:${c};" type="button"></button>`).join('')}
         </div>
       </div>
-      <div class="vibe-settings-item">
-        <div class="vibe-settings-item-left">
+      <div class="pinvelto-settings-item">
+        <div class="pinvelto-settings-item-left">
           ${ICONS.copy}
           <span>Clear after copy</span>
         </div>
-        <button class="vibe-toggle vibe-clear-on-copy-toggle ${clearOnCopy ? 'on' : ''}" type="button"></button>
+        <button class="pinvelto-toggle pinvelto-clear-on-copy-toggle ${clearOnCopy ? 'on' : ''}" type="button"></button>
       </div>
-      <div class="vibe-settings-item">
-        <div class="vibe-settings-item-left">
+      <div class="pinvelto-settings-item">
+        <div class="pinvelto-settings-item-left">
           ${ICONS.camera}
           <div>
             <span>Screenshots</span>
             <div style="font-size:11px;color:var(--v-text-secondary);margin-top:1px;">Only used via MCP server, not clipboard</div>
           </div>
         </div>
-        <button class="vibe-toggle vibe-screenshot-toggle ${screenshotEnabled ? 'on' : ''}" type="button"></button>
+        <button class="pinvelto-toggle pinvelto-screenshot-toggle ${pinveltoScreenshotEnabled ? 'on' : ''}" type="button"></button>
       </div>
-      <div class="vibe-settings-item">
-        <div class="vibe-settings-item-left">
+      <div class="pinvelto-settings-item">
+        <div class="pinvelto-settings-item-left">
           ${ICONS.keyboard}
           <span>Trigger hotkey</span>
         </div>
-        <button class="vibe-shortcut-btn" type="button">${escapeHTML(shortcutHint)}</button>
+        <button class="pinvelto-shortcut-btn" type="button">${escapeHTML(shortcutHint)}</button>
       </div>
-      <div class="vibe-settings-separator"></div>
-      <button class="vibe-settings-link vibe-import-btn" type="button">
+      <div class="pinvelto-settings-separator"></div>
+      <button class="pinvelto-settings-link pinvelto-import-btn" type="button">
         ${ICONS.download}
-        <span>Import annotations</span>
+        <span>Import Feedback</span>
       </button>
     `;
 
     // Clear on copy toggle
-    settingsDropdown.querySelector('.vibe-clear-on-copy-toggle').addEventListener('click', async (e) => {
+    settingsDropdown.querySelector('.pinvelto-clear-on-copy-toggle').addEventListener('click', async (e) => {
       clearOnCopy = !clearOnCopy;
       e.currentTarget.classList.toggle('on', clearOnCopy);
-      await VibeAPI.saveClearOnCopy(clearOnCopy);
+      await PinveltoAPI.saveClearOnCopy(clearOnCopy);
     });
 
     // Screenshot toggle
-    settingsDropdown.querySelector('.vibe-screenshot-toggle').addEventListener('click', async (e) => {
+    settingsDropdown.querySelector('.pinvelto-screenshot-toggle').addEventListener('click', async (e) => {
       const toggle = e.currentTarget;
-      if (!screenshotEnabled) {
-        const granted = await VibeAPI.requestScreenshotPermission();
+      if (!pinveltoScreenshotEnabled) {
+        const granted = await PinveltoAPI.requestScreenshotPermission();
         if (!granted) return;
       }
-      screenshotEnabled = !screenshotEnabled;
-      toggle.classList.toggle('on', screenshotEnabled);
-      await VibeAPI.saveScreenshotEnabled(screenshotEnabled);
+      pinveltoScreenshotEnabled = !pinveltoScreenshotEnabled;
+      toggle.classList.toggle('on', pinveltoScreenshotEnabled);
+      await PinveltoAPI.saveScreenshotEnabled(pinveltoScreenshotEnabled);
     });
 
     // Shortcut key recorder
-    const shortcutBtn = settingsDropdown.querySelector('.vibe-shortcut-btn');
+    const shortcutBtn = settingsDropdown.querySelector('.pinvelto-shortcut-btn');
     let recording = false;
     shortcutBtn.addEventListener('click', () => {
       if (recording) {
@@ -1320,7 +1276,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       recording = true;
       shortcutBtn.textContent = 'Press keys\u2026';
       shortcutBtn.classList.add('recording');
-      VibeEvents.emit('shortcut:recording:start');
+      PinveltoEvents.emit('shortcut:recording:start');
 
       function onKey(e) {
         if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
@@ -1349,8 +1305,8 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         window.removeEventListener('keydown', onKey, true);
         document.removeEventListener('keydown', onKey, true);
         activeRecordingCleanup = null;
-        VibeEvents.emit('shortcut:recording:stop');
-        VibeAPI.saveCustomShortcut(sc);
+        PinveltoEvents.emit('shortcut:recording:stop');
+        PinveltoAPI.saveCustomShortcut(sc);
       }
 
       function cancelRecording() {
@@ -1360,7 +1316,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         window.removeEventListener('keydown', onKey, true);
         document.removeEventListener('keydown', onKey, true);
         activeRecordingCleanup = null;
-        VibeEvents.emit('shortcut:recording:stop');
+        PinveltoEvents.emit('shortcut:recording:stop');
       }
 
       window.addEventListener('keydown', onKey, true);
@@ -1369,23 +1325,23 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     });
 
     // Badge color picker
-    settingsDropdown.querySelectorAll('.vibe-color-dot').forEach(dot => {
+    settingsDropdown.querySelectorAll('.pinvelto-color-dot').forEach(dot => {
       dot.addEventListener('click', async () => {
         badgeColor = dot.dataset.color;
-        settingsDropdown.querySelectorAll('.vibe-color-dot').forEach(d => d.classList.remove('active'));
+        settingsDropdown.querySelectorAll('.pinvelto-color-dot').forEach(d => d.classList.remove('active'));
         dot.classList.add('active');
         applyBadgeColor(badgeColor);
-        await VibeAPI.saveBadgeColor(badgeColor);
+        await PinveltoAPI.saveBadgeColor(badgeColor);
       });
     });
 
     // Documentation
-    settingsDropdown.querySelector('.vibe-get-started-btn').addEventListener('click', () => {
+    settingsDropdown.querySelector('.pinvelto-get-started-btn').addEventListener('click', () => {
       navigateToDocs();
     });
 
     // Import
-    settingsDropdown.querySelector('.vibe-import-btn').addEventListener('click', () => {
+    settingsDropdown.querySelector('.pinvelto-import-btn').addEventListener('click', () => {
       closeSettings();
       triggerImport();
     });
@@ -1409,21 +1365,21 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
   function navigateToDocs() {
     if (!settingsDropdown) return;
-    const body = settingsDropdown.querySelector('.vibe-settings-body');
+    const body = settingsDropdown.querySelector('.pinvelto-settings-body');
     const scrollTop = body ? (body.scrollTop || 0) : 0;
     settingsNavStack.push({
       view: 'root',
       scrollTop,
-      focusSelector: '.vibe-get-started-btn'
+      focusSelector: '.pinvelto-get-started-btn'
     });
-    VibeToolbarDocs.showDocumentation(settingsDropdown, ICONS, _docsCallbacks);
-    const newBody = settingsDropdown.querySelector('.vibe-settings-body');
+    PinveltoToolbarDocs.showDocumentation(settingsDropdown, ICONS, _docsCallbacks);
+    const newBody = settingsDropdown.querySelector('.pinvelto-settings-body');
     if (newBody) newBody.scrollTop = 0;
   }
 
   function restoreViewScrollAndFocus(prev) {
     if (!settingsDropdown || !prev) return;
-    const body = settingsDropdown.querySelector('.vibe-settings-body');
+    const body = settingsDropdown.querySelector('.pinvelto-settings-body');
     if (body && typeof prev.scrollTop === 'number') {
       const maxScroll = Math.max(0, (body.scrollHeight || 0) - (body.clientHeight || 0));
       body.scrollTop = Math.min(prev.scrollTop, maxScroll);
@@ -1444,28 +1400,28 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       renderSettingsRootView();
       restoreViewScrollAndFocus(prev);
     } else if (prev.view === 'docs') {
-      VibeToolbarDocs.showDocumentation(settingsDropdown, ICONS, _docsCallbacks);
+      PinveltoToolbarDocs.showDocumentation(settingsDropdown, ICONS, _docsCallbacks);
       restoreViewScrollAndFocus(prev);
     }
   }
 
-  // Documentation/guide pages are in toolbar-docs.js (VibeToolbarDocs)
+  // Documentation/guide pages are in toolbar-docs.js (PinveltoToolbarDocs)
   const _docsCallbacks = {
     onBack: () => {
       navigateBack();
     },
     onNavigate: (type, target, _sourceEl) => {
       if (!settingsDropdown) return;
-      const body = settingsDropdown.querySelector('.vibe-settings-body');
+      const body = settingsDropdown.querySelector('.pinvelto-settings-body');
       const scrollTop = body ? (body.scrollTop || 0) : 0;
       let focusSelector = null;
       if (type === 'get-started') {
-        focusSelector = '.vibe-get-started-guide-btn';
+        focusSelector = '.pinvelto-get-started-guide-btn';
       } else if (type === 'workflow') {
         if (target === 'mcp-setup') {
-          focusSelector = '.vibe-mcp-server-btn';
+          focusSelector = '.pinvelto-mcp-server-btn';
         } else {
-          focusSelector = `.vibe-workflow-btn[data-workflow="${target}"]`;
+          focusSelector = `.pinvelto-workflow-btn[data-workflow="${target}"]`;
         }
       }
       settingsNavStack.push({
@@ -1474,11 +1430,11 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         focusSelector
       });
       if (type === 'get-started') {
-        VibeToolbarDocs.showGetStartedGuide(settingsDropdown, ICONS, _docsCallbacks);
+        PinveltoToolbarDocs.showGetStartedGuide(settingsDropdown, ICONS, _docsCallbacks);
       } else if (type === 'workflow') {
-        VibeToolbarDocs.showWorkflow(settingsDropdown, target, ICONS, _docsCallbacks);
+        PinveltoToolbarDocs.showWorkflow(settingsDropdown, target, ICONS, _docsCallbacks);
       }
-      const newBody = settingsDropdown.querySelector('.vibe-settings-body');
+      const newBody = settingsDropdown.querySelector('.pinvelto-settings-body');
       if (newBody) newBody.scrollTop = 0;
     }
   };
@@ -1490,32 +1446,32 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       settingsDropdown.remove();
       settingsDropdown = null;
     }
-    const btn = toolbarEl?.querySelector('.vibe-tb-settings');
+    const btn = toolbarEl?.querySelector('.pinvelto-tb-settings');
     if (btn) btn.classList.remove('active');
     document.removeEventListener('click', onOutsideClick);
   }
 
   function onOutsideClick(e) {
-    if (settingsDropdown && !settingsDropdown.contains(e.target) && !e.target.closest('.vibe-tb-settings')) {
+    if (settingsDropdown && !settingsDropdown.contains(e.target) && !e.target.closest('.pinvelto-tb-settings')) {
       closeSettings();
     }
   }
 
-  function setAnnotationCount(annotations) {
+  function setFeedbackCount(pinveltoFeedback) {
     // Invalidate any older read still awaiting storage.
     countRefreshSeq++;
-    annotationCount = (annotations || []).filter(a => a && a.status !== 'resolved').length;
+    annotationCount = (pinveltoFeedback || []).filter(a => a && a.status !== 'resolved').length;
     updateCountPill();
   }
 
-  async function refreshAnnotationCount() {
+  async function refreshFeedbackCount() {
     const seq = ++countRefreshSeq;
-    const annotations = await VibeAPI.loadAllStoredAnnotations();
-    if (seq === countRefreshSeq) setAnnotationCount(annotations);
+    const pinveltoFeedback = await PinveltoAPI.loadAllStoredFeedback();
+    if (seq === countRefreshSeq) setFeedbackCount(pinveltoFeedback);
   }
 
   function updateCountPill() {
-    const pill = toolbarEl?.querySelector('.vibe-toolbar-pill');
+    const pill = toolbarEl?.querySelector('.pinvelto-toolbar-pill');
     if (!pill) return;
     pill.textContent = annotationCount;
     pill.style.display = annotationCount > 0 ? '' : 'none';
@@ -1526,9 +1482,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     // --- Annotating mode morph (crossfade + width transition) ---
     const wasAnnotating = toolbarEl.classList.contains('annotating');
-    const middleEl = toolbarEl.querySelector('.vibe-toolbar-middle');
-    const defaultEl = toolbarEl.querySelector('.vibe-toolbar-default');
-    const annotatingEl = toolbarEl.querySelector('.vibe-toolbar-annotating');
+    const middleEl = toolbarEl.querySelector('.pinvelto-toolbar-middle');
+    const defaultEl = toolbarEl.querySelector('.pinvelto-toolbar-default');
+    const annotatingEl = toolbarEl.querySelector('.pinvelto-toolbar-annotating');
     const modeChanged = toolbarModeTarget !== isAnnotating;
     const modeSeq = modeChanged ? ++toolbarModeSeq : toolbarModeSeq;
 
@@ -1637,18 +1593,13 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     updateCountPill();
 
     // --- Status indicator (icon-only, label in tooltip) ---
-    const statusEl = toolbarEl.querySelector('.vibe-tb-status');
+    const statusEl = toolbarEl.querySelector('.pinvelto-tb-status');
     if (statusEl) {
       if (watcherActive) {
         // pi-lens-ignore: no-inner-html-js
         statusEl.innerHTML = ICONS.eye;
         statusEl.style.color = 'var(--v-status-watching)';
         statusEl.title = 'Watching — click to stop';
-      } else if (serverOnline && serverOutdated) {
-        // pi-lens-ignore: no-inner-html-js
-        statusEl.innerHTML = ICONS.serverRack;
-        statusEl.style.color = 'var(--v-status-watching)';
-        statusEl.title = 'MCP Server online — update available (npm update -g vibe-annotations-server)';
       } else if (serverOnline) {
         // pi-lens-ignore: no-inner-html-js
         statusEl.innerHTML = ICONS.serverRack;
@@ -1664,10 +1615,9 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   }
 
   async function refreshServerStatus(fresh = false) {
-    const status = await VibeAPI.checkServerStatus({ fresh });
-    const changed = serverOnline !== status.connected || serverOutdated !== !!status.outdated;
+    const status = await PinveltoAPI.checkServerStatus({ fresh });
+    const changed = serverOnline !== status.connected;
     serverOnline = status.connected;
-    serverOutdated = !!status.outdated;
     if (changed) updateUI();
   }
 
@@ -1676,11 +1626,11 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       if (watcherActive) {
         watcherActive = false;
         updateUI();
-        VibeEvents.emit('watch:changed', { active: false });
+        PinveltoEvents.emit('watch:changed', { active: false });
       }
       return;
     }
-    const data = await VibeAPI.getWatchers();
+    const data = await PinveltoAPI.getWatchers();
     const wasActive = watcherActive;
     // Only show watch mode if a watcher matches the current page's origin
     const origin = window.location.origin; // e.g. "http://localhost:3001"
@@ -1690,7 +1640,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     });
     if (wasActive !== watcherActive) {
       updateUI();
-      VibeEvents.emit('watch:changed', { active: watcherActive });
+      PinveltoEvents.emit('watch:changed', { active: watcherActive });
     }
   }
 
@@ -1701,8 +1651,8 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     toolbarEl.classList.add('exiting');
     toolbarEl.addEventListener('animationend', () => {
       toolbarEl.classList.remove('exiting');
-      VibeEvents.emit('overlay:closed');
-      VibeShadowHost.hide();
+      PinveltoEvents.emit('overlay:closed');
+      PinveltoShadowHost.hide();
     }, { once: true });
   }
 
@@ -1725,7 +1675,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     toolbarEl.addEventListener('mousedown', (e) => {
       const interactiveTarget = e.target.closest('button, select, input, textarea, a');
-      if (interactiveTarget || e.target.closest('.vibe-toolbar-status') || e.target.closest('.vibe-toolbar-kbd')) return;
+      if (interactiveTarget || e.target.closest('.pinvelto-toolbar-status') || e.target.closest('.pinvelto-toolbar-kbd')) return;
 
       isDragging = true;
       didDrag = false;
@@ -1763,7 +1713,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       toolbarEl.classList.remove('dragging');
 
       if (didDrag) {
-        VibeAPI.saveToolbarPosition({
+        PinveltoAPI.saveToolbarPosition({
           right: toolbarEl.style.right,
           top: toolbarEl.style.top
         });
@@ -1781,8 +1731,8 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
   function isToolbarVisible() {
     if (!toolbarEl || !isOverlayVisible) return false;
-    if (VibeShadowHost.getHost && VibeShadowHost.getHost()) {
-      return VibeShadowHost.isVisible();
+    if (PinveltoShadowHost.getHost && PinveltoShadowHost.getHost()) {
+      return PinveltoShadowHost.isVisible();
     }
     return true;
   }
@@ -1824,7 +1774,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   }
 
   async function restorePosition() {
-    const pos = await VibeAPI.getToolbarPosition();
+    const pos = await PinveltoAPI.getToolbarPosition();
     if (pos && toolbarEl) {
       const rightPx = parseInt(pos.right, 10);
       const topPx = parseInt(pos.top, 10);
@@ -1843,28 +1793,28 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   function showDeleteConfirm(root, options = {}) {
     const siteName = options.siteName || 'this site';
     const count = options.count ?? 0;
-    const countStr = count === 1 ? '1 annotation' : `${count} annotations`;
+    const countStr = count === 1 ? '1 Feedback' : `${count} Feedback`;
     const message = options.allSites
       ? `All ${countStr} across all sites will be permanently deleted.<br>Generated code will not be changed. This cannot be undone.`
       : `All ${countStr} on ${escapeHTML(siteName)} will be permanently deleted.`;
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
-      backdrop.className = 'vibe-confirm-backdrop';
+      backdrop.className = 'pinvelto-confirm-backdrop';
       // pi-lens-ignore: no-inner-html-js
       backdrop.innerHTML = `
-        <div class="vibe-confirm">
-          <div class="vibe-confirm-title">Delete all annotations?</div>
-          <div class="vibe-confirm-msg">${message}</div>
-          <div class="vibe-confirm-actions">
-            <button class="vibe-btn vibe-btn-secondary vibe-confirm-no">Cancel</button>
-            <button class="vibe-btn vibe-btn-danger vibe-confirm-yes">Delete All</button>
+        <div class="pinvelto-confirm">
+          <div class="pinvelto-confirm-title">Delete all Feedback?</div>
+          <div class="pinvelto-confirm-msg">${message}</div>
+          <div class="pinvelto-confirm-actions">
+            <button class="pinvelto-btn pinvelto-btn-secondary pinvelto-confirm-no">Cancel</button>
+            <button class="pinvelto-btn pinvelto-btn-danger pinvelto-confirm-yes">Delete All</button>
           </div>
         </div>
       `;
       root.appendChild(backdrop);
 
-      backdrop.querySelector('.vibe-confirm-no').addEventListener('click', () => { backdrop.remove(); resolve(false); });
-      backdrop.querySelector('.vibe-confirm-yes').addEventListener('click', () => {
+      backdrop.querySelector('.pinvelto-confirm-no').addEventListener('click', () => { backdrop.remove(); resolve(false); });
+      backdrop.querySelector('.pinvelto-confirm-yes').addEventListener('click', () => {
         backdrop.remove();
         resolve(true);
       });
@@ -1876,22 +1826,22 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
   // Fetch a shareable export from the server and trigger a file download.
   // format: 'md' (agent, local image paths) or 'html' (self-contained, base64 images).
-  async function downloadShare(format, targetOrigin = window.location.origin, targetAnnotations = null) {
+  async function downloadShare(format, targetOrigin = window.location.origin, targetFeedback = null) {
     // Exclude resolved so exports match the "View all" list (no finalized variant artifacts).
-    let all = targetAnnotations;
+    let all = targetFeedback;
     if (!all) {
-      const stored = (await VibeAPI.loadAllStoredAnnotations()).filter(a => a && a.status !== 'resolved');
+      const stored = (await PinveltoAPI.loadAllStoredFeedback()).filter(a => a && a.status !== 'resolved');
       all = stored.filter(a => { try { return new URL(a.url).origin === targetOrigin; } catch { return false; } });
     }
-    if (!all.length) { showInfoModal('Nothing to export', 'No annotations for this site yet.'); return; }
+    if (!all.length) { showInfoModal('Nothing to export', 'No Feedback for this site yet.'); return; }
     let u;
     try { u = new URL(targetOrigin); } catch { u = window.location; }
-    const host = (u.host || 'annotations').replace(/[^a-z0-9.-]/gi, '_');
+    const host = (u.host || 'pinveltoFeedback').replace(/[^a-z0-9.-]/gi, '_');
     try {
       let content, mime;
       if (format === 'md') {
         // Same renderer as the clipboard — client-side, works with no server.
-        content = renderAnnotationsMarkdown(all, u.host);
+        content = renderFeedbackMarkdown(all, u.host);
         mime = 'text/markdown';
       } else if (format === 'json') {
         // The stored annotation objects in a re-importable envelope (see
@@ -1901,25 +1851,23 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
         mime = 'application/json';
       } else {
         // HTML embeds the images as base64, which needs the server to read them.
-        ({ content, mime } = await VibeAPI.getShareExport(`${targetOrigin}/*`, 'html'));
+        ({ content, mime } = await PinveltoAPI.getShareExport(`${targetOrigin}/*`, 'html'));
       }
       const blob = new Blob([content], { type: mime || 'text/plain' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `vibe-annotations-${host}.${format}`;
+      a.download = `pinvelto-feedback-${host}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } catch (err) {
-      console.warn('[Vibe] export failed:', err);
+      console.warn('[Pinvelto] export failed:', err);
       // .html needs the server to read + embed the image files. Probe live —
       // a cached "offline" would misdiagnose a server that just came back.
-      const status = await VibeAPI.checkServerStatus({ fresh: true }).catch(() => null);
-      if (status?.outdated) {
-        showInfoModal('Update your server', 'The .html export needs a newer annotations server. Run "npm update -g vibe-annotations-server" and restart it — or use the .md export, which works offline.');
-      } else if (!status?.connected) {
-        showInfoModal('Export failed', 'The .html export needs the local annotations server running. Start it, or use the .md export instead.');
+      const status = await PinveltoAPI.checkServerStatus({ fresh: true }).catch(() => null);
+      if (!status?.connected) {
+        showInfoModal('Export failed', 'The .html export needs the local Feedback server running. Start it, or use the .md export instead.');
       } else {
         // Server is up, so this isn't a "start the server" problem — most likely
         // the export request itself failed (bad response, timeout on a large set).
@@ -1931,15 +1879,15 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   // Wrap the stored annotation objects in the re-importable envelope processImport
   // expects. The `source.origin` lets Import offer a cross-origin remap; `screenshot`
   // is stripped (attachments travel by reference, not inline). Returns a JSON string.
-  function buildExportEnvelope(annotations, targetUrlObj) {
+  function buildExportEnvelope(pinveltoFeedback, targetUrlObj) {
     const loc = targetUrlObj || window.location;
     return JSON.stringify({
-      vibe_annotations_export: true,
+      pinvelto_annotations_export: true,
       version: '1.0',
       exported_at: new Date().toISOString(),
       source: { origin: loc.origin, hostname: loc.hostname, port: loc.port || '' },
       scope: 'project',
-      annotations: annotations.map(a => {
+      pinveltoFeedback: pinveltoFeedback.map(a => {
         const cleaned = { ...a };
         delete cleaned.screenshot;
         return cleaned;
@@ -1972,16 +1920,16 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   }
 
   async function processImport(data) {
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     if (!root) return;
 
     // Validate envelope
-    if (!data || data.vibe_annotations_export !== true || !Array.isArray(data.annotations)) {
-      showInfoModal('Invalid format', 'This file is not a Vibe Annotations export.');
+    if (!data || data.pinvelto_annotations_export !== true || !Array.isArray(data.pinveltoFeedback)) {
+      showInfoModal('Invalid format', 'This file is not a Pinvelto export.');
       return;
     }
 
-    // Validate origin match — offer remap if importing public URL annotations into localhost
+    // Validate origin match — offer remap if importing public URL pinveltoFeedback into localhost
     const currentOrigin = window.location.origin;
     let remapFrom = null;
     if (data.source?.origin && data.source.origin !== currentOrigin) {
@@ -1992,7 +1940,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
       } else {
         showInfoModal(
           'Origin mismatch',
-          `These annotations were exported from ${data.source.origin} but you are on ${currentOrigin}. Origins must match to import.`
+          `These Feedback were exported from ${data.source.origin} but you are on ${currentOrigin}. Origins must match to import.`
         );
         return;
       }
@@ -2000,56 +1948,56 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     // Remap URLs if importing from a different origin
     if (remapFrom) {
-      for (const a of data.annotations) {
+      for (const a of data.pinveltoFeedback) {
         if (a.url) a.url = a.url.replace(remapFrom, currentOrigin);
         if (a.url_path) { /* url_path is pathname-only, no origin to remap */ }
       }
     }
 
     // Deduplicate against existing
-    const existing = await VibeAPI.loadProjectAnnotations();
+    const existing = await PinveltoAPI.loadProjectFeedback();
     const existingIds = new Set(existing.map(a => a.id));
-    const newAnnotations = data.annotations.filter(a => !existingIds.has(a.id));
-    const skipped = data.annotations.length - newAnnotations.length;
+    const newFeedback = data.pinveltoFeedback.filter(a => !existingIds.has(a.id));
+    const skipped = data.pinveltoFeedback.length - newFeedback.length;
 
-    if (newAnnotations.length === 0) {
-      showInfoModal('Nothing to import', `All ${data.annotations.length} annotation${data.annotations.length !== 1 ? 's' : ''} already exist locally.`);
+    if (newFeedback.length === 0) {
+      showInfoModal('Nothing to import', `All ${data.pinveltoFeedback.length} Feedback${data.pinveltoFeedback.length !== 1 ? 's' : ''} already exist locally.`);
       return;
     }
 
     // Confirm
     const confirmed = await showImportConfirm(root, {
-      total: data.annotations.length,
-      newCount: newAnnotations.length,
+      total: data.pinveltoFeedback.length,
+      newCount: newFeedback.length,
       skipped
     });
     if (!confirmed) return;
 
     // Import via background script (handles storage lock + server sync)
-    await chrome.runtime.sendMessage({ action: 'importAnnotations', annotations: newAnnotations });
+    await chrome.runtime.sendMessage({ action: 'pinvelto:importFeedback', pinveltoFeedback: newFeedback });
     // Storage listener in content.js handles re-render automatically
   }
 
   function showImportConfirm(root, { newCount, skipped }) {
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
-      backdrop.className = 'vibe-confirm-backdrop';
+      backdrop.className = 'pinvelto-confirm-backdrop';
       const skipText = skipped > 0 ? `<br>${skipped} already exist and will be skipped.` : '';
       // pi-lens-ignore: no-inner-html-js
       backdrop.innerHTML = `
-        <div class="vibe-confirm">
-          <div class="vibe-confirm-title">Import annotations</div>
-          <div class="vibe-confirm-msg">${newCount} annotation${newCount !== 1 ? 's' : ''} will be imported.${skipText}</div>
-          <div class="vibe-confirm-actions">
-            <button class="vibe-btn vibe-btn-secondary vibe-confirm-no">Cancel</button>
-            <button class="vibe-btn vibe-btn-primary vibe-confirm-yes">Import</button>
+        <div class="pinvelto-confirm">
+          <div class="pinvelto-confirm-title">Import Feedback</div>
+          <div class="pinvelto-confirm-msg">${newCount} Feedback${newCount !== 1 ? 's' : ''} will be imported.${skipText}</div>
+          <div class="pinvelto-confirm-actions">
+            <button class="pinvelto-btn pinvelto-btn-secondary pinvelto-confirm-no">Cancel</button>
+            <button class="pinvelto-btn pinvelto-btn-primary pinvelto-confirm-yes">Import</button>
           </div>
         </div>
       `;
       root.appendChild(backdrop);
 
-      backdrop.querySelector('.vibe-confirm-no').addEventListener('click', () => { backdrop.remove(); resolve(false); });
-      backdrop.querySelector('.vibe-confirm-yes').addEventListener('click', () => { backdrop.remove(); resolve(true); });
+      backdrop.querySelector('.pinvelto-confirm-no').addEventListener('click', () => { backdrop.remove(); resolve(false); });
+      backdrop.querySelector('.pinvelto-confirm-yes').addEventListener('click', () => { backdrop.remove(); resolve(true); });
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { backdrop.remove(); resolve(false); } });
     });
   }
@@ -2063,51 +2011,51 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   function showRemapConfirm(root, sourceOrigin, currentOrigin) {
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
-      backdrop.className = 'vibe-confirm-backdrop';
+      backdrop.className = 'pinvelto-confirm-backdrop';
       // pi-lens-ignore: no-inner-html-js
       backdrop.innerHTML = `
-        <div class="vibe-confirm">
-          <div class="vibe-confirm-title">Remap annotations?</div>
-          <div class="vibe-confirm-msg">
-            These annotations were exported from <strong>${escapeHTML(sourceOrigin)}</strong>.
+        <div class="pinvelto-confirm">
+          <div class="pinvelto-confirm-title">Remap Feedback?</div>
+          <div class="pinvelto-confirm-msg">
+            These Feedback were exported from <strong>${escapeHTML(sourceOrigin)}</strong>.
             Remap URLs to <strong>${escapeHTML(currentOrigin)}</strong> for local development?
           </div>
           <div style="font-size:12px;color:var(--v-text-secondary);margin-top:8px;margin-bottom:4px;line-height:1.5;">
-            Important: Annotations might not perfectly anchor or apply the styling changes if the selectors aren't identical.
+            Important: Feedback might not perfectly anchor or apply the styling changes if the selectors aren't identical.
           </div>
-          <div class="vibe-confirm-actions">
-            <button class="vibe-btn vibe-btn-secondary vibe-confirm-no">Cancel</button>
-            <button class="vibe-btn vibe-btn-primary vibe-confirm-yes">Remap & Import</button>
+          <div class="pinvelto-confirm-actions">
+            <button class="pinvelto-btn pinvelto-btn-secondary pinvelto-confirm-no">Cancel</button>
+            <button class="pinvelto-btn pinvelto-btn-primary pinvelto-confirm-yes">Remap & Import</button>
           </div>
         </div>
       `;
       root.appendChild(backdrop);
 
-      backdrop.querySelector('.vibe-confirm-no').addEventListener('click', () => { backdrop.remove(); resolve(false); });
-      backdrop.querySelector('.vibe-confirm-yes').addEventListener('click', () => { backdrop.remove(); resolve(true); });
+      backdrop.querySelector('.pinvelto-confirm-no').addEventListener('click', () => { backdrop.remove(); resolve(false); });
+      backdrop.querySelector('.pinvelto-confirm-yes').addEventListener('click', () => { backdrop.remove(); resolve(true); });
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { backdrop.remove(); resolve(false); } });
     });
   }
 
   function showInfoModal(title, message) {
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     if (!root) return;
 
     const backdrop = document.createElement('div');
-    backdrop.className = 'vibe-confirm-backdrop';
+    backdrop.className = 'pinvelto-confirm-backdrop';
     // pi-lens-ignore: no-inner-html-js
     backdrop.innerHTML = `
-      <div class="vibe-confirm">
-        <div class="vibe-confirm-title">${escapeHTML(title)}</div>
-        <div class="vibe-confirm-msg">${escapeHTML(message)}</div>
-        <div class="vibe-confirm-actions">
-          <button class="vibe-btn vibe-btn-secondary vibe-confirm-no">OK</button>
+      <div class="pinvelto-confirm">
+        <div class="pinvelto-confirm-title">${escapeHTML(title)}</div>
+        <div class="pinvelto-confirm-msg">${escapeHTML(message)}</div>
+        <div class="pinvelto-confirm-actions">
+          <button class="pinvelto-btn pinvelto-btn-secondary pinvelto-confirm-no">OK</button>
         </div>
       </div>
     `;
     root.appendChild(backdrop);
 
-    backdrop.querySelector('.vibe-confirm-no').addEventListener('click', () => backdrop.remove());
+    backdrop.querySelector('.pinvelto-confirm-no').addEventListener('click', () => backdrop.remove());
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
   }
 
@@ -2120,7 +2068,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   }
 
   // Lifecycle chip for a variants annotation in a state that awaits agent action.
-  // Returns null for normal annotations and for terminal 'resolved' (filtered out).
+  // Returns null for normal pinveltoFeedback and for terminal 'resolved' (filtered out).
   function variantStatusLabel(a) {
     if (!a || a.mode !== 'variants') return null;
     switch (a.status) {
@@ -2145,11 +2093,11 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   }
 
   function applyBadgeColor(color) {
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     if (root) root.host.style.setProperty('--v-badge-bg', color);
   }
 
-const VibeToolbar = {
+const PinveltoToolbar = {
   init,
   animateOut: animateToolbarOut,
   openViewAll,
@@ -2161,4 +2109,4 @@ const VibeToolbar = {
   closeSettings,
   getSettingsDropdown: () => settingsDropdown,
 };
-export default VibeToolbar;
+export default PinveltoToolbar;

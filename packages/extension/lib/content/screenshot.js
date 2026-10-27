@@ -2,19 +2,19 @@
 // saved, conditional on the Screenshots setting. Our overlay is hidden only for
 // the captureVisibleTab frame so our pins/toolbar aren't in the shot.
 
-import VibeAPI from './api-bridge.js';
-import VibeEvents from './event-bus.js';
-import VibeShadowHost from './shadow-host.js';
+import PinveltoAPI from './api-bridge.js';
+import PinveltoEvents from './event-bus.js';
+import PinveltoShadowHost from './shadow-host.js';
 
 const PAD = 16; // CSS px of breathing room around the element
 let captureQueue = Promise.resolve();
 
 function init() {
-  VibeEvents.on('annotation:saved', ({ annotation, element }) => {
-    if (!VibeAPI.isScreenshotEnabled()) return;
+  PinveltoEvents.on('Feedback:saved', ({ annotation, element }) => {
+    if (!PinveltoAPI.isScreenshotEnabled()) return;
     if (!annotation?.id || !element) return;
     // Fire-and-forget, but surface failures (e.g. missing capture permission).
-    captureZoned(annotation.id, element).catch((err) => console.warn('[Vibe] screenshot capture failed:', err));
+    captureZoned(annotation.id, element).catch((err) => console.warn('[Pinvelto] screenshot capture failed:', err));
   });
 }
 
@@ -24,7 +24,7 @@ async function captureZoned(id, element) {
   const capture = captureQueue.then(() => captureFrame(element));
   captureQueue = capture.then(() => {}, () => {});
   const frame = await capture;
-  if (frame?.dataUrl) await VibeAPI.captureScreenshot(id, frame.crop, frame.dataUrl);
+  if (frame?.dataUrl) await PinveltoAPI.captureScreenshot(id, frame.crop, frame.dataUrl);
 }
 
 async function captureFrame(element) {
@@ -42,13 +42,13 @@ async function captureFrame(element) {
     sh: Math.round(box.height * dpr),
   };
 
-  const host = VibeShadowHost.getHost();
+  const host = PinveltoShadowHost.getHost();
   const previousVisibility = host?.style.visibility;
   let dataUrl;
   try {
     if (host) host.style.visibility = 'hidden';
     await nextFrame();
-    dataUrl = await VibeAPI.captureVisibleTab();
+    dataUrl = await PinveltoAPI.captureVisibleTab();
   } finally {
     if (host) host.style.visibility = previousVisibility;
   }
@@ -75,5 +75,5 @@ function nextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
-const VibeScreenshot = { init };
-export default VibeScreenshot;
+const PinveltoScreenshot = { init };
+export default PinveltoScreenshot;

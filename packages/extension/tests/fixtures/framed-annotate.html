@@ -56,7 +56,7 @@
     const fixtureParams = new URLSearchParams(window.location.search);
     const SAME_ORIGIN_BASE = fixtureParams.get('sameOrigin') || '';
     const CROSS_ORIGIN_BASE = fixtureParams.get('crossOrigin') || 'http://localhost:3005';
-    const UNLISTED_ORIGIN_BASE = fixtureParams.get('unlistedOrigin') || 'http://vibe-unlisted.invalid:3005';
+    const UNLISTED_ORIGIN_BASE = fixtureParams.get('unlistedOrigin') || 'http://pinvelto-unlisted.invalid:3005';
 
     window.__FIXTURE_STATE.frameOrigins = {
       sameOrigin: SAME_ORIGIN_BASE || window.location.origin,

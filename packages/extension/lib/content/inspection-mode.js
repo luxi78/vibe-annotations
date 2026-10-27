@@ -2,10 +2,10 @@
 // All visual feedback happens inside shadow DOM (highlight overlay div)
 // No host DOM mutation during inspection
 
-import VibeEvents from './event-bus.js';
-import VibeShadowDOMUtils from './shadow-dom-utils.js';
-import VibeShadowHost from './shadow-host.js';
-import VibeElementContext from './element-context.js';
+import PinveltoEvents from './event-bus.js';
+import PinveltoShadowDOMUtils from './shadow-dom-utils.js';
+import PinveltoShadowHost from './shadow-host.js';
+import PinveltoElementContext from './element-context.js';
 
   let active = false;
   let highlightEl = null;
@@ -32,23 +32,23 @@ import VibeElementContext from './element-context.js';
   }
 
   function init() {
-    VibeEvents.on('inspection:start', start);
-    VibeEvents.on('inspection:stop', stop);
+    PinveltoEvents.on('inspection:start', start);
+    PinveltoEvents.on('inspection:stop', stop);
   }
 
   function start() {
     if (active) return;
     active = true;
 
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     if (!root) return;
 
     // Create highlight overlay + its selector label (a child so it rides along)
     highlightEl = document.createElement('div');
-    highlightEl.className = 'vibe-highlight';
+    highlightEl.className = 'pinvelto-highlight';
     highlightEl.style.display = 'none';
     labelEl = document.createElement('div');
-    labelEl.className = 'vibe-inspect-label';
+    labelEl.className = 'pinvelto-inspect-label';
     highlightEl.appendChild(labelEl);
     root.appendChild(highlightEl);
 
@@ -79,11 +79,11 @@ import VibeElementContext from './element-context.js';
 
     // Crosshair cursor on all host page elements
     const cursorStyle = document.createElement('style');
-    cursorStyle.setAttribute('data-vibe-cursor', '');
+    cursorStyle.setAttribute('data-pinvelto-cursor', '');
     cursorStyle.textContent = '*, *::before, *::after { cursor: crosshair !important; }';
     document.head.appendChild(cursorStyle);
 
-    VibeEvents.emit('inspection:started');
+    PinveltoEvents.emit('inspection:started');
   }
 
   function stop() {
@@ -118,10 +118,10 @@ import VibeElementContext from './element-context.js';
     navStack = [];
 
     // Restore cursor
-    const cursorStyle = document.querySelector('[data-vibe-cursor]');
+    const cursorStyle = document.querySelector('[data-pinvelto-cursor]');
     if (cursorStyle) cursorStyle.remove();
 
-    VibeEvents.emit('inspection:stopped');
+    PinveltoEvents.emit('inspection:stopped');
   }
 
   function isActive() {
@@ -143,7 +143,7 @@ import VibeElementContext from './element-context.js';
 
   function isOurUI(e) {
     const path = e.composedPath();
-    const host = VibeShadowHost.getHost();
+    const host = PinveltoShadowHost.getHost();
     return host && path.includes(host);
   }
 
@@ -204,7 +204,7 @@ import VibeElementContext from './element-context.js';
     if (!active || isOurUI(e)) return;
     e.stopPropagation();
 
-    const target = getDeepTarget(e) || VibeShadowDOMUtils.elementFromPointDeep(e.clientX, e.clientY);
+    const target = getDeepTarget(e) || PinveltoShadowDOMUtils.elementFromPointDeep(e.clientX, e.clientY);
     if (!target) return;
 
     hoveredElement = target;
@@ -228,7 +228,7 @@ import VibeElementContext from './element-context.js';
   function handlePointerMove(e) {
     if (!active || isOurUI(e)) return;
 
-    const target = getDeepTarget(e) || VibeShadowDOMUtils.elementFromPointDeep(e.clientX, e.clientY);
+    const target = getDeepTarget(e) || PinveltoShadowDOMUtils.elementFromPointDeep(e.clientX, e.clientY);
     if (!target || target === document.body || target === document.documentElement) return;
     if (target === hoveredElement) return;
 
@@ -272,7 +272,7 @@ import VibeElementContext from './element-context.js';
       endClickSwallow();
     }, 400);
 
-    VibeEvents.emit('inspection:elementClicked', { element: target, clientX: e.clientX, clientY: e.clientY });
+    PinveltoEvents.emit('inspection:elementClicked', { element: target, clientX: e.clientX, clientY: e.clientY });
   }
 
   function endClickSwallow() {
@@ -287,7 +287,7 @@ import VibeElementContext from './element-context.js';
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Enter') return false;
 
     // Blur any focused toolbar element so it doesn't steal subsequent keys
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     if (root && root.activeElement) root.activeElement.blur();
 
     const current = hoveredElement;
@@ -297,7 +297,7 @@ import VibeElementContext from './element-context.js';
     if (e.key === 'Enter') {
       const rect = current.getBoundingClientRect();
       tempDisable();
-      VibeEvents.emit('inspection:elementClicked', {
+      PinveltoEvents.emit('inspection:elementClicked', {
         element: current,
         clientX: rect.left + rect.width / 2,
         clientY: rect.top + rect.height / 2
@@ -307,7 +307,7 @@ import VibeElementContext from './element-context.js';
 
     let next;
     if (e.key === 'ArrowUp') {
-      next = VibeShadowDOMUtils.getNavigableParent(current);
+      next = PinveltoShadowDOMUtils.getNavigableParent(current);
       if (!next || !next.isConnected) return true;
       if (next === document.documentElement || next === document.body) return true;
       // Push current onto stack so ArrowDown can retrace
@@ -378,7 +378,7 @@ import VibeElementContext from './element-context.js';
     // element is too close to the top of the viewport for the label to fit.
     if (labelEl) {
       labelEl.textContent = briefSelectorLabel(element);
-      labelEl.classList.toggle('vibe-inspect-label--inside', rect.top < 22);
+      labelEl.classList.toggle('pinvelto-inspect-label--inside', rect.top < 22);
     }
   }
 
@@ -390,11 +390,11 @@ import VibeElementContext from './element-context.js';
     if (element.id) return `${tag}#${element.id}`.slice(0, 42);
     let out = tag;
     try {
-      const classes = (VibeElementContext.getDisplayClasses(element) || []).slice(0, 2);
+      const classes = (PinveltoElementContext.getDisplayClasses(element) || []).slice(0, 2);
       out += classes.map((c) => `.${c}`).join('');
     } catch { /* getDisplayClasses is best-effort */ }
     return out.length > 42 ? out.slice(0, 41) + '…' : out;
   }
 
-const VibeInspectionMode = { init, start, stop, isActive, tempDisable, reEnable, handleNavigationKey };
-export default VibeInspectionMode;
+const PinveltoInspectionMode = { init, start, stop, isActive, tempDisable, reEnable, handleNavigationKey };
+export default PinveltoInspectionMode;

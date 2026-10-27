@@ -7,10 +7,10 @@
 // whose user action starts a state owns the local state machine, peers mirror the
 // session so keyboard ownership follows focus into them, and any exit releases all.
 
-import VibeEvents from './event-bus.js';
-import VibeAPI from './api-bridge.js';
-import VibeShadowHost from './shadow-host.js';
-import VibeInspectionMode from './inspection-mode.js';
+import PinveltoEvents from './event-bus.js';
+import PinveltoAPI from './api-bridge.js';
+import PinveltoShadowHost from './shadow-host.js';
+import PinveltoInspectionMode from './inspection-mode.js';
 import { shouldTriggerHotkey } from './hotkey.js';
 import { SESSION_SYNC, SESSION_STATES, ACTIVE_SESSION_STATES } from '../session-protocol.js';
 
@@ -51,7 +51,7 @@ function getActiveShortcut() {
 }
 
 function dispatchInternalUIEvent(e, target) {
-  if (!e.isTrusted || e._isVibeInternal || !target || typeof target.dispatchEvent !== 'function') return;
+  if (!e.isTrusted || e._isPinveltoInternal || !target || typeof target.dispatchEvent !== 'function') return;
   try {
     const synthetic = new KeyboardEvent(e.type, {
       key: e.key,
@@ -65,7 +65,7 @@ function dispatchInternalUIEvent(e, target) {
       bubbles: true,
       composed: false,
     });
-    synthetic._isVibeInternal = true;
+    synthetic._isPinveltoInternal = true;
     target.dispatchEvent(synthetic);
   } catch (_) {}
 }
@@ -93,8 +93,8 @@ let shortcutStorageListener = null;
 let sessionEventsSubscribed = false;
 
 function onShortcutStorageChanged(changes, ns) {
-  if (ns === 'local' && changes.vibeCustomShortcut) {
-    customShortcut = changes.vibeCustomShortcut.newValue || null;
+  if (ns === 'local' && changes.pinveltoCustomShortcut) {
+    customShortcut = changes.pinveltoCustomShortcut.newValue || null;
   }
 }
 
@@ -110,8 +110,8 @@ function onElementSelected() {
   setSessionState(SessionState.WAITING);
 }
 
-function onAnnotationEdit() {
-  if (VibeInspectionMode.isActive()) {
+function onFeedbackEdit() {
+  if (PinveltoInspectionMode.isActive()) {
     setSessionState(SessionState.WAITING);
   }
 }
@@ -127,7 +127,7 @@ function onPopoverDismissed({ reEnableInspection } = {}) {
 }
 
 function onPopoverCancelled() {
-  setSessionState(VibeInspectionMode.isActive() ? SessionState.SELECTION : SessionState.IDLE);
+  setSessionState(PinveltoInspectionMode.isActive() ? SessionState.SELECTION : SessionState.IDLE);
 }
 
 function onShortcutRecordingStart() {
@@ -148,36 +148,36 @@ function subscribeSessionEvents() {
   if (sessionEventsSubscribed) return;
   sessionEventsSubscribed = true;
 
-  VibeEvents.on('inspection:start', onInspectionStart);
-  VibeEvents.on('inspection:started', onInspectionStart);
-  VibeEvents.on('inspection:stop', onInspectionStop);
-  VibeEvents.on('inspection:stopped', onInspectionStop);
-  VibeEvents.on('inspection:elementClicked', onElementSelected);
-  VibeEvents.on('annotation:edit', onAnnotationEdit);
-  VibeEvents.on('popover:opened', onPopoverOpened);
-  VibeEvents.on('popover:dismissed', onPopoverDismissed);
-  VibeEvents.on('popover:cancelled', onPopoverCancelled);
-  VibeEvents.on('shortcut:recording:start', onShortcutRecordingStart);
-  VibeEvents.on('shortcut:recording:stop', onShortcutRecordingStop);
-  VibeEvents.on('overlay:closed', onOverlayClosed);
+  PinveltoEvents.on('inspection:start', onInspectionStart);
+  PinveltoEvents.on('inspection:started', onInspectionStart);
+  PinveltoEvents.on('inspection:stop', onInspectionStop);
+  PinveltoEvents.on('inspection:stopped', onInspectionStop);
+  PinveltoEvents.on('inspection:elementClicked', onElementSelected);
+  PinveltoEvents.on('Feedback:edit', onFeedbackEdit);
+  PinveltoEvents.on('popover:opened', onPopoverOpened);
+  PinveltoEvents.on('popover:dismissed', onPopoverDismissed);
+  PinveltoEvents.on('popover:cancelled', onPopoverCancelled);
+  PinveltoEvents.on('shortcut:recording:start', onShortcutRecordingStart);
+  PinveltoEvents.on('shortcut:recording:stop', onShortcutRecordingStop);
+  PinveltoEvents.on('overlay:closed', onOverlayClosed);
 }
 
 function unsubscribeSessionEvents() {
   if (!sessionEventsSubscribed) return;
   sessionEventsSubscribed = false;
 
-  VibeEvents.off('inspection:start', onInspectionStart);
-  VibeEvents.off('inspection:started', onInspectionStart);
-  VibeEvents.off('inspection:stop', onInspectionStop);
-  VibeEvents.off('inspection:stopped', onInspectionStop);
-  VibeEvents.off('inspection:elementClicked', onElementSelected);
-  VibeEvents.off('annotation:edit', onAnnotationEdit);
-  VibeEvents.off('popover:opened', onPopoverOpened);
-  VibeEvents.off('popover:dismissed', onPopoverDismissed);
-  VibeEvents.off('popover:cancelled', onPopoverCancelled);
-  VibeEvents.off('shortcut:recording:start', onShortcutRecordingStart);
-  VibeEvents.off('shortcut:recording:stop', onShortcutRecordingStop);
-  VibeEvents.off('overlay:closed', onOverlayClosed);
+  PinveltoEvents.off('inspection:start', onInspectionStart);
+  PinveltoEvents.off('inspection:started', onInspectionStart);
+  PinveltoEvents.off('inspection:stop', onInspectionStop);
+  PinveltoEvents.off('inspection:stopped', onInspectionStop);
+  PinveltoEvents.off('inspection:elementClicked', onElementSelected);
+  PinveltoEvents.off('Feedback:edit', onFeedbackEdit);
+  PinveltoEvents.off('popover:opened', onPopoverOpened);
+  PinveltoEvents.off('popover:dismissed', onPopoverDismissed);
+  PinveltoEvents.off('popover:cancelled', onPopoverCancelled);
+  PinveltoEvents.off('shortcut:recording:start', onShortcutRecordingStart);
+  PinveltoEvents.off('shortcut:recording:stop', onShortcutRecordingStop);
+  PinveltoEvents.off('overlay:closed', onOverlayClosed);
 }
 
 function attachKeyboardListeners(target) {
@@ -205,7 +205,7 @@ function detachKeyboardListeners(target) {
 // into an already-loaded page runs after those listeners are registered and the
 // background marks that case with LATE_INJECTION_FLAG.
 const CONTENT_SCRIPT_WORLD = 'ISOLATED';
-const LATE_INJECTION_FLAG = '__VIBE_LATE_INJECTION';
+const LATE_INJECTION_FLAG = '__PINVELTO_LATE_INJECTION';
 let installationEvidence = null;
 
 function captureInstallationEvidence() {
@@ -242,8 +242,8 @@ function init() {
   }
 
   // Load shortcut and subscribe to changes
-  if (VibeAPI && VibeAPI.getCustomShortcut) {
-    VibeAPI.getCustomShortcut().then((s) => { customShortcut = s; }).catch(() => {});
+  if (PinveltoAPI && PinveltoAPI.getCustomShortcut) {
+    PinveltoAPI.getCustomShortcut().then((s) => { customShortcut = s; }).catch(() => {});
   }
 
   if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
@@ -308,7 +308,7 @@ function onVisibilityChange() {
 }
 
 function isSessionActive() {
-  return currentState !== SessionState.IDLE || VibeInspectionMode.isActive();
+  return currentState !== SessionState.IDLE || PinveltoInspectionMode.isActive();
 }
 
 // This frame's transitions are the authoritative ones: it is in an active state
@@ -324,17 +324,17 @@ function isSessionOwner() {
 function terminateSession() {
   if (!isSessionActive()) return false;
 
-  VibeEvents.emit('popover:requestDismiss', { reEnableInspection: false });
+  PinveltoEvents.emit('popover:requestDismiss', { reEnableInspection: false });
   setSessionState(SessionState.IDLE);
 
   // Focus inside a (possibly hidden) extension UI would keep swallowing keys,
   // so hand it back before the session's ownership is released.
-  const root = VibeShadowHost.getRoot?.();
+  const root = PinveltoShadowHost.getRoot?.();
   if (root && root.activeElement && typeof root.activeElement.blur === 'function') {
     root.activeElement.blur();
   }
 
-  VibeEvents.emit('inspection:stop');
+  PinveltoEvents.emit('inspection:stop');
   return true;
 }
 
@@ -391,10 +391,10 @@ function sendRuntimeMessage(message) {
 // Publish the session evidence on the shadow host: the one node the page world and
 // the E2E suite can read, and the honest record of whether this frame is protected.
 function publishSessionEvidence() {
-  const host = VibeShadowHost.getHost?.();
+  const host = PinveltoShadowHost.getHost?.();
   if (!host || typeof host.setAttribute !== 'function') return;
-  host.setAttribute('data-vibe-session-state', currentState);
-  host.setAttribute('data-vibe-session-mirror', String(mirroredSession));
+  host.setAttribute('data-pinvelto-session-state', currentState);
+  host.setAttribute('data-pinvelto-session-mirror', String(mirroredSession));
 }
 
 // The single place that changes ownership. A local transition is announced to the
@@ -455,8 +455,8 @@ function activateMirroredSession() {
   publishSessionEvidence();
 
   // Without a UI there is nothing to drive yet; onUiReady() finishes the mirror.
-  if (!uiReady || VibeInspectionMode.isActive()) return;
-  applyAsRemote(() => VibeEvents.emit('inspection:start'));
+  if (!uiReady || PinveltoInspectionMode.isActive()) return;
+  applyAsRemote(() => PinveltoEvents.emit('inspection:start'));
 }
 
 // This frame's UI exists now (entrypoints/content/index.js → bootNormal). A session
@@ -487,7 +487,7 @@ function requestSessionSync() {
 
 function isOurUI(e) {
   const path = e.composedPath ? e.composedPath() : [];
-  const host = VibeShadowHost.getHost?.();
+  const host = PinveltoShadowHost.getHost?.();
   return !!(host && path.includes(host));
 }
 
@@ -704,7 +704,7 @@ function handleIdle(e) {
       e.preventDefault();
       e.stopImmediatePropagation();
       beginDrain(e);
-      VibeEvents.emit('popover:requestDismiss', { reEnableInspection: false });
+      PinveltoEvents.emit('popover:requestDismiss', { reEnableInspection: false });
       return;
     }
 
@@ -713,7 +713,7 @@ function handleIdle(e) {
       e.preventDefault();
       e.stopImmediatePropagation();
       beginDrain(e);
-      VibeEvents.emit('popover:requestSave');
+      PinveltoEvents.emit('popover:requestSave');
       return;
     }
 
@@ -727,7 +727,7 @@ function handleIdle(e) {
     // 4. Other keys inside our UI (typing, arrows, steppers)
     e.stopImmediatePropagation();
     const path = e.composedPath ? e.composedPath() : [];
-    const root = VibeShadowHost.getRoot?.();
+    const root = PinveltoShadowHost.getRoot?.();
     const target = path[0] || (root ? root.activeElement : null) || e.target;
     dispatchInternalUIEvent(e, target);
     return;
@@ -740,7 +740,7 @@ function handleIdle(e) {
     e.preventDefault();
     e.stopImmediatePropagation();
     setSessionState(SessionState.SELECTION);
-    VibeEvents.emit('inspection:start');
+    PinveltoEvents.emit('inspection:start');
   }
 }
 
@@ -753,12 +753,12 @@ function exitSelectionMode(e) {
   beginDrain(e);
 
   // Blur any focused element inside extension Shadow DOM so focus doesn't stay trapped
-  const root = VibeShadowHost.getRoot?.();
+  const root = PinveltoShadowHost.getRoot?.();
   if (root && root.activeElement) {
     root.activeElement.blur();
   }
 
-  VibeEvents.emit('inspection:stop');
+  PinveltoEvents.emit('inspection:stop');
 }
 
 function handleSelection(e) {
@@ -784,7 +784,7 @@ function handleSelection(e) {
 
   // 3. Arrow navigation and Enter confirmation
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'Enter') {
-    const handled = VibeInspectionMode.handleNavigationKey(e);
+    const handled = PinveltoInspectionMode.handleNavigationKey(e);
     if (e.key === 'Enter' && handled) {
       beginDrain(e);
     }
@@ -808,8 +808,8 @@ function handleWaiting(e) {
 
 function getActivePopover() {
   if (activePopoverForTesting) return activePopoverForTesting;
-  const root = VibeShadowHost.getRoot?.();
-  return root?.querySelector?.('.vibe-popover') || null;
+  const root = PinveltoShadowHost.getRoot?.();
+  return root?.querySelector?.('.pinvelto-popover') || null;
 }
 
 function handleTabTrap(e) {
@@ -828,7 +828,7 @@ function handleTabTrap(e) {
   if (focusables.length === 0) return false;
 
   const path = e.composedPath ? e.composedPath() : [];
-  const root = VibeShadowHost.getRoot?.();
+  const root = PinveltoShadowHost.getRoot?.();
   const current = path[0] || (root ? root.activeElement : e.target);
   let index = focusables.indexOf(current);
   if (index === -1 && current) {
@@ -882,7 +882,7 @@ function handleEditing(e) {
     e.preventDefault();
     e.stopImmediatePropagation();
     // Close the editor through the regular request channel, then release ownership.
-    VibeEvents.emit('popover:requestDismiss', { reEnableInspection: false });
+    PinveltoEvents.emit('popover:requestDismiss', { reEnableInspection: false });
     exitSelectionMode(e);
     return;
   }
@@ -893,7 +893,7 @@ function handleEditing(e) {
     e.preventDefault();
     e.stopImmediatePropagation();
     beginDrain(e);
-    VibeEvents.emit('popover:requestDismiss', { reEnableInspection: true });
+    PinveltoEvents.emit('popover:requestDismiss', { reEnableInspection: true });
     return;
   }
 
@@ -902,7 +902,7 @@ function handleEditing(e) {
     e.preventDefault();
     e.stopImmediatePropagation();
     beginDrain(e);
-    VibeEvents.emit('popover:requestSave');
+    PinveltoEvents.emit('popover:requestSave');
     return;
   }
 
@@ -977,7 +977,7 @@ function resetForTesting() {
   uiReady = false;
 }
 
-const VibeKeyboardRouter = {
+const PinveltoKeyboardRouter = {
   init,
   teardown,
   getState,
@@ -999,5 +999,5 @@ const VibeKeyboardRouter = {
   SessionState,
 };
 
-export default VibeKeyboardRouter;
+export default PinveltoKeyboardRouter;
 

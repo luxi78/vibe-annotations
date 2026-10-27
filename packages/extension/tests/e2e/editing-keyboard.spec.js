@@ -76,8 +76,8 @@ test.describe('Annotate Editing Keyboard Isolation & Return to Selection (Ticket
 
     await page.evaluate(() => {
       window.__EVENT_LOG = [];
-      const root = document.querySelector('#vibe-annotations-root').shadowRoot;
-      const ta = root.querySelector('.vibe-textarea');
+      const root = document.querySelector('#pinvelto-feedback-root').shadowRoot;
+      const ta = root.querySelector('.pinvelto-textarea');
       window.__POPOVER_INPUT_LOG = [];
       ta.addEventListener('beforeinput', (e) => {
         window.__POPOVER_INPUT_LOG.push({
@@ -163,7 +163,7 @@ test.describe('Annotate Editing Keyboard Isolation & Return to Selection (Ticket
   test('A8: Editor Esc closes popover and returns to selection once; subsequent Esc sequence works as A1/A2', async ({
     page,
   }) => {
-    const vibeRoot = await enterAnnotateMode(page);
+    const pinveltoRoot = await enterAnnotateMode(page);
     const { popover } = await openPopover(page);
     await expect(popover).toBeVisible();
 
@@ -174,7 +174,7 @@ test.describe('Annotate Editing Keyboard Isolation & Return to Selection (Ticket
     await expect(popover).not.toBeAttached({ timeout: 3000 });
 
     // Selection mode is still active (crosshair style still attached)
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached();
 
     // Host rectangle still selected, cancelCount still 0
     let state = await page.evaluate(() => window.__FIXTURE_STATE);
@@ -187,7 +187,7 @@ test.describe('Annotate Editing Keyboard Isolation & Return to Selection (Ticket
 
     // 2. Next Escape in selection mode exits Annotate (A1)
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
 
     state = await page.evaluate(() => window.__FIXTURE_STATE);
     expect(state.cancelCount, 'Selection exit Esc must not cancel host selection').toBe(0);
@@ -203,7 +203,7 @@ test.describe('Annotate Editing Keyboard Isolation & Return to Selection (Ticket
   test('A8: Save shortcut (Ctrl+Enter / Cmd+Enter) saves exactly once and returns to selection mode', async ({
     page,
   }) => {
-    const vibeRoot = await enterAnnotateMode(page);
+    const pinveltoRoot = await enterAnnotateMode(page);
     const { popover, textarea } = await openPopover(page);
 
     await textarea.fill('Save shortcut test note');
@@ -220,11 +220,11 @@ test.describe('Annotate Editing Keyboard Isolation & Return to Selection (Ticket
     await expect(popover).not.toBeAttached({ timeout: 5000 });
 
     // Pin/badge is created
-    const badge = vibeRoot.locator('.vibe-badge');
+    const badge = pinveltoRoot.locator('.pinvelto-badge');
     await expect(badge).toBeVisible({ timeout: 5000 });
 
     // Selection mode remains active after save
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached();
 
     // Host received no leaked Enter/shortcut events
     const state = await page.evaluate(() => window.__FIXTURE_STATE);
@@ -236,17 +236,17 @@ test.describe('Annotate Editing Keyboard Isolation & Return to Selection (Ticket
 
     // Press Escape to exit selection mode cleanly
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
   });
 
   test('A9: Controlled delay isolates keys while waiting, and Esc before completion cancels editor opening', async ({
     page,
   }) => {
-    const vibeRoot = await enterAnnotateMode(page);
+    const pinveltoRoot = await enterAnnotateMode(page);
 
     // Set 800ms controlled delay for target context generation via DOM attribute
     await page.evaluate(() => {
-      document.documentElement.setAttribute('data-vibe-context-delay', '800');
+      document.documentElement.setAttribute('data-pinvelto-context-delay', '800');
       window.__EVENT_LOG = [];
     });
 
@@ -263,7 +263,7 @@ test.describe('Annotate Editing Keyboard Isolation & Return to Selection (Ticket
     await page.keyboard.press('Escape');
 
     // Selection mode cursor must be removed immediately
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
 
     // Host must NOT receive any leaked keys during waiting or cancel
     const state = await page.evaluate(() => window.__FIXTURE_STATE);
@@ -279,7 +279,7 @@ test.describe('Annotate Editing Keyboard Isolation & Return to Selection (Ticket
     await page.waitForTimeout(1000);
 
     // Assert that the late result did NOT open the popover editor!
-    const popover = vibeRoot.locator('.vibe-popover');
+    const popover = pinveltoRoot.locator('.pinvelto-popover');
     await expect(popover).not.toBeAttached();
 
     // Fresh Esc after cancel reaches host and deselects rectangle

@@ -19,7 +19,7 @@ export default defineConfig({
   webServer: {
     command: 'node tests/fixtures/server.js',
     url: 'http://127.0.0.1:3005/health',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 10000,
   },
 });

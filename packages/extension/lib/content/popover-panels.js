@@ -1,7 +1,7 @@
 // Design panel builders, wirers, and shared controls for the annotation popover.
 // Extracted from annotation-popover.js to keep each module focused.
 
-import VibeElementContext from './element-context.js';
+import PinveltoElementContext from './element-context.js';
 
 
   // --- Constants ---
@@ -284,7 +284,7 @@ import VibeElementContext from './element-context.js';
         dots += `<circle cx="${cx}" cy="${cy}" r="1.4" fill="${isActive ? 'var(--v-accent)' : 'currentColor'}" opacity="${isActive ? '1' : '0.35'}"/>`;
       }
     }
-    return `<svg width="14" height="14" viewBox="0 0 18 18" class="vibe-align-dots">${dots}</svg>`;
+    return `<svg width="14" height="14" viewBox="0 0 18 18" class="pinvelto-align-dots">${dots}</svg>`;
   }
 
   function alignLabel(jc, ai, isVert) {
@@ -323,9 +323,9 @@ import VibeElementContext from './element-context.js';
   function buildContentToolbarHTML(targetElement, pc) {
     const currentText = pc?.copyChange ? pc.copyChange.value : targetElement.textContent;
     return `
-      <div class="vibe-design-row vibe-content-row">
-        <span class="vibe-design-icon vibe-content-icon" title="Text content">${ICONS.textContent}</span>
-        <textarea class="vibe-content-input" spellcheck="false">${escapeHTML(currentText)}</textarea>
+      <div class="pinvelto-design-row pinvelto-content-row">
+        <span class="pinvelto-design-icon pinvelto-content-icon" title="Text content">${ICONS.textContent}</span>
+        <textarea class="pinvelto-content-input" spellcheck="false">${escapeHTML(currentText)}</textarea>
       </div>`;
   }
 
@@ -336,7 +336,7 @@ import VibeElementContext from './element-context.js';
 
   function wireContentToolbar(popover, targetElement, pc, resetBtn) {
     const origText = pc?.copyChange ? pc.copyChange.original : targetElement.textContent;
-    const input = popover.querySelector('.vibe-content-input');
+    const input = popover.querySelector('.pinvelto-content-input');
     if (!input) return () => null;
 
     input.addEventListener('focus', () => input.select());
@@ -381,33 +381,33 @@ import VibeElementContext from './element-context.js';
 
     return {
       font: `
-        <div class="vibe-design-row">
-          <span class="vibe-design-icon" title="Font size">${ICONS.typeSize}</span>
-          <div class="vibe-stepper">
-            <input class="vibe-stepper-input" data-prop="fontSize" type="number" min="1" max="999" value="${Math.round(curFS)}">
-            <span class="vibe-stepper-unit">px</span>
+        <div class="pinvelto-design-row">
+          <span class="pinvelto-design-icon" title="Font size">${ICONS.typeSize}</span>
+          <div class="pinvelto-stepper">
+            <input class="pinvelto-stepper-input" data-prop="fontSize" type="number" min="1" max="999" value="${Math.round(curFS)}">
+            <span class="pinvelto-stepper-unit">px</span>
           </div>
-          <div class="vibe-prop-spacer"></div>
-          <span class="vibe-design-icon" title="Font weight">${ICONS.typeWeight}</span>
-          <div class="vibe-stepper">
-            <input class="vibe-stepper-input" data-prop="fontWeight" type="number" min="100" max="900" step="100" value="${Math.round(curFW)}">
+          <div class="pinvelto-prop-spacer"></div>
+          <span class="pinvelto-design-icon" title="Font weight">${ICONS.typeWeight}</span>
+          <div class="pinvelto-stepper">
+            <input class="pinvelto-stepper-input" data-prop="fontWeight" type="number" min="100" max="900" step="100" value="${Math.round(curFW)}">
           </div>
-          <div class="vibe-prop-spacer"></div>
-          <span class="vibe-design-icon" title="Line height">${ICONS.typeLeading}</span>
-          <div class="vibe-stepper">
-            <input class="vibe-stepper-input" data-prop="lineHeight" type="number" min="1" max="999" value="${Math.round(curLH)}">
-            <span class="vibe-stepper-unit">px</span>
+          <div class="pinvelto-prop-spacer"></div>
+          <span class="pinvelto-design-icon" title="Line height">${ICONS.typeLeading}</span>
+          <div class="pinvelto-stepper">
+            <input class="pinvelto-stepper-input" data-prop="lineHeight" type="number" min="1" max="999" value="${Math.round(curLH)}">
+            <span class="pinvelto-stepper-unit">px</span>
           </div>
         </div>
-        <div class="vibe-design-row">
-          <span class="vibe-design-icon" title="Text color">${ICONS.droplet}</span>
-          <button class="vibe-color-swatch" data-color-prop="color" type="button" style="background:${curColorHex}"></button>
-          <input class="vibe-color-input vibe-color-input-inline" data-color-prop="color" type="text" value="${curColorHex}" placeholder="#000000">
-          <div class="vibe-prop-spacer"></div>
-          <div class="vibe-align-group">
-            <button class="vibe-align-btn ${curTA === 'left' ? 'active' : ''}" data-align="left" type="button" title="Align left">${ICONS.alignLeft}</button>
-            <button class="vibe-align-btn ${curTA === 'center' ? 'active' : ''}" data-align="center" type="button" title="Align center">${ICONS.alignCenter}</button>
-            <button class="vibe-align-btn ${curTA === 'right' ? 'active' : ''}" data-align="right" type="button" title="Align right">${ICONS.alignRight}</button>
+        <div class="pinvelto-design-row">
+          <span class="pinvelto-design-icon" title="Text color">${ICONS.droplet}</span>
+          <button class="pinvelto-color-swatch" data-color-prop="color" type="button" style="background:${curColorHex}"></button>
+          <input class="pinvelto-color-input pinvelto-color-input-inline" data-color-prop="color" type="text" value="${curColorHex}" placeholder="#000000">
+          <div class="pinvelto-prop-spacer"></div>
+          <div class="pinvelto-align-group">
+            <button class="pinvelto-align-btn ${curTA === 'left' ? 'active' : ''}" data-align="left" type="button" title="Align left">${ICONS.alignLeft}</button>
+            <button class="pinvelto-align-btn ${curTA === 'center' ? 'active' : ''}" data-align="center" type="button" title="Align center">${ICONS.alignCenter}</button>
+            <button class="pinvelto-align-btn ${curTA === 'right' ? 'active' : ''}" data-align="right" type="button" title="Align right">${ICONS.alignRight}</button>
           </div>
         </div>`
     };
@@ -426,7 +426,7 @@ import VibeElementContext from './element-context.js';
       lineHeight: { ...TEXT_PROP_CONFIG.lineHeight, orig: origLH },
     };
 
-    const alignBtns = popover.querySelectorAll('.vibe-align-btn');
+    const alignBtns = popover.querySelectorAll('.pinvelto-align-btn');
     let currentTextAlign = pc?.textAlign ? pc.textAlign.value : origTA;
 
     const colorState = { color: { orig: origColor, value: pc?.color?.value || origColor, variable: pc?.color?.variable || null } };
@@ -446,7 +446,7 @@ import VibeElementContext from './element-context.js';
     wireColorPicker(popover, targetElement, colorState, 'color');
 
     resetBtn.addEventListener('click', () => {
-      popover.querySelectorAll('.vibe-stepper-input').forEach(input => {
+      popover.querySelectorAll('.pinvelto-stepper-input').forEach(input => {
         const cfg = PROP_CONFIG[input.dataset.prop];
         if (!cfg) return;
         input.value = Math.round(cfg.orig);
@@ -462,7 +462,7 @@ import VibeElementContext from './element-context.js';
 
     return function buildPendingChanges() {
       const changes = {};
-      popover.querySelectorAll('.vibe-stepper-input').forEach(input => {
+      popover.querySelectorAll('.pinvelto-stepper-input').forEach(input => {
         const prop = input.dataset.prop;
         const cfg = PROP_CONFIG[prop];
         if (!cfg) return;
@@ -531,104 +531,104 @@ import VibeElementContext from './element-context.js';
         const ai = isVert ? ALIGN_3[col] : ALIGN_3[row];
         const isActive = curJC === jc && curAI === ai;
         const label = alignLabel(jc, ai, isVert);
-        matrixHTML += `<button class="vibe-matrix-cell ${isActive ? 'active' : ''}" data-jc="${jc}" data-ai="${ai}" type="button" title="${label}" aria-label="${label}"><span class="vibe-matrix-dot"></span></button>`;
+        matrixHTML += `<button class="pinvelto-matrix-cell ${isActive ? 'active' : ''}" data-jc="${jc}" data-ai="${ai}" type="button" title="${label}" aria-label="${label}"><span class="pinvelto-matrix-dot"></span></button>`;
       }
     }
     return {
       layout: `
-        <div class="vibe-design-row">
-          <div class="vibe-toggle-group vibe-flow-group">
-            <button class="vibe-toggle-btn ${mode === 'block' ? 'active' : ''}" data-mode="block" type="button" title="Block">${ICONS.displayBlock}</button>
-            <button class="vibe-toggle-btn ${mode === 'vflex' ? 'active' : ''}" data-mode="vflex" type="button" title="Vertical flex">${ICONS.displayVFlex}</button>
-            <button class="vibe-toggle-btn ${mode === 'hflex' ? 'active' : ''}" data-mode="hflex" type="button" title="Horizontal flex">${ICONS.displayHFlex}</button>
-            <button class="vibe-toggle-btn ${mode === 'grid' ? 'active' : ''}" data-mode="grid" type="button" title="CSS Grid">${ICONS.displayGrid}</button>
+        <div class="pinvelto-design-row">
+          <div class="pinvelto-toggle-group pinvelto-flow-group">
+            <button class="pinvelto-toggle-btn ${mode === 'block' ? 'active' : ''}" data-mode="block" type="button" title="Block">${ICONS.displayBlock}</button>
+            <button class="pinvelto-toggle-btn ${mode === 'vflex' ? 'active' : ''}" data-mode="vflex" type="button" title="Vertical flex">${ICONS.displayVFlex}</button>
+            <button class="pinvelto-toggle-btn ${mode === 'hflex' ? 'active' : ''}" data-mode="hflex" type="button" title="Horizontal flex">${ICONS.displayHFlex}</button>
+            <button class="pinvelto-toggle-btn ${mode === 'grid' ? 'active' : ''}" data-mode="grid" type="button" title="CSS Grid">${ICONS.displayGrid}</button>
           </div>
         </div>
-        <div class="vibe-flex-options" ${isFlex ? '' : 'style="display:none"'}>
-          <div class="vibe-layout-split">
-            <div class="vibe-layout-left">
-              <div class="vibe-align-matrix" data-direction="${mode}">${matrixHTML}</div>
+        <div class="pinvelto-flex-options" ${isFlex ? '' : 'style="display:none"'}>
+          <div class="pinvelto-layout-split">
+            <div class="pinvelto-layout-left">
+              <div class="pinvelto-align-matrix" data-direction="${mode}">${matrixHTML}</div>
             </div>
-            <div class="vibe-layout-right">
-              <label class="vibe-check-label">
-                <input type="checkbox" class="vibe-reverse-check" ${reversed ? 'checked' : ''}>
+            <div class="pinvelto-layout-right">
+              <label class="pinvelto-check-label">
+                <input type="checkbox" class="pinvelto-reverse-check" ${reversed ? 'checked' : ''}>
                 <span>Reverse order</span>
               </label>
-              <label class="vibe-check-label">
-                <input type="checkbox" class="vibe-wrap-check" ${isWrapped ? 'checked' : ''}>
+              <label class="pinvelto-check-label">
+                <input type="checkbox" class="pinvelto-wrap-check" ${isWrapped ? 'checked' : ''}>
                 <span>Wrap items</span>
               </label>
             </div>
           </div>
-          <div class="vibe-layout-split vibe-gap-row">
-            <div class="vibe-layout-left">
-              <div class="vibe-design-row vibe-gap-input-row ${curJC === 'space-between' ? 'disabled' : ''}">
-                <span class="vibe-gap-label">Gap space</span>
-                <div class="vibe-stepper vibe-stepper-grow">
-                  <input class="vibe-stepper-input" data-prop="gap" type="number" min="0" max="999" value="${Math.round(curGap)}" ${curJC === 'space-between' ? 'disabled' : ''}>
-                  <span class="vibe-stepper-unit">px</span>
+          <div class="pinvelto-layout-split pinvelto-gap-row">
+            <div class="pinvelto-layout-left">
+              <div class="pinvelto-design-row pinvelto-gap-input-row ${curJC === 'space-between' ? 'disabled' : ''}">
+                <span class="pinvelto-gap-label">Gap space</span>
+                <div class="pinvelto-stepper pinvelto-stepper-grow">
+                  <input class="pinvelto-stepper-input" data-prop="gap" type="number" min="0" max="999" value="${Math.round(curGap)}" ${curJC === 'space-between' ? 'disabled' : ''}>
+                  <span class="pinvelto-stepper-unit">px</span>
                 </div>
               </div>
             </div>
-            <div class="vibe-layout-right">
-              <label class="vibe-check-label">
-                <input type="checkbox" class="vibe-space-auto-check" ${curJC === 'space-between' ? 'checked' : ''}>
+            <div class="pinvelto-layout-right">
+              <label class="pinvelto-check-label">
+                <input type="checkbox" class="pinvelto-space-auto-check" ${curJC === 'space-between' ? 'checked' : ''}>
                 <span>Space auto</span>
               </label>
             </div>
           </div>
         </div>
-        <div class="vibe-grid-options" ${isGrid ? '' : 'style="display:none"'}>
-          <div class="vibe-design-row">
-            <span class="vibe-design-icon-label vibe-design-icon-label-wide" title="Columns">Cols</span>
-            <div class="vibe-stepper vibe-stepper-sm">
-              <input class="vibe-stepper-input vibe-grid-cols" type="number" min="1" max="24" value="${gridCols}">
+        <div class="pinvelto-grid-options" ${isGrid ? '' : 'style="display:none"'}>
+          <div class="pinvelto-design-row">
+            <span class="pinvelto-design-icon-label pinvelto-design-icon-label-wide" title="Columns">Cols</span>
+            <div class="pinvelto-stepper pinvelto-stepper-sm">
+              <input class="pinvelto-stepper-input pinvelto-grid-cols" type="number" min="1" max="24" value="${gridCols}">
             </div>
-            <div class="vibe-prop-spacer"></div>
-            <span class="vibe-design-icon" title="Column gap">${ICONS.gapH}</span>
-            <div class="vibe-stepper vibe-stepper-sm">
-              <input class="vibe-stepper-input vibe-grid-col-gap" type="number" min="0" max="999" value="${Math.round(curColGap)}">
-              <span class="vibe-stepper-unit">px</span>
+            <div class="pinvelto-prop-spacer"></div>
+            <span class="pinvelto-design-icon" title="Column gap">${ICONS.gapH}</span>
+            <div class="pinvelto-stepper pinvelto-stepper-sm">
+              <input class="pinvelto-stepper-input pinvelto-grid-col-gap" type="number" min="0" max="999" value="${Math.round(curColGap)}">
+              <span class="pinvelto-stepper-unit">px</span>
             </div>
           </div>
-          <div class="vibe-design-row">
-            <span class="vibe-design-icon-label vibe-design-icon-label-wide" title="Rows">Rows</span>
-            <div class="vibe-stepper vibe-stepper-sm">
-              <input class="vibe-stepper-input vibe-grid-rows" type="number" min="1" max="24" value="${gridRows}">
+          <div class="pinvelto-design-row">
+            <span class="pinvelto-design-icon-label pinvelto-design-icon-label-wide" title="Rows">Rows</span>
+            <div class="pinvelto-stepper pinvelto-stepper-sm">
+              <input class="pinvelto-stepper-input pinvelto-grid-rows" type="number" min="1" max="24" value="${gridRows}">
             </div>
-            <div class="vibe-prop-spacer"></div>
-            <span class="vibe-design-icon" title="Row gap">${ICONS.gapV}</span>
-            <div class="vibe-stepper vibe-stepper-sm">
-              <input class="vibe-stepper-input vibe-grid-row-gap" type="number" min="0" max="999" value="${Math.round(curRowGap)}">
-              <span class="vibe-stepper-unit">px</span>
+            <div class="pinvelto-prop-spacer"></div>
+            <span class="pinvelto-design-icon" title="Row gap">${ICONS.gapV}</span>
+            <div class="pinvelto-stepper pinvelto-stepper-sm">
+              <input class="pinvelto-stepper-input pinvelto-grid-row-gap" type="number" min="0" max="999" value="${Math.round(curRowGap)}">
+              <span class="pinvelto-stepper-unit">px</span>
             </div>
           </div>
         </div>`,
       border: `
-        <div class="vibe-section-header"><span class="vibe-section-label">Border</span></div>
-        <div class="vibe-design-row">
-          <span class="vibe-design-icon" title="Border radius">${ICONS.borderR}</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="borderRadius" type="number" min="0" max="999" value="${Math.round(curBR)}">
-            <span class="vibe-stepper-unit">px</span>
+        <div class="pinvelto-section-header"><span class="pinvelto-section-label">Border</span></div>
+        <div class="pinvelto-design-row">
+          <span class="pinvelto-design-icon" title="Border radius">${ICONS.borderR}</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="borderRadius" type="number" min="0" max="999" value="${Math.round(curBR)}">
+            <span class="pinvelto-stepper-unit">px</span>
           </div>
-          <div class="vibe-prop-spacer"></div>
-          <span class="vibe-design-icon" title="Border width">${ICONS.borderW}</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="borderWidth" type="number" min="0" max="20" value="${Math.round(curBW)}">
-            <span class="vibe-stepper-unit">px</span>
+          <div class="pinvelto-prop-spacer"></div>
+          <span class="pinvelto-design-icon" title="Border width">${ICONS.borderW}</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="borderWidth" type="number" min="0" max="20" value="${Math.round(curBW)}">
+            <span class="pinvelto-stepper-unit">px</span>
           </div>
-          <div class="vibe-prop-spacer"></div>
-          <span class="vibe-design-icon" title="Border color">${ICONS.droplet}</span>
-          <button class="vibe-color-swatch" data-color-prop="borderColor" type="button" style="background:${curBorderHex}"></button>
-          <input class="vibe-color-input" data-color-prop="borderColor" type="text" value="${curBorderHex}" placeholder="#000000">
+          <div class="pinvelto-prop-spacer"></div>
+          <span class="pinvelto-design-icon" title="Border color">${ICONS.droplet}</span>
+          <button class="pinvelto-color-swatch" data-color-prop="borderColor" type="button" style="background:${curBorderHex}"></button>
+          <input class="pinvelto-color-input" data-color-prop="borderColor" type="text" value="${curBorderHex}" placeholder="#000000">
         </div>`,
       colorRows: `
-        <div class="vibe-section-header"><span class="vibe-section-label">Background</span></div>
-        <div class="vibe-design-row vibe-color-row">
-          <span class="vibe-design-icon" title="Background">${ICONS.droplet}</span>
-          <button class="vibe-color-swatch" data-color-prop="backgroundColor" type="button" style="background:${curBgHex}"></button>
-          <input class="vibe-color-input" data-color-prop="backgroundColor" type="text" value="${curBgHex}" placeholder="#000000">
+        <div class="pinvelto-section-header"><span class="pinvelto-section-label">Background</span></div>
+        <div class="pinvelto-design-row pinvelto-color-row">
+          <span class="pinvelto-design-icon" title="Background">${ICONS.droplet}</span>
+          <button class="pinvelto-color-swatch" data-color-prop="backgroundColor" type="button" style="background:${curBgHex}"></button>
+          <input class="pinvelto-color-input" data-color-prop="backgroundColor" type="text" value="${curBgHex}" placeholder="#000000">
         </div>`
     };
   }
@@ -679,9 +679,9 @@ import VibeElementContext from './element-context.js';
     // Scope to the flow group's buttons — a bare [data-mode] also matches the
     // popover's Comment/Design/Variants mode tabs, which would wrongly wire the
     // flex/grid logic onto them and hide the layout options.
-    const modeBtns = popover.querySelectorAll('.vibe-flow-group [data-mode]');
-    const flexOptions = popover.querySelector('.vibe-flex-options');
-    const gridOptions = popover.querySelector('.vibe-grid-options');
+    const modeBtns = popover.querySelectorAll('.pinvelto-flow-group [data-mode]');
+    const flexOptions = popover.querySelector('.pinvelto-flex-options');
+    const gridOptions = popover.querySelector('.pinvelto-grid-options');
 
     function getFlexDir(mode, rev) {
       if (mode === 'vflex') return rev ? 'column-reverse' : 'column';
@@ -731,13 +731,13 @@ import VibeElementContext from './element-context.js';
       });
     });
 
-    const matrixContainer = popover.querySelector('.vibe-align-matrix');
+    const matrixContainer = popover.querySelector('.pinvelto-align-matrix');
 
     function updateMatrix(newMode) {
       if (!matrixContainer) return;
       const isVert = newMode === 'vflex';
       matrixContainer.dataset.direction = newMode;
-      const cells = matrixContainer.querySelectorAll('.vibe-matrix-cell');
+      const cells = matrixContainer.querySelectorAll('.pinvelto-matrix-cell');
       for (let row = 0; row < 3; row++) {
         for (let col = 0; col < 3; col++) {
           const idx = row * 3 + col;
@@ -758,7 +758,7 @@ import VibeElementContext from './element-context.js';
     const rebuildMatrix = updateMatrix;
 
     function wireMatrixCells() {
-      const cells = popover.querySelectorAll('.vibe-matrix-cell');
+      const cells = popover.querySelectorAll('.pinvelto-matrix-cell');
       cells.forEach(cell => {
         cell.addEventListener('click', () => {
           currentJC = cell.dataset.jc;
@@ -776,9 +776,9 @@ import VibeElementContext from './element-context.js';
       });
     }
 
-    const spaceAutoCheck = popover.querySelector('.vibe-space-auto-check');
-    const gapInputRow = popover.querySelector('.vibe-gap-input-row');
-    const gapInput = popover.querySelector('.vibe-flex-options [data-prop="gap"]');
+    const spaceAutoCheck = popover.querySelector('.pinvelto-space-auto-check');
+    const gapInputRow = popover.querySelector('.pinvelto-gap-input-row');
+    const gapInput = popover.querySelector('.pinvelto-flex-options [data-prop="gap"]');
     let jcBeforeSpaceAuto = currentJC !== 'space-between' ? currentJC : 'flex-start';
 
     function updateSpaceAutoState(isAuto) {
@@ -788,7 +788,7 @@ import VibeElementContext from './element-context.js';
 
     wireMatrixCells();
 
-    const reverseCheck = popover.querySelector('.vibe-reverse-check');
+    const reverseCheck = popover.querySelector('.pinvelto-reverse-check');
     if (reverseCheck) {
       reverseCheck.addEventListener('change', () => {
         currentReversed = reverseCheck.checked;
@@ -797,7 +797,7 @@ import VibeElementContext from './element-context.js';
       });
     }
 
-    const wrapCheck = popover.querySelector('.vibe-wrap-check');
+    const wrapCheck = popover.querySelector('.pinvelto-wrap-check');
     if (wrapCheck) {
       wrapCheck.addEventListener('change', () => {
         currentFlexWrap = wrapCheck.checked ? 'wrap' : 'nowrap';
@@ -821,10 +821,10 @@ import VibeElementContext from './element-context.js';
       });
     }
 
-    const gridColsInput = popover.querySelector('.vibe-grid-cols');
-    const gridRowsInput = popover.querySelector('.vibe-grid-rows');
-    const gridColGapInput = popover.querySelector('.vibe-grid-col-gap');
-    const gridRowGapInput = popover.querySelector('.vibe-grid-row-gap');
+    const gridColsInput = popover.querySelector('.pinvelto-grid-cols');
+    const gridRowsInput = popover.querySelector('.pinvelto-grid-rows');
+    const gridColGapInput = popover.querySelector('.pinvelto-grid-col-gap');
+    const gridRowGapInput = popover.querySelector('.pinvelto-grid-row-gap');
 
     function applyGridCols() {
       const n = parseInt(gridColsInput?.value) || 1;
@@ -863,7 +863,7 @@ import VibeElementContext from './element-context.js';
     wireColorPicker(popover, targetElement, colorState, 'borderColor');
 
     resetBtn.addEventListener('click', () => {
-      popover.querySelectorAll('.vibe-stepper-input').forEach(input => {
+      popover.querySelectorAll('.pinvelto-stepper-input').forEach(input => {
         const cfg = PROP_CONFIG[input.dataset.prop];
         if (!cfg) return;
         input.value = Math.round(cfg.orig);
@@ -921,7 +921,7 @@ import VibeElementContext from './element-context.js';
       }
 
       if (currentMode === 'vflex' || currentMode === 'hflex') {
-        const gapInput = popover.querySelector('.vibe-flex-options [data-prop="gap"]');
+        const gapInput = popover.querySelector('.pinvelto-flex-options [data-prop="gap"]');
         const gapVal = Math.round(parseFloat(gapInput?.value) || 0);
         if (gapVal !== Math.round(origGap)) changes.gap = { original: Math.round(origGap) + 'px', value: gapVal + 'px' };
       }
@@ -971,45 +971,45 @@ import VibeElementContext from './element-context.js';
 
     return {
       sizing: `
-      <div class="vibe-section-header"><span class="vibe-section-label">Width</span></div>
-      <div class="vibe-sizing-row">
-        <div class="vibe-sizing-pair">
-          <span class="vibe-design-icon-label" title="Width">W</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-text vibe-sizing-input" data-sizing="width" type="text" value="${vals.width}" placeholder="Default">
+      <div class="pinvelto-section-header"><span class="pinvelto-section-label">Width</span></div>
+      <div class="pinvelto-sizing-row">
+        <div class="pinvelto-sizing-pair">
+          <span class="pinvelto-design-icon-label" title="Width">W</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-text pinvelto-sizing-input" data-sizing="width" type="text" value="${vals.width}" placeholder="Default">
           </div>
         </div>
-        <div class="vibe-sizing-pair">
-          <span class="vibe-design-icon-label" title="Min width">Min</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-text vibe-sizing-input" data-sizing="minWidth" type="text" value="${vals.minWidth}" placeholder="—">
+        <div class="pinvelto-sizing-pair">
+          <span class="pinvelto-design-icon-label" title="Min width">Min</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-text pinvelto-sizing-input" data-sizing="minWidth" type="text" value="${vals.minWidth}" placeholder="—">
           </div>
         </div>
-        <div class="vibe-sizing-pair">
-          <span class="vibe-design-icon-label" title="Max width">Max</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-text vibe-sizing-input" data-sizing="maxWidth" type="text" value="${vals.maxWidth}" placeholder="—">
+        <div class="pinvelto-sizing-pair">
+          <span class="pinvelto-design-icon-label" title="Max width">Max</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-text pinvelto-sizing-input" data-sizing="maxWidth" type="text" value="${vals.maxWidth}" placeholder="—">
           </div>
         </div>
       </div>
-      <div class="vibe-section-header"><span class="vibe-section-label">Height</span></div>
-      <div class="vibe-sizing-row">
-        <div class="vibe-sizing-pair">
-          <span class="vibe-design-icon-label" title="Height">H</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-text vibe-sizing-input" data-sizing="height" type="text" value="${vals.height}" placeholder="Default">
+      <div class="pinvelto-section-header"><span class="pinvelto-section-label">Height</span></div>
+      <div class="pinvelto-sizing-row">
+        <div class="pinvelto-sizing-pair">
+          <span class="pinvelto-design-icon-label" title="Height">H</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-text pinvelto-sizing-input" data-sizing="height" type="text" value="${vals.height}" placeholder="Default">
           </div>
         </div>
-        <div class="vibe-sizing-pair">
-          <span class="vibe-design-icon-label" title="Min height">Min</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-text vibe-sizing-input" data-sizing="minHeight" type="text" value="${vals.minHeight}" placeholder="—">
+        <div class="pinvelto-sizing-pair">
+          <span class="pinvelto-design-icon-label" title="Min height">Min</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-text pinvelto-sizing-input" data-sizing="minHeight" type="text" value="${vals.minHeight}" placeholder="—">
           </div>
         </div>
-        <div class="vibe-sizing-pair">
-          <span class="vibe-design-icon-label" title="Max height">Max</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-text vibe-sizing-input" data-sizing="maxHeight" type="text" value="${vals.maxHeight}" placeholder="—">
+        <div class="pinvelto-sizing-pair">
+          <span class="pinvelto-design-icon-label" title="Max height">Max</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-text pinvelto-sizing-input" data-sizing="maxHeight" type="text" value="${vals.maxHeight}" placeholder="—">
           </div>
         </div>
       </div>`,
@@ -1043,86 +1043,86 @@ import VibeElementContext from './element-context.js';
     const marH = curML === curMR ? `${Math.round(curML)}` : `${Math.round(curML)}, ${Math.round(curMR)}`;
 
     return `
-      <div class="vibe-section-header"><span class="vibe-section-label">Padding</span></div>
-      <div class="vibe-spacing-row vibe-padding-vh-row" ${padNeedsSplit ? 'style="display:none"' : ''}>
-        <div class="vibe-spacing-inputs">
-          <span class="vibe-design-icon" title="Padding vertical">${ICONS.paddingV}</span>
-          <div class="vibe-stepper vibe-stepper-grow">
-            <input class="vibe-stepper-text vibe-pad-v" type="text" value="${padV}" title="Top, Bottom">
-            <span class="vibe-stepper-unit">px</span>
+      <div class="pinvelto-section-header"><span class="pinvelto-section-label">Padding</span></div>
+      <div class="pinvelto-spacing-row pinvelto-padding-vh-row" ${padNeedsSplit ? 'style="display:none"' : ''}>
+        <div class="pinvelto-spacing-inputs">
+          <span class="pinvelto-design-icon" title="Padding vertical">${ICONS.paddingV}</span>
+          <div class="pinvelto-stepper pinvelto-stepper-grow">
+            <input class="pinvelto-stepper-text pinvelto-pad-v" type="text" value="${padV}" title="Top, Bottom">
+            <span class="pinvelto-stepper-unit">px</span>
           </div>
-          <div class="vibe-prop-spacer"></div>
-          <span class="vibe-design-icon" title="Padding horizontal">${ICONS.paddingH}</span>
-          <div class="vibe-stepper vibe-stepper-grow">
-            <input class="vibe-stepper-text vibe-pad-h" type="text" value="${padH}" title="Left, Right">
-            <span class="vibe-stepper-unit">px</span>
+          <div class="pinvelto-prop-spacer"></div>
+          <span class="pinvelto-design-icon" title="Padding horizontal">${ICONS.paddingH}</span>
+          <div class="pinvelto-stepper pinvelto-stepper-grow">
+            <input class="pinvelto-stepper-text pinvelto-pad-h" type="text" value="${padH}" title="Left, Right">
+            <span class="pinvelto-stepper-unit">px</span>
           </div>
         </div>
-        <button class="vibe-split-btn vibe-pad-split-btn ${padNeedsSplit ? 'active' : ''}" type="button" title="Split padding">${padNeedsSplit ? ICONS.merge : ICONS.split}</button>
+        <button class="pinvelto-split-btn pinvelto-pad-split-btn ${padNeedsSplit ? 'active' : ''}" type="button" title="Split padding">${padNeedsSplit ? ICONS.merge : ICONS.split}</button>
       </div>
-      <div class="vibe-spacing-row vibe-padding-split-row" ${padNeedsSplit ? '' : 'style="display:none"'}>
-        <div class="vibe-spacing-inputs">
-          <span class="vibe-design-icon-label" title="Top">T</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="paddingTop" type="number" min="0" max="999" value="${Math.round(curPT)}">
+      <div class="pinvelto-spacing-row pinvelto-padding-split-row" ${padNeedsSplit ? '' : 'style="display:none"'}>
+        <div class="pinvelto-spacing-inputs">
+          <span class="pinvelto-design-icon-label" title="Top">T</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="paddingTop" type="number" min="0" max="999" value="${Math.round(curPT)}">
           </div>
-          <span class="vibe-design-icon-label" title="Right">R</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="paddingRight" type="number" min="0" max="999" value="${Math.round(curPR)}">
+          <span class="pinvelto-design-icon-label" title="Right">R</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="paddingRight" type="number" min="0" max="999" value="${Math.round(curPR)}">
           </div>
-          <span class="vibe-design-icon-label" title="Bottom">B</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="paddingBottom" type="number" min="0" max="999" value="${Math.round(curPB)}">
+          <span class="pinvelto-design-icon-label" title="Bottom">B</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="paddingBottom" type="number" min="0" max="999" value="${Math.round(curPB)}">
           </div>
-          <span class="vibe-design-icon-label" title="Left">L</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="paddingLeft" type="number" min="0" max="999" value="${Math.round(curPL)}">
+          <span class="pinvelto-design-icon-label" title="Left">L</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="paddingLeft" type="number" min="0" max="999" value="${Math.round(curPL)}">
           </div>
         </div>
-        <button class="vibe-split-btn vibe-pad-split-btn active" type="button" title="Merge padding">${ICONS.merge}</button>
+        <button class="pinvelto-split-btn pinvelto-pad-split-btn active" type="button" title="Merge padding">${ICONS.merge}</button>
       </div>
-      <div class="vibe-section-header"><span class="vibe-section-label">Margin</span></div>
-      <div class="vibe-spacing-row vibe-margin-vh-row" ${marNeedsSplit ? 'style="display:none"' : ''}>
-        <div class="vibe-spacing-inputs">
-          <span class="vibe-design-icon" title="Margin vertical">${ICONS.marginV}</span>
-          <div class="vibe-stepper vibe-stepper-grow">
-            <input class="vibe-stepper-text vibe-mar-v" type="text" value="${marV}" title="Top, Bottom">
-            <span class="vibe-stepper-unit">px</span>
+      <div class="pinvelto-section-header"><span class="pinvelto-section-label">Margin</span></div>
+      <div class="pinvelto-spacing-row pinvelto-margin-vh-row" ${marNeedsSplit ? 'style="display:none"' : ''}>
+        <div class="pinvelto-spacing-inputs">
+          <span class="pinvelto-design-icon" title="Margin vertical">${ICONS.marginV}</span>
+          <div class="pinvelto-stepper pinvelto-stepper-grow">
+            <input class="pinvelto-stepper-text pinvelto-mar-v" type="text" value="${marV}" title="Top, Bottom">
+            <span class="pinvelto-stepper-unit">px</span>
           </div>
-          <div class="vibe-prop-spacer"></div>
-          <span class="vibe-design-icon" title="Margin horizontal">${ICONS.marginH}</span>
-          <div class="vibe-stepper vibe-stepper-grow">
-            <input class="vibe-stepper-text vibe-mar-h" type="text" value="${marH}" title="Left, Right">
-            <span class="vibe-stepper-unit">px</span>
+          <div class="pinvelto-prop-spacer"></div>
+          <span class="pinvelto-design-icon" title="Margin horizontal">${ICONS.marginH}</span>
+          <div class="pinvelto-stepper pinvelto-stepper-grow">
+            <input class="pinvelto-stepper-text pinvelto-mar-h" type="text" value="${marH}" title="Left, Right">
+            <span class="pinvelto-stepper-unit">px</span>
           </div>
         </div>
-        <button class="vibe-split-btn vibe-mar-split-btn ${marNeedsSplit ? 'active' : ''}" type="button" title="Split margin">${marNeedsSplit ? ICONS.merge : ICONS.split}</button>
+        <button class="pinvelto-split-btn pinvelto-mar-split-btn ${marNeedsSplit ? 'active' : ''}" type="button" title="Split margin">${marNeedsSplit ? ICONS.merge : ICONS.split}</button>
       </div>
-      <div class="vibe-spacing-row vibe-margin-split-row" ${marNeedsSplit ? '' : 'style="display:none"'}>
-        <div class="vibe-spacing-inputs">
-          <span class="vibe-design-icon-label" title="Top">T</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="marginTop" type="number" min="-999" max="999" value="${Math.round(curMT)}">
+      <div class="pinvelto-spacing-row pinvelto-margin-split-row" ${marNeedsSplit ? '' : 'style="display:none"'}>
+        <div class="pinvelto-spacing-inputs">
+          <span class="pinvelto-design-icon-label" title="Top">T</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="marginTop" type="number" min="-999" max="999" value="${Math.round(curMT)}">
           </div>
-          <span class="vibe-design-icon-label" title="Right">R</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="marginRight" type="number" min="-999" max="999" value="${Math.round(curMR)}">
+          <span class="pinvelto-design-icon-label" title="Right">R</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="marginRight" type="number" min="-999" max="999" value="${Math.round(curMR)}">
           </div>
-          <span class="vibe-design-icon-label" title="Bottom">B</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="marginBottom" type="number" min="-999" max="999" value="${Math.round(curMB)}">
+          <span class="pinvelto-design-icon-label" title="Bottom">B</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="marginBottom" type="number" min="-999" max="999" value="${Math.round(curMB)}">
           </div>
-          <span class="vibe-design-icon-label" title="Left">L</span>
-          <div class="vibe-stepper vibe-stepper-sm">
-            <input class="vibe-stepper-input" data-prop="marginLeft" type="number" min="-999" max="999" value="${Math.round(curML)}">
+          <span class="pinvelto-design-icon-label" title="Left">L</span>
+          <div class="pinvelto-stepper pinvelto-stepper-sm">
+            <input class="pinvelto-stepper-input" data-prop="marginLeft" type="number" min="-999" max="999" value="${Math.round(curML)}">
           </div>
         </div>
-        <button class="vibe-split-btn vibe-mar-split-btn active" type="button" title="Merge margin">${ICONS.merge}</button>
+        <button class="pinvelto-split-btn pinvelto-mar-split-btn active" type="button" title="Merge margin">${ICONS.merge}</button>
       </div>`;
   }
 
   function wireSizingToolbar(popover, targetElement, pc, s, resetBtn) {
-    const sizingInputs = popover.querySelectorAll('.vibe-sizing-input');
+    const sizingInputs = popover.querySelectorAll('.pinvelto-sizing-input');
     const sizingOriginals = {};
     for (const p of SIZING_PROPS) {
       sizingOriginals[p] = pc?.[p] ? pc[p].original : (s[p] || SIZING_UNSET[p]);
@@ -1174,19 +1174,19 @@ import VibeElementContext from './element-context.js';
     });
 
     const notify = () => { popover._updateResetVisibility?.(); popover._updateSave?.(); };
-    let padSplit = popover.querySelector('.vibe-padding-split-row')?.style.display !== 'none';
-    let marSplit = popover.querySelector('.vibe-margin-split-row')?.style.display !== 'none';
+    let padSplit = popover.querySelector('.pinvelto-padding-split-row')?.style.display !== 'none';
+    let marSplit = popover.querySelector('.pinvelto-margin-split-row')?.style.display !== 'none';
 
-    const padVInput = popover.querySelector('.vibe-pad-v');
-    const padHInput = popover.querySelector('.vibe-pad-h');
-    const padVHRow = popover.querySelector('.vibe-padding-vh-row');
-    const padSplitRow = popover.querySelector('.vibe-padding-split-row');
-    const padSplitBtns = popover.querySelectorAll('.vibe-pad-split-btn');
-    const marVInput = popover.querySelector('.vibe-mar-v');
-    const marHInput = popover.querySelector('.vibe-mar-h');
-    const marVHRow = popover.querySelector('.vibe-margin-vh-row');
-    const marSplitRow = popover.querySelector('.vibe-margin-split-row');
-    const marSplitBtns = popover.querySelectorAll('.vibe-mar-split-btn');
+    const padVInput = popover.querySelector('.pinvelto-pad-v');
+    const padHInput = popover.querySelector('.pinvelto-pad-h');
+    const padVHRow = popover.querySelector('.pinvelto-padding-vh-row');
+    const padSplitRow = popover.querySelector('.pinvelto-padding-split-row');
+    const padSplitBtns = popover.querySelectorAll('.pinvelto-pad-split-btn');
+    const marVInput = popover.querySelector('.pinvelto-mar-v');
+    const marHInput = popover.querySelector('.pinvelto-mar-h');
+    const marVHRow = popover.querySelector('.pinvelto-margin-vh-row');
+    const marSplitRow = popover.querySelector('.pinvelto-margin-split-row');
+    const marSplitBtns = popover.querySelectorAll('.pinvelto-mar-split-btn');
 
     if (padVInput) {
       const applyPadVH = () => {
@@ -1326,7 +1326,7 @@ import VibeElementContext from './element-context.js';
   // --- Shared controls ---
 
   function wireStepperInputs(popover, targetElement, PROP_CONFIG) {
-    popover.querySelectorAll('.vibe-stepper-input').forEach(input => {
+    popover.querySelectorAll('.pinvelto-stepper-input').forEach(input => {
       const prop = input.dataset.prop;
       const cfg = PROP_CONFIG[prop];
       if (!cfg) return;
@@ -1339,7 +1339,7 @@ import VibeElementContext from './element-context.js';
         popover._updateResetVisibility?.();
         popover._updateSave?.();
       };
-      input._vibeInputHandler = handler;
+      input._pinveltoInputHandler = handler;
       input.addEventListener('input', handler);
 
       input.addEventListener('keydown', (e) => {
@@ -1382,8 +1382,8 @@ import VibeElementContext from './element-context.js';
   }
 
   function wireColorPicker(popover, targetElement, colorState, prop) {
-    const swatch = popover.querySelector(`.vibe-color-swatch[data-color-prop="${prop}"]`);
-    const hexInput = popover.querySelector(`.vibe-color-input[data-color-prop="${prop}"]`);
+    const swatch = popover.querySelector(`.pinvelto-color-swatch[data-color-prop="${prop}"]`);
+    const hexInput = popover.querySelector(`.pinvelto-color-input[data-color-prop="${prop}"]`);
     if (!swatch || !hexInput) return;
 
     hexInput.addEventListener('input', () => {
@@ -1405,19 +1405,19 @@ import VibeElementContext from './element-context.js';
 
     swatch.addEventListener('click', (e) => {
       e.stopPropagation();
-      const existing = popover.querySelector('.vibe-color-palette');
+      const existing = popover.querySelector('.pinvelto-color-palette');
       if (existing) { existing.remove(); return; }
 
-      const vars = VibeElementContext.scanPageColorVariables();
+      const vars = PinveltoElementContext.scanPageColorVariables();
       const palette = document.createElement('div');
-      palette.className = 'vibe-color-palette';
+      palette.className = 'pinvelto-color-palette';
 
       if (vars.length === 0) {
-        palette.innerHTML = '<span class="vibe-color-palette-empty">No CSS variables detected</span>';
+        palette.innerHTML = '<span class="pinvelto-color-palette-empty">No CSS variables detected</span>';
       } else {
         vars.forEach(v => {
           const btn = document.createElement('button');
-          btn.className = 'vibe-color-palette-swatch';
+          btn.className = 'pinvelto-color-palette-swatch';
           if (colorState[prop].variable === v.name) btn.classList.add('active');
           btn.style.background = v.value;
           btn.title = v.name;
@@ -1455,8 +1455,8 @@ import VibeElementContext from './element-context.js';
     colorState[prop].value = origValue;
     colorState[prop].variable = null;
     targetElement.style[prop] = '';
-    const swatch = popover.querySelector(`.vibe-color-swatch[data-color-prop="${prop}"]`);
-    const hexInput = popover.querySelector(`.vibe-color-input[data-color-prop="${prop}"]`);
+    const swatch = popover.querySelector(`.pinvelto-color-swatch[data-color-prop="${prop}"]`);
+    const hexInput = popover.querySelector(`.pinvelto-color-input[data-color-prop="${prop}"]`);
     const hex = toHex(origValue);
     if (swatch) swatch.style.background = hex;
     if (hexInput) hexInput.value = hex;
@@ -1464,7 +1464,7 @@ import VibeElementContext from './element-context.js';
 
   // --- Public API ---
 
-const VibePopoverPanels = {
+const PinveltoPopoverPanels = {
   ALL_DESIGN_PROPS,
   ICONS,
   kbdHint,
@@ -1484,4 +1484,4 @@ const VibePopoverPanels = {
   kebabToCamel,
   getDeviceIcon,
 };
-export default VibePopoverPanels;
+export default PinveltoPopoverPanels;

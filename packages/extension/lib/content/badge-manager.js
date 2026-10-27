@@ -2,11 +2,11 @@
 // Position-tracked via RAF loop (only runs when badges exist)
 // Zero host DOM modification for display
 
-import VibeAPI from './api-bridge.js';
-import VibeElementContext from './element-context.js';
-import VibeEvents from './event-bus.js';
-import VibeShadowHost from './shadow-host.js';
-import { filterEligibleElementAnnotations } from './pin-discovery.js';
+import PinveltoAPI from './api-bridge.js';
+import PinveltoElementContext from './element-context.js';
+import PinveltoEvents from './event-bus.js';
+import PinveltoShadowHost from './shadow-host.js';
+import { filterEligibleElementFeedback } from './pin-discovery.js';
 
   const DESIGN_PROPS = [
     'fontSize','fontWeight','lineHeight','textAlign',
@@ -72,11 +72,11 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
   }
 
   function updateBadgeTooltip(badgeEl, comment) {
-    let tooltip = badgeEl.querySelector('.vibe-badge-tooltip');
+    let tooltip = badgeEl.querySelector('.pinvelto-badge-tooltip');
     if (comment) {
       if (!tooltip) {
         tooltip = document.createElement('div');
-        tooltip.className = 'vibe-badge-tooltip';
+        tooltip.className = 'pinvelto-badge-tooltip';
         badgeEl.appendChild(tooltip);
       }
       tooltip.textContent = comment;
@@ -86,7 +86,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
   }
 
   function updateBadgeLabel(badgeEl, index, isWatching) {
-    const label = badgeEl.querySelector('.vibe-badge-label');
+    const label = badgeEl.querySelector('.pinvelto-badge-label');
     if (!label) return;
     if (isWatching) {
       if (!badgeEl.classList.contains('watching')) {
@@ -103,7 +103,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
   }
 
   let badges = []; // { el, annotation, targetElement }
-  let styleInjections = []; // { styleEl, annotation } for stylesheet annotations
+  let styleInjections = []; // { styleEl, annotation } for stylesheet pinveltoFeedback
   let rafId = null;
   let provisionalBadge = null;
   let provisionalPagePos = null;
@@ -111,7 +111,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
   let lastProjectTotal = 0;
   let domObserver = null;
   let rematchDebounceTimer = null;
-  let _lastTotal = 0; // total annotations (including unanchored)
+  let _lastTotal = 0; // total pinveltoFeedback (including unanchored)
   let watchMode = false;
   let renderSeq = 0; // guards against out-of-order async renders (see render())
 
@@ -148,15 +148,15 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
   }
 
   function init() {
-    VibeEvents.on('annotations:render', render);
-    VibeEvents.on('annotation:deleted', onDeleted);
-    VibeEvents.on('annotation:updated', onUpdated);
-    VibeEvents.on('inspection:elementClicked', onProvisionalPin);
-    VibeEvents.on('popover:cancelled', removeProvisional);
-    VibeEvents.on('watch:changed', onWatchChanged);
+    PinveltoEvents.on('Feedback:render', render);
+    PinveltoEvents.on('Feedback:deleted', onDeleted);
+    PinveltoEvents.on('Feedback:updated', onUpdated);
+    PinveltoEvents.on('inspection:elementClicked', onProvisionalPin);
+    PinveltoEvents.on('popover:cancelled', removeProvisional);
+    PinveltoEvents.on('watch:changed', onWatchChanged);
     // Variant preview switches the active child via CSS only (no size/scroll
     // change), so nudge the badges to re-anchor to the newly-visible variant.
-    VibeEvents.on('variants:switched', scheduleReposition);
+    PinveltoEvents.on('variants:switched', scheduleReposition);
     startDOMObserver();
   }
 
@@ -164,7 +164,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     watchMode = active;
     // Update all existing badges
     badges.forEach((entry, i) => {
-      const label = entry.el.querySelector('.vibe-badge-label');
+      const label = entry.el.querySelector('.pinvelto-badge-label');
       if (!label) return;
       if (watchMode) {
         setEyeIcon(label);
@@ -222,7 +222,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
         continue;
       }
       if (!entry.targetElement.isConnected) {
-        const newTarget = VibeElementContext.findElementBySelector(entry.annotation);
+        const newTarget = PinveltoElementContext.findElementBySelector(entry.annotation);
         if (newTarget && newTarget !== entry.targetElement) {
           entry.targetElement = newTarget;
           entry.el.style.display = '';
@@ -244,13 +244,13 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
 
   function onProvisionalPin({ clientX, clientY }) {
     removeProvisional();
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     if (!root || clientX == null) return;
 
     const badge = document.createElement('div');
-    badge.className = 'vibe-badge' + (watchMode ? ' watching' : '');
+    badge.className = 'pinvelto-badge' + (watchMode ? ' watching' : '');
     const label = document.createElement('span');
-    label.className = 'vibe-badge-label';
+    label.className = 'pinvelto-badge-label';
     if (watchMode) { setEyeIcon(label); } else { label.textContent = (lastProjectTotal + 1).toString(); }
     badge.appendChild(label);
     root.appendChild(badge);
@@ -284,17 +284,17 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     }
   }
 
-  async function render(annotations) {
+  async function render(pinveltoFeedback) {
     const myGen = ++renderSeq;
     removeProvisional();
 
-    // Load all project annotations for project-wide numbering and total count.
+    // Load all project pinveltoFeedback for project-wide numbering and total count.
     // Exclude resolved — the agent has finalized/cleaned those, so they're done
     // and must not inflate the "View all" count pill (variants-discarded and
     // variant-chosen still count: they're pending agent action, shown in the list).
-    let projectAnnotations;
+    let projectFeedback;
     try {
-      projectAnnotations = (await VibeAPI.loadProjectAnnotations())
+      projectFeedback = (await PinveltoAPI.loadProjectFeedback())
         .filter(a => a.status !== 'resolved');
     } catch {
       // Overlapping asynchronous renders cannot apply stale results. Failed reads
@@ -305,14 +305,14 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     // A newer render started while we awaited — bail so we don't emit a stale
     // total (e.g. leaving the "View all" count at 1 after deleting everything).
     if (myGen !== renderSeq) return { superseded: true, count: badges.length };
-    const projectSorted = [...projectAnnotations].sort((a, b) =>
+    const projectSorted = [...projectFeedback].sort((a, b) =>
       new Date(a.created_at) - new Date(b.created_at)
     );
     // Build a map: annotation id → project-wide index
     const projectIndexMap = new Map();
     projectSorted.forEach((a, i) => projectIndexMap.set(a.id, i + 1));
 
-    const sorted = [...annotations].sort((a, b) =>
+    const sorted = [...pinveltoFeedback].sort((a, b) =>
       new Date(a.created_at) - new Date(b.created_at)
     );
 
@@ -332,14 +332,14 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
         return;
       }
 
-      // Stylesheet annotations — inject as <style> tag
+      // Stylesheet pinveltoFeedback — inject as <style> tag
       if (annotation.type === 'stylesheet' && annotation.css) {
-        reconcileStyleAnnotation(annotation);
+        reconcileStyleFeedback(annotation);
         activeStyleIds.add(annotation.id);
         return;
       }
 
-      // Variant annotations: anchor to the stable container, not the original
+      // Variant pinveltoFeedback: anchor to the stable container, not the original
       // selector element (which becomes one variant child and gets hidden when
       // another variant is selected). positionBadge() tracks the active child.
       const variant = resolveVariantAnchor(annotation);
@@ -348,13 +348,13 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
         reconcileBadge(variant.container, annotation, badgeNum, variant);
         activeBadgeIds.add(annotation.id);
         if (annotation.css) {
-          reconcileStyleAnnotation(annotation);
+          reconcileStyleFeedback(annotation);
           activeStyleIds.add(annotation.id);
         }
         return;
       }
 
-      const target = VibeElementContext.findElementBySelector(annotation);
+      const target = PinveltoElementContext.findElementBySelector(annotation);
       if (target) {
         const badgeNum = projectIndexMap.get(annotation.id) || 1;
         reconcileBadge(target, annotation, badgeNum);
@@ -362,7 +362,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
 
         // Inject companion CSS rules if present
         if (annotation.css) {
-          reconcileStyleAnnotation(annotation);
+          reconcileStyleFeedback(annotation);
           activeStyleIds.add(annotation.id);
         }
       }
@@ -392,24 +392,24 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     if (!badges.length) stopRAF();
     else if (!rafId) startRAF();
 
-    const eligibleElementAnnotations = filterEligibleElementAnnotations(annotations);
+    const eligibleElementFeedback = filterEligibleElementFeedback(pinveltoFeedback);
     const renderedIds = badges.map(b => b.annotation.id);
     const renderedSet = new Set(renderedIds);
-    const unresolvedAnnotations = eligibleElementAnnotations.filter(a => !renderedSet.has(a.id));
-    const unresolvedIds = unresolvedAnnotations.map(a => a.id);
+    const unresolvedFeedback = eligibleElementFeedback.filter(a => !renderedSet.has(a.id));
+    const unresolvedIds = unresolvedFeedback.map(a => a.id);
 
-    _lastTotal = annotations.length;
-    lastProjectTotal = projectAnnotations.length;
+    _lastTotal = pinveltoFeedback.length;
+    lastProjectTotal = projectFeedback.length;
     const result = {
       count: badges.length,
-      total: projectAnnotations.length,
+      total: projectFeedback.length,
       styleCount: styleInjections.filter(s => s.annotation.type === 'stylesheet').length,
       renderedIds,
-      unresolvedAnnotations,
+      unresolvedFeedback,
       unresolvedIds,
       generation: myGen,
     };
-    VibeEvents.emit('badges:rendered', result);
+    PinveltoEvents.emit('badges:rendered', result);
     return result;
   }
 
@@ -445,7 +445,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     }
   }
 
-  function reconcileStyleAnnotation(annotation) {
+  function reconcileStyleFeedback(annotation) {
     const existing = styleInjections.find(s => s.annotation.id === annotation.id);
     if (existing) {
       if (existing.styleEl.textContent !== annotation.css) {
@@ -453,13 +453,13 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
       }
       existing.annotation = annotation;
     } else {
-      injectStyleAnnotation(annotation);
+      injectStyleFeedback(annotation);
     }
   }
 
-  function injectStyleAnnotation(annotation) {
+  function injectStyleFeedback(annotation) {
     const style = document.createElement('style');
-    style.setAttribute('data-vibe-style', annotation.id);
+    style.setAttribute('data-pinvelto-style', annotation.id);
     style.textContent = annotation.css;
     document.head.appendChild(style);
     styleInjections.push({ styleEl: style, annotation });
@@ -475,7 +475,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     let container = null;
     try { container = document.querySelector(p.container); } catch {}
     if (!container) return null;
-    return { container, attribute: p.attribute || 'data-vibe-active' };
+    return { container, attribute: p.attribute || 'data-pinvelto-active' };
   }
 
   // Point a discarded variant's live wrapper back at the original (variant 1),
@@ -488,29 +488,29 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     let container = null;
     try { container = document.querySelector(p.container); } catch {}
     if (!container) return;
-    const attr = p.attribute || 'data-vibe-active';
+    const attr = p.attribute || 'data-pinvelto-active';
     const original = (p.variants && p.variants[0]) ? String(p.variants[0].value) : '1';
     if (container.getAttribute(attr) !== original) container.setAttribute(attr, original);
   }
 
   function addBadge(targetElement, annotation, index, variant) {
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     if (!root) return;
 
     const badge = document.createElement('div');
-    badge.className = 'vibe-badge' + (watchMode ? ' watching' : '');
+    badge.className = 'pinvelto-badge' + (watchMode ? ' watching' : '');
     badge.dataset.annotationId = annotation.id;
 
     // Label span (number or eye)
     const label = document.createElement('span');
-    label.className = 'vibe-badge-label';
+    label.className = 'pinvelto-badge-label';
     if (watchMode) { setEyeIcon(label); } else { label.textContent = index.toString(); }
     badge.appendChild(label);
 
     // Tooltip
     if (annotation.comment) {
       const tooltip = document.createElement('div');
-      tooltip.className = 'vibe-badge-tooltip';
+      tooltip.className = 'pinvelto-badge-tooltip';
       tooltip.textContent = annotation.comment;
       badge.appendChild(tooltip);
     }
@@ -522,7 +522,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     // Click → edit (read from entry so we get the latest annotation after updates)
     badge.addEventListener('click', (e) => {
       e.stopPropagation();
-      VibeEvents.emit('annotation:edit', { annotation: entry.annotation, element: entry.targetElement });
+      PinveltoEvents.emit('Feedback:edit', { annotation: entry.annotation, element: entry.targetElement });
     });
     badges.push(entry);
 
@@ -615,7 +615,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     removeProvisional();
   }
 
-  function clearAll(annotations, { skipRevert = false } = {}) {
+  function clearAll(pinveltoFeedback, { skipRevert = false } = {}) {
     cancelPendingRenders();
     // Clear injected stylesheets
     for (const entry of styleInjections) entry.styleEl.remove();
@@ -637,10 +637,10 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     clearTimeout(rematchDebounceTimer);
 
     // Sweep for orphaned styled elements (badges lost their target but styles remain)
-    if (annotations && !skipRevert) {
-      for (const a of annotations) {
+    if (pinveltoFeedback && !skipRevert) {
+      for (const a of pinveltoFeedback) {
         if (!a.pending_changes) continue;
-        const el = VibeElementContext.findElementBySelector(a);
+        const el = PinveltoElementContext.findElementBySelector(a);
         if (el && !clearedEls.has(el)) {
           revertPendingChanges(el, a.pending_changes);
         }
@@ -670,7 +670,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
       badges.splice(idx, 1);
     } else if (annotation?.pending_changes && !watchMode) {
       // Badge was lost but element may still have inline styles — retry selector
-      const el = VibeElementContext.findElementBySelector(annotation);
+      const el = PinveltoElementContext.findElementBySelector(annotation);
       if (el) {
         revertPendingChanges(el, annotation.pending_changes);
       }
@@ -679,7 +679,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
 
     // Re-number remaining badges (or keep eye icons in watch mode)
     badges.forEach((entry, i) => {
-      const label = entry.el.querySelector('.vibe-badge-label');
+      const label = entry.el.querySelector('.pinvelto-badge-label');
       if (!label) return;
       if (watchMode) {
         setEyeIcon(label);
@@ -693,11 +693,11 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
   function onUpdated({ id, comment, pending_changes, css }) {
     const entry = badges.find(b => b.annotation.id === id);
     if (entry) {
-      let tooltip = entry.el.querySelector('.vibe-badge-tooltip');
+      let tooltip = entry.el.querySelector('.pinvelto-badge-tooltip');
       if (comment) {
         if (!tooltip) {
           tooltip = document.createElement('div');
-          tooltip.className = 'vibe-badge-tooltip';
+          tooltip.className = 'pinvelto-badge-tooltip';
           entry.el.appendChild(tooltip);
         }
         tooltip.textContent = comment;
@@ -722,7 +722,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
       if (css && styleEntry) {
         styleEntry.styleEl.textContent = css;
       } else if (css && !styleEntry) {
-        injectStyleAnnotation({ id, css });
+        injectStyleFeedback({ id, css });
       } else if (css === null && styleEntry) {
         styleEntry.styleEl.remove();
         styleInjections.splice(styleInjections.indexOf(styleEntry), 1);
@@ -740,7 +740,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
   }
 
   function highlightElement(annotation) {
-    const el = VibeElementContext.findElementBySelector(annotation);
+    const el = PinveltoElementContext.findElementBySelector(annotation);
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     el.style.outline = '3px solid #d97757';
@@ -763,7 +763,7 @@ import { filterEligibleElementAnnotations } from './pin-discovery.js';
     return badges.some(b => b.annotation.id === annotationId);
   }
 
-const VibeBadgeManager = {
+const PinveltoBadgeManager = {
   init,
   render,
   clearAll,
@@ -774,4 +774,4 @@ const VibeBadgeManager = {
   getRenderedBadgeIds,
   hasBadge,
 };
-export default VibeBadgeManager;
+export default PinveltoBadgeManager;

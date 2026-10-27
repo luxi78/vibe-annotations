@@ -1,19 +1,19 @@
 // Small popover card anchored to target element
 // Core show/dismiss/positioning logic — panel builders live in popover-panels.js
 
-import VibeAPI from './api-bridge.js';
-import VibeElementContext from './element-context.js';
-import VibeEvents, { vibeLocationPath } from './event-bus.js';
-import VibeInspectionMode from './inspection-mode.js';
-import VibePopoverPanels from './popover-panels.js';
-import VibeShadowHost from './shadow-host.js';
+import PinveltoAPI from './api-bridge.js';
+import PinveltoElementContext from './element-context.js';
+import PinveltoEvents, { pinveltoLocationPath } from './event-bus.js';
+import PinveltoInspectionMode from './inspection-mode.js';
+import PinveltoPopoverPanels from './popover-panels.js';
+import PinveltoShadowHost from './shadow-host.js';
 
   let currentPopover = null;
   let currentTargetHighlight = null;
   let highlightRafId = null;
   let escHandler = null;
   let activeElement = null;
-  let activeExistingAnnotation = null;
+  let activeExistingFeedback = null;
   let activeOriginalText = null;
   let activeTextDirty = false;
   let activeOriginalCssText = null;
@@ -27,18 +27,18 @@ import VibeShadowHost from './shadow-host.js';
     currentGenerationId++;
   }
 
-  const P = VibePopoverPanels; // shorthand
+  const P = PinveltoPopoverPanels; // shorthand
 
-  const VIBE_IMG_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
-  const VIBE_X_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+  const PINVELTO_IMG_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+  const PINVELTO_X_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
   const ATTACH_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml', 'image/bmp', 'image/avif']);
   const ATTACH_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/bmp,image/avif';
-  const VIBE_PLUS_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>';
-  const VIBE_PAPERCLIP_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
-  const VIBE_CAMERA_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>';
-  const VIBE_VARIANTS_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
-  const VIBE_COMMENT_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-  const VIBE_DESIGN_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3"/><path d="M16 4h3a1 1 0 0 1 1 1v3"/><path d="M4 16v3a1 1 0 0 1 1 1h3"/><path d="M12 12l7.5 3-3.2 1.1-1.1 3.2z"/></svg>';
+  const PINVELTO_PLUS_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>';
+  const PINVELTO_PAPERCLIP_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+  const PINVELTO_CAMERA_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>';
+  const PINVELTO_VARIANTS_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>';
+  const PINVELTO_COMMENT_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  const PINVELTO_DESIGN_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3"/><path d="M16 4h3a1 1 0 0 1 1 1v3"/><path d="M4 16v3a1 1 0 0 1 1 1h3"/><path d="M12 12l7.5 3-3.2 1.1-1.1 3.2z"/></svg>';
 
   // Maps a pending-change property (camelCase) to its Design-accordion section, so
   // a "changed" dot can light on the right section header. Unmapped raw-CSS edits
@@ -56,21 +56,21 @@ import VibeShadowHost from './shadow-host.js';
   };
 
   function init() {
-    VibeEvents.on('inspection:elementClicked', onElementClicked);
-    VibeEvents.on('annotation:edit', onEditRequested);
-    VibeEvents.on('inspection:stop', cancelPendingGeneration);
-    VibeEvents.on('inspection:stopped', cancelPendingGeneration);
-    VibeEvents.on('popover:requestSave', () => {
+    PinveltoEvents.on('inspection:elementClicked', onElementClicked);
+    PinveltoEvents.on('Feedback:edit', onEditRequested);
+    PinveltoEvents.on('inspection:stop', cancelPendingGeneration);
+    PinveltoEvents.on('inspection:stopped', cancelPendingGeneration);
+    PinveltoEvents.on('popover:requestSave', () => {
       if (activeSaveHandler) activeSaveHandler();
     });
-    VibeEvents.on('popover:requestDismiss', ({ reEnableInspection = true } = {}) => {
+    PinveltoEvents.on('popover:requestDismiss', ({ reEnableInspection = true } = {}) => {
       dismiss(reEnableInspection);
     });
   }
 
   async function generateContextFor(element) {
     const genId = ++currentGenerationId;
-    const context = await VibeElementContext.generate(element);
+    const context = await PinveltoElementContext.generate(element);
     if (genId !== currentGenerationId) {
       return null;
     }
@@ -84,7 +84,7 @@ import VibeShadowHost from './shadow-host.js';
   }
 
   async function onEditRequested({ annotation, element }) {
-    VibeInspectionMode.tempDisable();
+    PinveltoInspectionMode.tempDisable();
     const context = await generateContextFor(element);
     if (!context) return;
     show(element, context, annotation);
@@ -102,52 +102,52 @@ import VibeShadowHost from './shadow-host.js';
 
   // --- Show popover ---
 
-  async function show(targetElement, context, existingAnnotation, clickX, clickY) {
+  async function show(targetElement, context, existingFeedback, clickX, clickY) {
     dismiss();
 
-    const root = VibeShadowHost.getRoot();
+    const root = PinveltoShadowHost.getRoot();
     if (!root) return;
 
-    const isEdit = !!existingAnnotation;
-    const isFile = VibeAPI.isFileProtocol();
+    const isEdit = !!existingFeedback;
+    const isFile = PinveltoAPI.isFileProtocol();
     const elType = P.classifyElement(targetElement);
     // Once the agent has generated variants, reopening shows the live variant
     // browser (keyed on variantsPayload to tolerate a lagging local status).
-    const isVariantsReview = !!(existingAnnotation && existingAnnotation.mode === 'variants'
-      && existingAnnotation.variantsPayload && existingAnnotation.status !== 'resolved');
+    const isVariantsReview = !!(existingFeedback && existingFeedback.mode === 'variants'
+      && existingFeedback.variantsPayload && existingFeedback.status !== 'resolved');
 
     // Target highlight — skipped for variants review so the selection rect doesn't
     // obscure the live preview of the variant being browsed.
     if (!isVariantsReview) {
       currentTargetHighlight = document.createElement('div');
-      currentTargetHighlight.className = 'vibe-target-highlight';
+      currentTargetHighlight.className = 'pinvelto-target-highlight';
       root.appendChild(currentTargetHighlight);
       positionTargetHighlight(targetElement);
     }
 
     // Anchor wrapper
     const anchor = document.createElement('div');
-    anchor.className = 'vibe-popover-anchor';
+    anchor.className = 'pinvelto-popover-anchor';
     root.appendChild(anchor);
 
     // Popover card
     const popover = document.createElement('div');
-    popover.className = 'vibe-popover';
+    popover.className = 'pinvelto-popover';
 
     if (isVariantsReview) {
-      renderVariantsReview(anchor, popover, targetElement, existingAnnotation, clickX, clickY);
+      renderVariantsReview(anchor, popover, targetElement, existingFeedback, clickX, clickY);
       return;
     }
 
     let warningHTML = '';
     if (isFile) {
-      warningHTML = `<div class="vibe-warning">${P.ICONS.warning}<span>Local file mode</span></div>`;
+      warningHTML = `<div class="pinvelto-warning">${P.ICONS.warning}<span>Local file mode</span></div>`;
     }
 
-    const pc = isEdit ? existingAnnotation.pending_changes : null;
+    const pc = isEdit ? existingFeedback.pending_changes : null;
     const s = context.styles;
 
-    // Build panel HTML via VibePopoverPanels
+    // Build panel HTML via PinveltoPopoverPanels
     const hasText = elType === 'text' || elType === 'both';
     const textParts = hasText ? P.buildTextToolbarHTML(pc, s) : null;
     const containerParts = (elType === 'container' || elType === 'both') ? P.buildContainerToolbarHTML(pc, s) : null;
@@ -163,24 +163,24 @@ import VibeShadowHost from './shadow-host.js';
 
     context._element = targetElement;
     const rawCssInitial = P.buildRawCssContent(context);
-    const hasCssRules = !!(existingAnnotation?.css);
+    const hasCssRules = !!(existingFeedback?.css);
     panelContent['raw-css'] = `
-      <div class="vibe-raw-css-section">
-        <button class="vibe-raw-css-toggle" type="button">
-          <span class="vibe-raw-css-chevron${hasCssRules ? '' : ' open'}">${P.ICONS.chevron}</span>
-          <span class="vibe-raw-css-label">Inline overrides</span>
+      <div class="pinvelto-raw-css-section">
+        <button class="pinvelto-raw-css-toggle" type="button">
+          <span class="pinvelto-raw-css-chevron${hasCssRules ? '' : ' open'}">${P.ICONS.chevron}</span>
+          <span class="pinvelto-raw-css-label">Inline overrides</span>
         </button>
-        <div class="vibe-raw-css-collapsible" style="display:${hasCssRules ? 'none' : ''}">
-          <textarea class="vibe-raw-css" spellcheck="false">${P.escapeHTML(rawCssInitial)}</textarea>
+        <div class="pinvelto-raw-css-collapsible" style="display:${hasCssRules ? 'none' : ''}">
+          <textarea class="pinvelto-raw-css" spellcheck="false">${P.escapeHTML(rawCssInitial)}</textarea>
         </div>
       </div>
-      <div class="vibe-raw-css-section">
-        <button class="vibe-raw-css-toggle" type="button">
-          <span class="vibe-raw-css-chevron${hasCssRules ? ' open' : ''}">${P.ICONS.chevron}</span>
-          <span class="vibe-raw-css-label">CSS rules <span class="vibe-raw-css-hint">:hover, ::before, @media…</span></span>
+      <div class="pinvelto-raw-css-section">
+        <button class="pinvelto-raw-css-toggle" type="button">
+          <span class="pinvelto-raw-css-chevron${hasCssRules ? ' open' : ''}">${P.ICONS.chevron}</span>
+          <span class="pinvelto-raw-css-label">CSS rules <span class="pinvelto-raw-css-hint">:hover, ::before, @media…</span></span>
         </button>
-        <div class="vibe-raw-css-collapsible" style="display:${hasCssRules ? '' : 'none'}">
-          <textarea class="vibe-css-rules" spellcheck="false" placeholder=".element:hover {\n  opacity: 0.8;\n}">${P.escapeHTML(existingAnnotation?.css || '')}</textarea>
+        <div class="pinvelto-raw-css-collapsible" style="display:${hasCssRules ? '' : 'none'}">
+          <textarea class="pinvelto-css-rules" spellcheck="false" placeholder=".element:hover {\n  opacity: 0.8;\n}">${P.escapeHTML(existingFeedback?.css || '')}</textarea>
         </div>
       </div>`;
 
@@ -190,13 +190,13 @@ import VibeShadowHost from './shadow-host.js';
     const designAccordionHTML = sections.map((sec, i) => {
       const open = i === 0;
       return `
-        <div class="vibe-design-section">
-          <button class="vibe-design-sec-toggle" type="button">
-            <span class="vibe-design-sec-chevron${open ? ' open' : ''}">${P.ICONS.chevron}</span>
-            <span class="vibe-design-sec-label">${sec.label}</span>
-            <span class="vibe-design-sec-dot" data-sec-dot="${sec.key}"></span>
+        <div class="pinvelto-design-section">
+          <button class="pinvelto-design-sec-toggle" type="button">
+            <span class="pinvelto-design-sec-chevron${open ? ' open' : ''}">${P.ICONS.chevron}</span>
+            <span class="pinvelto-design-sec-label">${sec.label}</span>
+            <span class="pinvelto-design-sec-dot" data-sec-dot="${sec.key}"></span>
           </button>
-          <div class="vibe-design-sec-body" style="display:${open ? '' : 'none'}">${panelContent[sec.key] || ''}</div>
+          <div class="pinvelto-design-sec-body" style="display:${open ? '' : 'none'}">${panelContent[sec.key] || ''}</div>
         </div>`;
     }).join('');
 
@@ -205,47 +205,47 @@ import VibeShadowHost from './shadow-host.js';
       : context.tag;
 
     popover.innerHTML = `
-      <div class="vibe-drag-handle"></div>
-      <div class="vibe-popover-title">
+      <div class="pinvelto-drag-handle"></div>
+      <div class="pinvelto-popover-title">
         <span>Editing <code>${P.escapeHTML(selectorLabel)}</code></span>
-        <button class="vibe-design-reset" type="button" title="Reset design changes">${P.ICONS.reset}</button>
+        <button class="pinvelto-design-reset" type="button" title="Reset design changes">${P.ICONS.reset}</button>
       </div>
-      <div class="vibe-mode-bar">
-        <button class="vibe-mode-tab active" data-mode="comment" type="button" title="Comment — an AI instruction">${VIBE_COMMENT_ICON}<span>Comment</span></button>
-        <button class="vibe-mode-tab" data-mode="design" type="button" title="Design edit — tweak CSS visually">${VIBE_DESIGN_ICON}<span>Design</span><span class="vibe-mode-dot"></span></button>
-        ${isEdit ? '' : `<button class="vibe-mode-tab" data-mode="variants" type="button" disabled title="Requires the MCP server">${VIBE_VARIANTS_ICON}<span>Variants</span></button>`}
+      <div class="pinvelto-mode-bar">
+        <button class="pinvelto-mode-tab active" data-mode="comment" type="button" title="Comment — an AI instruction">${PINVELTO_COMMENT_ICON}<span>Comment</span></button>
+        <button class="pinvelto-mode-tab" data-mode="design" type="button" title="Design edit — tweak CSS visually">${PINVELTO_DESIGN_ICON}<span>Design</span><span class="pinvelto-mode-dot"></span></button>
+        ${isEdit ? '' : `<button class="pinvelto-mode-tab" data-mode="variants" type="button" disabled title="Requires the MCP server">${PINVELTO_VARIANTS_ICON}<span>Variants</span></button>`}
       </div>
       ${warningHTML}
-      <div class="vibe-mode-panel" data-mode="comment">
-        <div class="vibe-input-wrap">
-          <textarea class="vibe-textarea vibe-textarea-add" placeholder="Describe the change for your AI agent…" maxlength="1000">${isEdit ? P.escapeHTML(existingAnnotation.comment) : ''}</textarea>
-          <div class="vibe-input-foot">
-            <button class="vibe-add-btn" type="button" title="Add an attachment">${VIBE_PLUS_ICON}</button>
-            <span class="vibe-kbd-hint">${P.kbdHint} to save</span>
+      <div class="pinvelto-mode-panel" data-mode="comment">
+        <div class="pinvelto-input-wrap">
+          <textarea class="pinvelto-textarea pinvelto-textarea-add" placeholder="Describe the change for your AI agent…" maxlength="1000">${isEdit ? P.escapeHTML(existingFeedback.comment) : ''}</textarea>
+          <div class="pinvelto-input-foot">
+            <button class="pinvelto-add-btn" type="button" title="Add an attachment">${PINVELTO_PLUS_ICON}</button>
+            <span class="pinvelto-kbd-hint">${P.kbdHint} to save</span>
           </div>
-          <span class="vibe-resize-grip" title="Drag to resize">
+          <span class="pinvelto-resize-grip" title="Drag to resize">
             <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M8 1L1 8M8 5L5 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
           </span>
-          <div class="vibe-add-menu" hidden>
-            <button class="vibe-add-opt" data-add="file" type="button">${VIBE_PAPERCLIP_ICON}<span>Attach file</span></button>
-            <button class="vibe-add-opt" data-add="shot" type="button">${VIBE_CAMERA_ICON}<span>Take a screenshot</span></button>
+          <div class="pinvelto-add-menu" hidden>
+            <button class="pinvelto-add-opt" data-add="file" type="button">${PINVELTO_PAPERCLIP_ICON}<span>Attach file</span></button>
+            <button class="pinvelto-add-opt" data-add="shot" type="button">${PINVELTO_CAMERA_ICON}<span>Take a screenshot</span></button>
           </div>
         </div>
-        <p class="vibe-variants-explain" hidden>Your agent builds these in your codebase, you'll preview and pick your favorite right here.</p>
-        <div class="vibe-attachments empty"></div>
-        <input type="file" accept="${ATTACH_ACCEPT}" class="vibe-attach-input" hidden multiple>
+        <p class="pinvelto-variants-explain" hidden>Your agent builds these in your codebase, you'll preview and pick your favorite right here.</p>
+        <div class="pinvelto-attachments empty"></div>
+        <input type="file" accept="${ATTACH_ACCEPT}" class="pinvelto-attach-input" hidden multiple>
       </div>
-      <div class="vibe-mode-panel vibe-design-accordion" data-mode="design" hidden>
+      <div class="pinvelto-mode-panel pinvelto-design-accordion" data-mode="design" hidden>
         ${designAccordionHTML}
       </div>
-      <div class="vibe-popover-footer">
-        <div class="vibe-footer-left">
-          ${isEdit ? `<button class="vibe-btn-icon vibe-delete-btn" title="Delete">${P.ICONS.trash}</button>` : ''}
-          <span class="vibe-viewport-info">${P.getDeviceIcon(window.innerWidth)} ${window.innerWidth}w</span>
+      <div class="pinvelto-popover-footer">
+        <div class="pinvelto-footer-left">
+          ${isEdit ? `<button class="pinvelto-btn-icon pinvelto-delete-btn" title="Delete">${P.ICONS.trash}</button>` : ''}
+          <span class="pinvelto-viewport-info">${P.getDeviceIcon(window.innerWidth)} ${window.innerWidth}w</span>
         </div>
-        <div class="vibe-footer-right">
-          <button class="vibe-btn vibe-btn-secondary vibe-cancel-btn">Cancel</button>
-          <button class="vibe-btn vibe-btn-primary vibe-save-btn">${isEdit ? 'Save' : 'Save as pointer'}</button>
+        <div class="pinvelto-footer-right">
+          <button class="pinvelto-btn pinvelto-btn-secondary pinvelto-cancel-btn">Cancel</button>
+          <button class="pinvelto-btn pinvelto-btn-primary pinvelto-save-btn">${isEdit ? 'Save' : 'Save as pointer'}</button>
         </div>
       </div>
     `;
@@ -254,18 +254,18 @@ import VibeShadowHost from './shadow-host.js';
     currentPopover = anchor;
 
     positionPopover(anchor, targetElement, clickX, clickY);
-    wireDragHandle(popover.querySelector('.vibe-drag-handle'), popover);
+    wireDragHandle(popover.querySelector('.pinvelto-drag-handle'), popover);
 
-    const textarea = popover.querySelector('.vibe-textarea');
-    const saveBtn = popover.querySelector('.vibe-save-btn');
-    const cancelBtn = popover.querySelector('.vibe-cancel-btn');
-    const deleteBtn = popover.querySelector('.vibe-delete-btn');
-    const resetBtn = popover.querySelector('.vibe-design-reset');
+    const textarea = popover.querySelector('.pinvelto-textarea');
+    const saveBtn = popover.querySelector('.pinvelto-save-btn');
+    const cancelBtn = popover.querySelector('.pinvelto-cancel-btn');
+    const deleteBtn = popover.querySelector('.pinvelto-delete-btn');
+    const resetBtn = popover.querySelector('.pinvelto-design-reset');
 
     activeSaveHandler = () => {
       if (saveBtn && !saveBtn.disabled) saveBtn.click();
     };
-    VibeEvents.emit('popover:opened');
+    PinveltoEvents.emit('popover:opened');
 
     // Auto-grow the comment field with its content, capped at 180px (then it
     // scrolls). Dragging the grip sets a manual height that sticks and turns
@@ -280,7 +280,7 @@ import VibeShadowHost from './shadow-host.js';
     textarea.addEventListener('input', autosize);
     requestAnimationFrame(autosize); // initial fit — edit mode preloads a comment
 
-    const grip = popover.querySelector('.vibe-resize-grip');
+    const grip = popover.querySelector('.pinvelto-resize-grip');
     grip.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       grip.setPointerCapture(e.pointerId);
@@ -302,7 +302,7 @@ import VibeShadowHost from './shadow-host.js';
 
     activeElement = targetElement;
     activeOriginalCssText = targetElement.style.cssText;
-    activeExistingAnnotation = existingAnnotation;
+    activeExistingFeedback = existingFeedback;
 
     // Capture the click offset within the element NOW, same frame as the click —
     // it's element-relative and scroll-invariant. Computing it later (at save) would
@@ -315,9 +315,9 @@ import VibeShadowHost from './shadow-host.js';
     }
 
     // --- Attachments (paste / pick / screenshot / clear) ---
-    const attachInput = popover.querySelector('.vibe-attach-input');
-    const attachmentsEl = popover.querySelector('.vibe-attachments');
-    const isLocal = VibeAPI.isLocalOrigin();
+    const attachInput = popover.querySelector('.pinvelto-attach-input');
+    const attachmentsEl = popover.querySelector('.pinvelto-attachments');
+    const isLocal = PinveltoAPI.isLocalOrigin();
     // For a not-yet-saved annotation we buffer blobs and upload them on save.
     const pendingAttachments = []; // { id, blob, mime, url, kind }
     let pendingAttachmentSeq = 0;
@@ -341,7 +341,7 @@ import VibeShadowHost from './shadow-host.js';
 
     function createAttachmentTile({ src, attId, pendingId, kind }) {
       const div = document.createElement('div');
-      div.className = 'vibe-att-tile';
+      div.className = 'pinvelto-att-tile';
       const label = kind === 'capture' ? 'Screenshot' : 'Image';
       div.title = `${label} — click to open`;
       if (attId != null) {
@@ -353,15 +353,15 @@ import VibeShadowHost from './shadow-host.js';
 
       if (src) {
         const img = document.createElement('img');
-        img.className = 'vibe-att-img';
+        img.className = 'pinvelto-att-img';
         img.src = src;
         img.alt = label;
         div.appendChild(img);
       } else {
         const chip = document.createElement('span');
-        chip.className = 'vibe-att-chip';
+        chip.className = 'pinvelto-att-chip';
         const iconSpan = document.createElement('span');
-        const icon = createSvgIcon(VIBE_IMG_ICON);
+        const icon = createSvgIcon(PINVELTO_IMG_ICON);
         if (icon) iconSpan.appendChild(icon);
         const textSpan = document.createElement('span');
         textSpan.textContent = label;
@@ -371,7 +371,7 @@ import VibeShadowHost from './shadow-host.js';
       }
 
       const removeBtn = document.createElement('button');
-      removeBtn.className = 'vibe-att-remove';
+      removeBtn.className = 'pinvelto-att-remove';
       removeBtn.type = 'button';
       removeBtn.title = 'Remove';
       if (attId != null) {
@@ -380,25 +380,25 @@ import VibeShadowHost from './shadow-host.js';
         removeBtn.setAttribute('data-pending-id', pendingId);
         removeBtn.setAttribute('data-pending', pendingId);
       }
-      const xIcon = createSvgIcon(VIBE_X_ICON);
+      const xIcon = createSvgIcon(PINVELTO_X_ICON);
       if (xIcon) removeBtn.appendChild(xIcon);
       div.appendChild(removeBtn);
       return div;
     }
 
     function renderAttachments() {
-      const saved = (isEdit && Array.isArray(activeExistingAnnotation?.attachments)) ? activeExistingAnnotation.attachments : [];
+      const saved = (isEdit && Array.isArray(activeExistingFeedback?.attachments)) ? activeExistingFeedback.attachments : [];
       const targetItems = [];
       saved.forEach(att => {
         const blobUrl = sessionBlobUrls.get(att.id);
-        const src = blobUrl || (isLocal ? VibeAPI.attachmentUrl(activeExistingAnnotation.id, att.id) : null);
+        const src = blobUrl || (isLocal ? PinveltoAPI.attachmentUrl(activeExistingFeedback.id, att.id) : null);
         targetItems.push({ key: `saved:${att.id}`, attId: att.id, kind: att.kind, src });
       });
       pendingAttachments.forEach(p => {
         targetItems.push({ key: `pending:${p.id}`, pendingId: p.id, kind: p.kind || 'user', src: p.url });
       });
 
-      const existingTiles = Array.from(attachmentsEl.querySelectorAll('.vibe-att-tile'));
+      const existingTiles = Array.from(attachmentsEl.querySelectorAll('.pinvelto-att-tile'));
       const targetKeys = new Set(targetItems.map(item => item.key));
 
       // Remove tiles no longer present
@@ -415,9 +415,9 @@ import VibeShadowHost from './shadow-host.js';
       let previousNode = null;
       for (const item of targetItems) {
         let tile = item.attId != null
-          ? attachmentsEl.querySelector(`.vibe-att-tile[data-att="${item.attId}"]`)
-          : (attachmentsEl.querySelector(`.vibe-att-tile[data-pending-id="${item.pendingId}"]`)
-             || attachmentsEl.querySelector(`.vibe-att-tile[data-pending="${item.pendingId}"]`));
+          ? attachmentsEl.querySelector(`.pinvelto-att-tile[data-att="${item.attId}"]`)
+          : (attachmentsEl.querySelector(`.pinvelto-att-tile[data-pending-id="${item.pendingId}"]`)
+             || attachmentsEl.querySelector(`.pinvelto-att-tile[data-pending="${item.pendingId}"]`));
 
         if (!tile) {
           tile = createAttachmentTile(item);
@@ -452,11 +452,11 @@ import VibeShadowHost from './shadow-host.js';
 
     async function handleAttach(blob, mime, kind = 'user') {
       if (!blob || !ATTACH_MIMES.has(mime)) return;
-      if (isEdit && activeExistingAnnotation?.id) {
+      if (isEdit && activeExistingFeedback?.id) {
         try {
-          const att = await VibeAPI.uploadUserImage(activeExistingAnnotation.id, blob, mime, kind);
+          const att = await PinveltoAPI.uploadUserImage(activeExistingFeedback.id, blob, mime, kind);
           sessionBlobUrls.set(att.id, URL.createObjectURL(blob));
-          const cur = activeExistingAnnotation.attachments || [];
+          const cur = activeExistingFeedback.attachments || [];
           if (kind === 'capture') {
             const priorCapture = cur.find(a => a.kind === 'capture');
             if (priorCapture) {
@@ -468,12 +468,12 @@ import VibeShadowHost from './shadow-host.js';
             }
           }
           // A capture is singular (server replaces the prior one) — mirror that locally.
-          activeExistingAnnotation.attachments = kind === 'capture'
+          activeExistingFeedback.attachments = kind === 'capture'
             ? [att, ...cur.filter(a => a.kind !== 'capture')]
             : [...cur, att];
           renderAttachments();
           markAttachmentsChanged();
-        } catch (err) { console.warn('[Vibe] attach failed:', err); }
+        } catch (err) { console.warn('[Pinvelto] attach failed:', err); }
       } else {
         const id = `pending_${Date.now()}_${++pendingAttachmentSeq}`;
         const newUrl = URL.createObjectURL(blob);
@@ -494,8 +494,8 @@ import VibeShadowHost from './shadow-host.js';
     }
 
     // "+" menu: Attach file / Take a screenshot. The "+" rotates into an "×" open.
-    const addBtn = popover.querySelector('.vibe-add-btn');
-    const addMenu = popover.querySelector('.vibe-add-menu');
+    const addBtn = popover.querySelector('.pinvelto-add-btn');
+    const addMenu = popover.querySelector('.pinvelto-add-menu');
     const closeAddMenu = () => { addMenu.hidden = true; addBtn.classList.remove('open'); };
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -526,7 +526,7 @@ import VibeShadowHost from './shadow-host.js';
       if (capturing) return;
       capturing = true;
       try {
-        const granted = await VibeAPI.requestScreenshotPermission();
+        const granted = await PinveltoAPI.requestScreenshotPermission();
         if (!granted) return;
         const r = targetElement.getBoundingClientRect();
         const PAD = 16;
@@ -539,12 +539,12 @@ import VibeShadowHost from './shadow-host.js';
         const dpr = window.devicePixelRatio || 1;
         const crop = { sx: Math.round(left * dpr), sy: Math.round(top * dpr), sw: Math.round(cw * dpr), sh: Math.round(ch * dpr) };
 
-        const host = VibeShadowHost.getHost();
+        const host = PinveltoShadowHost.getHost();
         if (host) host.style.visibility = 'hidden';
         await new Promise(rf => requestAnimationFrame(() => rf()));
         let fullDataUrl;
         try {
-          fullDataUrl = await VibeAPI.captureVisibleTab();
+          fullDataUrl = await PinveltoAPI.captureVisibleTab();
         } finally {
           if (host) host.style.visibility = '';
         }
@@ -561,7 +561,7 @@ import VibeShadowHost from './shadow-host.js';
         const webp = await new Promise(res => canvas.toBlob(res, 'image/webp', 0.85));
         if (webp) await handleAttach(webp, 'image/webp', 'capture');
       } catch (err) {
-        console.warn('[Vibe] screenshot failed:', err);
+        console.warn('[Pinvelto] screenshot failed:', err);
       } finally {
         capturing = false;
       }
@@ -576,27 +576,27 @@ import VibeShadowHost from './shadow-host.js';
       }
     });
     attachmentsEl.addEventListener('click', async (e) => {
-      const removeBtn = e.target.closest('.vibe-att-remove');
+      const removeBtn = e.target.closest('.pinvelto-att-remove');
       if (removeBtn) {
         e.stopPropagation();
-        const root = VibeShadowHost.getRoot();
+        const root = PinveltoShadowHost.getRoot();
         const activeEl = root?.activeElement || (typeof document !== 'undefined' ? document.activeElement : null);
         const hadFocus = !!(activeEl && (activeEl === removeBtn || (typeof removeBtn.contains === 'function' && removeBtn.contains(activeEl))));
 
         let fallbackFocusTarget = null;
         if (hadFocus) {
-          const allTiles = Array.from(attachmentsEl.querySelectorAll('.vibe-att-tile'));
-          const currentTile = removeBtn.closest('.vibe-att-tile');
+          const allTiles = Array.from(attachmentsEl.querySelectorAll('.pinvelto-att-tile'));
+          const currentTile = removeBtn.closest('.pinvelto-att-tile');
           const currentTileIdx = allTiles.indexOf(currentTile);
           if (currentTileIdx !== -1) {
             const nextTile = allTiles[currentTileIdx + 1];
             const prevTile = allTiles[currentTileIdx - 1];
             if (nextTile) {
-              fallbackFocusTarget = nextTile.querySelector('.vibe-att-remove');
+              fallbackFocusTarget = nextTile.querySelector('.pinvelto-att-remove');
             } else if (prevTile) {
-              fallbackFocusTarget = prevTile.querySelector('.vibe-att-remove');
+              fallbackFocusTarget = prevTile.querySelector('.pinvelto-att-remove');
             } else {
-              fallbackFocusTarget = popover.querySelector('.vibe-add-btn');
+              fallbackFocusTarget = popover.querySelector('.pinvelto-add-btn');
             }
           }
         }
@@ -604,10 +604,10 @@ import VibeShadowHost from './shadow-host.js';
         const attId = removeBtn.getAttribute('data-att');
         const pendingId = removeBtn.getAttribute('data-pending-id') || removeBtn.getAttribute('data-pending');
         if (attId) {
-          try { await VibeAPI.removeAttachment(activeExistingAnnotation.id, attId); } catch (err) { console.warn('[Vibe] remove failed:', err); }
+          try { await PinveltoAPI.removeAttachment(activeExistingFeedback.id, attId); } catch (err) { console.warn('[Pinvelto] remove failed:', err); }
           const url = sessionBlobUrls.get(attId);
           if (url) { URL.revokeObjectURL(url); sessionBlobUrls.delete(attId); }
-          activeExistingAnnotation.attachments = (activeExistingAnnotation.attachments || []).filter(a => a.id !== attId);
+          activeExistingFeedback.attachments = (activeExistingFeedback.attachments || []).filter(a => a.id !== attId);
         } else if (pendingId != null) {
           const idx = pendingAttachments.findIndex(p => p.id === pendingId);
           if (idx !== -1) {
@@ -621,7 +621,7 @@ import VibeShadowHost from './shadow-host.js';
         if (hadFocus) {
           const targetToFocus = (fallbackFocusTarget && (attachmentsEl.contains(fallbackFocusTarget) || popover.contains(fallbackFocusTarget)))
             ? fallbackFocusTarget
-            : (attachmentsEl.querySelector('.vibe-att-remove') || popover.querySelector('.vibe-add-btn'));
+            : (attachmentsEl.querySelector('.pinvelto-att-remove') || popover.querySelector('.pinvelto-add-btn'));
           if (targetToFocus && typeof targetToFocus.focus === 'function') {
             targetToFocus.focus();
           }
@@ -629,12 +629,12 @@ import VibeShadowHost from './shadow-host.js';
         return;
       }
       // Click a tile → open the full image in a new tab.
-      const tile = e.target.closest('.vibe-att-tile');
+      const tile = e.target.closest('.pinvelto-att-tile');
       if (!tile) return;
       const attId = tile.getAttribute('data-att');
       const pendingId = tile.getAttribute('data-pending-id') || tile.getAttribute('data-pending');
       if (attId) {
-        const url = VibeAPI.attachmentUrl(activeExistingAnnotation.id, attId);
+        const url = PinveltoAPI.attachmentUrl(activeExistingFeedback.id, attId);
         if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
           window.open(url, '_blank', 'noopener');
         }
@@ -647,8 +647,8 @@ import VibeShadowHost from './shadow-host.js';
     });
     attachmentsEl.addEventListener('error', (e) => {
       const img = e.target;
-      if (img.classList && img.classList.contains('vibe-att-img')) {
-        img.closest('.vibe-att-tile')?.classList.add('vibe-att-unavailable');
+      if (img.classList && img.classList.contains('pinvelto-att-img')) {
+        img.closest('.pinvelto-att-tile')?.classList.add('pinvelto-att-unavailable');
       }
     }, true);
     renderAttachments();
@@ -658,19 +658,19 @@ import VibeShadowHost from './shadow-host.js';
 
     // --- Mode bar (Comment / Design / Variants) ---
     // Comment + Design are combinable views on ONE annotation (both save together).
-    // Variants is a distinct save path (mode:"variants") — new annotations only,
+    // Variants is a distinct save path (mode:"variants") — new pinveltoFeedback only,
     // gated on the MCP server being connected.
     let activeMode = 'comment';
-    const modeTabs = popover.querySelectorAll('.vibe-mode-tab');
-    const instructionPanel = popover.querySelector('.vibe-mode-panel[data-mode="comment"]');
-    const designPanel = popover.querySelector('.vibe-mode-panel[data-mode="design"]');
-    const variantsExplain = popover.querySelector('.vibe-variants-explain');
+    const modeTabs = popover.querySelectorAll('.pinvelto-mode-tab');
+    const instructionPanel = popover.querySelector('.pinvelto-mode-panel[data-mode="comment"]');
+    const designPanel = popover.querySelector('.pinvelto-mode-panel[data-mode="design"]');
+    const variantsExplain = popover.querySelector('.pinvelto-variants-explain');
 
-    const variantsTab = popover.querySelector('.vibe-mode-tab[data-mode="variants"]');
+    const variantsTab = popover.querySelector('.pinvelto-mode-tab[data-mode="variants"]');
     if (variantsTab) {
       // User just opened the popover — a stale "offline" would wrongly keep the
       // variants tab disabled, so probe live.
-      VibeAPI.checkServerStatus({ fresh: true }).then(s => {
+      PinveltoAPI.checkServerStatus({ fresh: true }).then(s => {
         if (s?.connected) {
           variantsTab.disabled = false;
           variantsTab.title = 'Ask your agent to generate several coexisting design variants';
@@ -681,9 +681,9 @@ import VibeShadowHost from './shadow-host.js';
     // Lazy touch-ups when a design section reveals: keep the content input sized and
     // the raw-CSS textarea fresh (mirrors the old per-tab behavior).
     function refreshDesignSection(body) {
-      const contentInput = body.querySelector('.vibe-content-input');
+      const contentInput = body.querySelector('.pinvelto-content-input');
       if (contentInput) requestAnimationFrame(() => P.autoResizeContentInput(contentInput));
-      const rawTA = body.querySelector('.vibe-raw-css');
+      const rawTA = body.querySelector('.pinvelto-raw-css');
       if (rawTA && !rawTA._userEdited) rawTA.value = P.buildRawCssContent(context);
     }
 
@@ -700,7 +700,7 @@ import VibeShadowHost from './shadow-host.js';
         ? 'What variants do you want?'
         : 'Describe the change for your AI agent…';
       if (isDesign) {
-        popover.querySelectorAll('.vibe-design-sec-body').forEach(body => {
+        popover.querySelectorAll('.pinvelto-design-sec-body').forEach(body => {
           if (body.style.display !== 'none') refreshDesignSection(body);
         });
       } else {
@@ -715,15 +715,15 @@ import VibeShadowHost from './shadow-host.js';
     // Design accordion — single-open: opening a section collapses the others, so the
     // active panel's content (e.g. the CSS textareas) is always fully visible near the
     // top instead of buried below other expanded sections.
-    const designSections = popover.querySelectorAll('.vibe-design-section');
-    popover.querySelectorAll('.vibe-design-sec-toggle').forEach(btn => {
+    const designSections = popover.querySelectorAll('.pinvelto-design-section');
+    popover.querySelectorAll('.pinvelto-design-sec-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
         const section = btn.parentElement;
-        const body = section.querySelector('.vibe-design-sec-body');
+        const body = section.querySelector('.pinvelto-design-sec-body');
         const willOpen = body.style.display === 'none';
         designSections.forEach(sec => {
-          const b = sec.querySelector('.vibe-design-sec-body');
-          const c = sec.querySelector('.vibe-design-sec-chevron');
+          const b = sec.querySelector('.pinvelto-design-sec-body');
+          const c = sec.querySelector('.pinvelto-design-sec-chevron');
           const open = sec === section && willOpen;
           if (b) b.style.display = open ? '' : 'none';
           if (c) c.classList.toggle('open', open);
@@ -736,11 +736,11 @@ import VibeShadowHost from './shadow-host.js';
     });
 
     // Collapsible toggles inside the CSS section (Inline overrides / CSS rules)
-    popover.querySelectorAll('.vibe-raw-css-toggle').forEach(btn => {
+    popover.querySelectorAll('.pinvelto-raw-css-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
-        const section = btn.closest('.vibe-raw-css-section');
-        const body = section.querySelector('.vibe-raw-css-collapsible');
-        const chevron = btn.querySelector('.vibe-raw-css-chevron');
+        const section = btn.closest('.pinvelto-raw-css-section');
+        const body = section.querySelector('.pinvelto-raw-css-collapsible');
+        const chevron = btn.querySelector('.pinvelto-raw-css-chevron');
         const isOpen = body.style.display !== 'none';
         body.style.display = isOpen ? 'none' : '';
         chevron.classList.toggle('open', !isOpen);
@@ -748,7 +748,7 @@ import VibeShadowHost from './shadow-host.js';
     });
 
     // Raw CSS panel wiring
-    const rawCssTextarea = popover.querySelector('.vibe-raw-css');
+    const rawCssTextarea = popover.querySelector('.pinvelto-raw-css');
     const rawCssOriginals = new Map();
     rawCssInitial.split('\n').forEach(line => {
       const m = line.match(/^\s*([\w-]+)\s*:\s*(.+?)\s*;?\s*$/);
@@ -778,13 +778,13 @@ import VibeShadowHost from './shadow-host.js';
     }
 
     // CSS Rules panel wiring
-    const cssRulesTextarea = popover.querySelector('.vibe-css-rules');
-    const cssRulesOriginal = existingAnnotation?.css || '';
+    const cssRulesTextarea = popover.querySelector('.pinvelto-css-rules');
+    const cssRulesOriginal = existingFeedback?.css || '';
     let cssRulesPreviewStyle = null;
 
     if (cssRulesTextarea) {
       cssRulesPreviewStyle = document.createElement('style');
-      cssRulesPreviewStyle.setAttribute('data-vibe-css-preview', 'true');
+      cssRulesPreviewStyle.setAttribute('data-pinvelto-css-preview', 'true');
       if (cssRulesOriginal) cssRulesPreviewStyle.textContent = cssRulesOriginal;
       document.head.appendChild(cssRulesPreviewStyle);
       activeCssRulesStyleEl = cssRulesPreviewStyle;
@@ -797,7 +797,7 @@ import VibeShadowHost from './shadow-host.js';
       });
     }
 
-    // Wire design panels via VibePopoverPanels
+    // Wire design panels via PinveltoPopoverPanels
     const bpcFns = [];
     if (hasText) {
       bpcFns.push(P.wireContentToolbar(popover, targetElement, pc, resetBtn));
@@ -882,10 +882,10 @@ import VibeShadowHost from './shadow-host.js';
         active.add(sec || 'raw-css');
       }
       if (rawCssTextarea?._userEdited || cssRulesTextarea?._userEdited) active.add('raw-css');
-      popover.querySelectorAll('.vibe-design-sec-dot').forEach(dot => {
+      popover.querySelectorAll('.pinvelto-design-sec-dot').forEach(dot => {
         dot.classList.toggle('on', active.has(dot.getAttribute('data-sec-dot')));
       });
-      const designDot = popover.querySelector('.vibe-mode-tab[data-mode="design"] .vibe-mode-dot');
+      const designDot = popover.querySelector('.pinvelto-mode-tab[data-mode="design"] .pinvelto-mode-dot');
       if (designDot) designDot.classList.toggle('on', active.size > 0);
     }
 
@@ -902,10 +902,10 @@ import VibeShadowHost from './shadow-host.js';
       const hasDesignChanges = !!buildPendingChanges();
       // An image attachment (pending/added) or a screenshot that will be captured
       // on save counts as content — the annotation isn't just a bare pointer.
-      const hasImage = pendingAttachments.length > 0 || VibeAPI.isScreenshotEnabled();
+      const hasImage = pendingAttachments.length > 0 || PinveltoAPI.isScreenshotEnabled();
       if (isEdit) {
-        const commentChanged = text !== (existingAnnotation.comment || '');
-        const savedPC = existingAnnotation.pending_changes || null;
+        const commentChanged = text !== (existingFeedback.comment || '');
+        const savedPC = existingFeedback.pending_changes || null;
         const designChanged = JSON.stringify(buildPendingChanges()) !== JSON.stringify(savedPC);
         const cssRulesVal = cssRulesTextarea ? cssRulesTextarea.value : '';
         const cssRulesChanged = cssRulesVal !== cssRulesOriginal;
@@ -913,7 +913,7 @@ import VibeShadowHost from './shadow-host.js';
         saveBtn.textContent = 'Save';
       } else {
         saveBtn.disabled = false;
-        saveBtn.textContent = (text || hasDesignChanges || hasImage) ? 'Save annotation' : 'Save as pointer';
+        saveBtn.textContent = (text || hasDesignChanges || hasImage) ? 'Save Feedback' : 'Save as pointer';
       }
     };
     textarea.addEventListener('input', updateSave);
@@ -943,7 +943,7 @@ import VibeShadowHost from './shadow-host.js';
     textarea.addEventListener('pointerdown', () => textarea.focus());
 
     // Cancel / close
-    const close = () => dismiss(VibeInspectionMode.isActive());
+    const close = () => dismiss(PinveltoInspectionMode.isActive());
     cancelBtn.addEventListener('click', close);
     anchor.addEventListener('pointerdown', (e) => {
       if (e.target === anchor) close();
@@ -967,22 +967,22 @@ import VibeShadowHost from './shadow-host.js';
     // Delete
     if (deleteBtn && isEdit) {
       deleteBtn.addEventListener('click', async () => {
-        const skip = await VibeAPI.getSkipDeleteConfirm();
+        const skip = await PinveltoAPI.getSkipDeleteConfirm();
         if (skip) {
-          await VibeAPI.deleteAnnotation(existingAnnotation.id);
-          VibeEvents.emit('annotation:deleted', { id: existingAnnotation.id });
-          activeExistingAnnotation = null;
+          await PinveltoAPI.deleteFeedback(existingFeedback.id);
+          PinveltoEvents.emit('Feedback:deleted', { id: existingFeedback.id });
+          activeExistingFeedback = null;
           activeOriginalCssText = null;
-          dismiss(VibeInspectionMode.isActive());
+          dismiss(PinveltoInspectionMode.isActive());
           return;
         }
-        const confirmed = await showConfirm(root, 'Delete annotation?', 'This cannot be undone.');
+        const confirmed = await showConfirm(root, 'Delete Feedback?', 'This cannot be undone.');
         if (confirmed) {
-          await VibeAPI.deleteAnnotation(existingAnnotation.id);
-          VibeEvents.emit('annotation:deleted', { id: existingAnnotation.id, annotation: existingAnnotation });
-          activeExistingAnnotation = null;
+          await PinveltoAPI.deleteFeedback(existingFeedback.id);
+          PinveltoEvents.emit('Feedback:deleted', { id: existingFeedback.id, annotation: existingFeedback });
+          activeExistingFeedback = null;
           activeOriginalCssText = null;
-          dismiss(VibeInspectionMode.isActive());
+          dismiss(PinveltoInspectionMode.isActive());
         }
       });
     }
@@ -1014,31 +1014,31 @@ import VibeShadowHost from './shadow-host.js';
 
         if (isEdit) {
           const updates = { comment, updated_at: new Date().toISOString(), pending_changes: pendingChanges, css: cssField };
-          await VibeAPI.updateAnnotation(existingAnnotation.id, updates);
-          VibeEvents.emit('annotation:updated', { id: existingAnnotation.id, comment, pending_changes: pendingChanges, css: cssField });
+          await PinveltoAPI.updateFeedback(existingFeedback.id, updates);
+          PinveltoEvents.emit('Feedback:updated', { id: existingFeedback.id, comment, pending_changes: pendingChanges, css: cssField });
         } else {
-          const annotation = buildAnnotation(context, comment, pendingChanges);
+          const annotation = buildFeedback(context, comment, pendingChanges);
           if (isVariants) annotation.mode = 'variants';
           annotation.selector_preview = getElementOpenTagPreview(targetElement);
           annotation.element_context.id = targetElement.id || null;
           annotation.element_context.role = targetElement.getAttribute('role') || null;
           if (cssField) annotation.css = cssField;
           if (savedBadgeOffset) annotation.badge_offset = savedBadgeOffset;
-          await VibeAPI.saveAnnotation(annotation);
+          await PinveltoAPI.saveFeedback(annotation);
           // Upload any images attached before the annotation existed on the server.
           if (activePendingAttachments && activePendingAttachments.length) {
             for (const p of activePendingAttachments) {
-              VibeAPI.uploadUserImage(annotation.id, p.blob, p.mime, p.kind || 'user').catch(() => {});
+              PinveltoAPI.uploadUserImage(annotation.id, p.blob, p.mime, p.kind || 'user').catch(() => {});
             }
           }
-          VibeEvents.emit('annotation:saved', { annotation, element: targetElement });
+          PinveltoEvents.emit('Feedback:saved', { annotation, element: targetElement });
         }
 
-        dismiss(VibeInspectionMode.isActive(), true);
+        dismiss(PinveltoInspectionMode.isActive(), true);
       } catch (err) {
         saving = false;
         saveBtn.disabled = false;
-        console.warn('[Vibe] Save failed:', err);
+        console.warn('[Pinvelto] Save failed:', err);
       }
     }
 
@@ -1051,64 +1051,64 @@ import VibeShadowHost from './shadow-host.js';
   function renderVariantsReview(anchor, popover, targetElement, annotation, clickX, clickY) {
     const payload = annotation.variantsPayload || {};
     const variants = Array.isArray(payload.variants) ? payload.variants : [];
-    const attribute = payload.attribute || 'data-vibe-active';
+    const attribute = payload.attribute || 'data-pinvelto-active';
     const container = payload.container ? document.querySelector(payload.container) : null;
     let chosenValue = annotation.chosenVariant != null ? String(annotation.chosenVariant) : null;
     const title = P.escapeHTML(annotation.comment || 'Variants');
 
-    const close = () => dismiss(VibeInspectionMode.isActive());
+    const close = () => dismiss(PinveltoInspectionMode.isActive());
 
     if (!container || !variants.length) {
       // Container not on this page (wrong route, not reloaded, or scaffolding gone).
       popover.innerHTML = `
-        <div class="vibe-drag-handle"></div>
-        <div class="vibe-popover-title"><span>${title}</span></div>
-        <div class="vibe-variants-review">
-          <p class="vibe-variants-warn">Variants not detected on this page — reload the page, or check you're on the route where they were generated.</p>
+        <div class="pinvelto-drag-handle"></div>
+        <div class="pinvelto-popover-title"><span>${title}</span></div>
+        <div class="pinvelto-variants-review">
+          <p class="pinvelto-variants-warn">Variants not detected on this page — reload the page, or check you're on the route where they were generated.</p>
         </div>
-        <div class="vibe-popover-footer"><div class="vibe-footer-left"></div><div class="vibe-footer-right"><button class="vibe-btn vibe-btn-secondary vibe-cancel-btn">Close</button></div></div>
+        <div class="pinvelto-popover-footer"><div class="pinvelto-footer-left"></div><div class="pinvelto-footer-right"><button class="pinvelto-btn pinvelto-btn-secondary pinvelto-cancel-btn">Close</button></div></div>
       `;
       anchor.appendChild(popover);
       currentPopover = anchor;
       positionPopover(anchor, targetElement, clickX, clickY);
-      wireDragHandle(popover.querySelector('.vibe-drag-handle'), popover);
-      popover.querySelector('.vibe-cancel-btn').addEventListener('click', close);
+      wireDragHandle(popover.querySelector('.pinvelto-drag-handle'), popover);
+      popover.querySelector('.pinvelto-cancel-btn').addEventListener('click', close);
       anchor.addEventListener('pointerdown', (e) => { if (e.target === anchor) close(); });
       escHandler = (e) => { if (e.key === 'Escape') close(); };
       bindPopoverKeyListeners(anchor, escHandler);
       activeSaveHandler = null;
-      VibeEvents.emit('popover:opened');
+      PinveltoEvents.emit('popover:opened');
       return;
     }
 
     // Restore the chosen variant into the live preview on open (the code hardcodes
-    // data-vibe-active="1", so the page won't otherwise reflect a prior choice).
+    // data-pinvelto-active="1", so the page won't otherwise reflect a prior choice).
     if (chosenValue) {
       container.setAttribute(attribute, chosenValue);
-      VibeEvents.emit('variants:switched', { id: annotation.id, variant: chosenValue });
+      PinveltoEvents.emit('variants:switched', { id: annotation.id, variant: chosenValue });
     }
     const current = chosenValue || container.getAttribute(attribute) || String(variants[0].value);
     const rows = variants.map(v => {
       const val = P.escapeHTML(String(v.value));
       const on = String(v.value) === String(current);
-      return `<label class="vibe-variant-row${on ? ' active' : ''}">
-        <input type="radio" name="vibe-variant" value="${val}"${on ? ' checked' : ''}>
+      return `<label class="pinvelto-variant-row${on ? ' active' : ''}">
+        <input type="radio" name="pinvelto-variant" value="${val}"${on ? ' checked' : ''}>
         <span>${P.escapeHTML(v.name || String(v.value))}</span>
       </label>`;
     }).join('');
 
     popover.innerHTML = `
-      <div class="vibe-drag-handle"></div>
-      <div class="vibe-popover-title"><span>${title}</span></div>
-      <div class="vibe-variants-review">
-        <p class="vibe-variants-hint">${chosenValue != null ? 'Chosen — now ask your agent to finalize.' : 'Pick a variant to preview it live in the page.'}</p>
-        <div class="vibe-variant-list">${rows}</div>
+      <div class="pinvelto-drag-handle"></div>
+      <div class="pinvelto-popover-title"><span>${title}</span></div>
+      <div class="pinvelto-variants-review">
+        <p class="pinvelto-variants-hint">${chosenValue != null ? 'Chosen — now ask your agent to finalize.' : 'Pick a variant to preview it live in the page.'}</p>
+        <div class="pinvelto-variant-list">${rows}</div>
       </div>
-      <div class="vibe-popover-footer">
-        <div class="vibe-footer-left"><button class="vibe-btn-icon vibe-variants-delete" title="Discard variants">${P.ICONS.trash}</button></div>
-        <div class="vibe-footer-right">
-          <button class="vibe-btn vibe-btn-secondary vibe-cancel-btn">Close</button>
-          <button class="vibe-btn vibe-btn-primary vibe-variants-choose"${chosenValue != null ? ' disabled' : ''}>${chosenValue != null ? 'Chosen ✓' : 'Choose this variant'}</button>
+      <div class="pinvelto-popover-footer">
+        <div class="pinvelto-footer-left"><button class="pinvelto-btn-icon pinvelto-variants-delete" title="Discard variants">${P.ICONS.trash}</button></div>
+        <div class="pinvelto-footer-right">
+          <button class="pinvelto-btn pinvelto-btn-secondary pinvelto-cancel-btn">Close</button>
+          <button class="pinvelto-btn pinvelto-btn-primary pinvelto-variants-choose"${chosenValue != null ? ' disabled' : ''}>${chosenValue != null ? 'Chosen ✓' : 'Choose this variant'}</button>
         </div>
       </div>
     `;
@@ -1125,9 +1125,9 @@ import VibeShadowHost from './shadow-host.js';
       posEl = container.querySelector(`:scope > [data-variant="${esc}"]`) || container.querySelector(':scope > [data-variant]');
     } catch { /* ignore */ }
     positionPopover(anchor, posEl || targetElement, clickX, clickY);
-    wireDragHandle(popover.querySelector('.vibe-drag-handle'), popover);
+    wireDragHandle(popover.querySelector('.pinvelto-drag-handle'), popover);
 
-    popover.querySelector('.vibe-cancel-btn').addEventListener('click', close);
+    popover.querySelector('.pinvelto-cancel-btn').addEventListener('click', close);
     anchor.addEventListener('pointerdown', (e) => { if (e.target === anchor) close(); });
     escHandler = (e) => {
       if (e.key === 'Escape') {
@@ -1141,18 +1141,18 @@ import VibeShadowHost from './shadow-host.js';
     };
     bindPopoverKeyListeners(anchor, escHandler);
 
-    const chooseBtn = popover.querySelector('.vibe-variants-choose');
-    const hint = popover.querySelector('.vibe-variants-hint');
+    const chooseBtn = popover.querySelector('.pinvelto-variants-choose');
+    const hint = popover.querySelector('.pinvelto-variants-hint');
 
     activeSaveHandler = () => {
       if (chooseBtn && !chooseBtn.disabled) chooseBtn.click();
     };
-    VibeEvents.emit('popover:opened');
+    PinveltoEvents.emit('popover:opened');
 
     // The CTA reflects whether the selected radio matches the persisted choice:
     // same → "Chosen ✓" (disabled); different (or none yet) → an actionable button.
     function refreshChoose() {
-      const selected = popover.querySelector('input[name="vibe-variant"]:checked')?.value;
+      const selected = popover.querySelector('input[name="pinvelto-variant"]:checked')?.value;
       const isSel = chosenValue != null && String(selected) === chosenValue;
       chooseBtn.textContent = isSel ? 'Chosen ✓' : (chosenValue != null ? 'Update selection' : 'Choose this variant');
       chooseBtn.disabled = isSel;
@@ -1162,25 +1162,25 @@ import VibeShadowHost from './shadow-host.js';
     }
 
     // Radio → flip the single attribute (THE ONLY DOM write) + refresh the CTA.
-    popover.querySelectorAll('input[name="vibe-variant"]').forEach(input => {
+    popover.querySelectorAll('input[name="pinvelto-variant"]').forEach(input => {
       input.addEventListener('change', () => {
         container.setAttribute(attribute, input.value);
-        popover.querySelectorAll('.vibe-variant-row').forEach(r => r.classList.toggle('active', r.contains(input)));
-        VibeEvents.emit('variants:switched', { id: annotation.id, variant: input.value });
+        popover.querySelectorAll('.pinvelto-variant-row').forEach(r => r.classList.toggle('active', r.contains(input)));
+        PinveltoEvents.emit('variants:switched', { id: annotation.id, variant: input.value });
         refreshChoose();
       });
     });
 
     // Choose / update → persist chosenVariant + status:variant-chosen.
     chooseBtn.addEventListener('click', async () => {
-      const active = popover.querySelector('input[name="vibe-variant"]:checked')?.value
+      const active = popover.querySelector('input[name="pinvelto-variant"]:checked')?.value
         || container.getAttribute(attribute) || String(variants[0].value);
       try {
-        await VibeAPI.updateAnnotation(annotation.id, { chosenVariant: active, status: 'variant-chosen' });
-        VibeAPI.forceSync(); // push to server so the agent can finalize right away
+        await PinveltoAPI.updateFeedback(annotation.id, { chosenVariant: active, status: 'variant-chosen' });
+        PinveltoAPI.forceSync(); // push to server so the agent can finalize right away
         chosenValue = String(active);
         refreshChoose();
-      } catch (err) { console.warn('[Vibe] choose variant failed:', err); }
+      } catch (err) { console.warn('[Pinvelto] choose variant failed:', err); }
     });
 
     // Discard → mark variants-discarded (NOT a hard delete). A plain delete
@@ -1189,15 +1189,15 @@ import VibeShadowHost from './shadow-host.js';
     // agent still sees it (with cleanup instructions) on a normal read; the badge
     // is removed from view via annotation:deleted. Also revert the live preview to
     // the original (variant 1) so the page no longer shows the abandoned choice.
-    popover.querySelector('.vibe-variants-delete').addEventListener('click', async () => {
+    popover.querySelector('.pinvelto-variants-delete').addEventListener('click', async () => {
       const original = String(variants[0].value);
       container.setAttribute(attribute, original);
-      VibeEvents.emit('variants:switched', { id: annotation.id, variant: original });
+      PinveltoEvents.emit('variants:switched', { id: annotation.id, variant: original });
       try {
-        await VibeAPI.updateAnnotation(annotation.id, { status: 'variants-discarded' });
-        VibeAPI.forceSync();
+        await PinveltoAPI.updateFeedback(annotation.id, { status: 'variants-discarded' });
+        PinveltoAPI.forceSync();
       } catch { /* ignore */ }
-      VibeEvents.emit('annotation:deleted', { id: annotation.id });
+      PinveltoEvents.emit('Feedback:deleted', { id: annotation.id });
       close();
     });
   }
@@ -1214,7 +1214,7 @@ import VibeShadowHost from './shadow-host.js';
       if (activeTextDirty && activeOriginalText !== null) {
         activeElement.textContent = activeOriginalText;
       }
-      const apc = activeExistingAnnotation?.pending_changes;
+      const apc = activeExistingFeedback?.pending_changes;
       if (apc) {
         for (const prop of P.ALL_DESIGN_PROPS) {
           if (apc[prop]) activeElement.style[prop] = apc[prop].value;
@@ -1236,7 +1236,7 @@ import VibeShadowHost from './shadow-host.js';
     stopHighlightRAF();
     if (currentTargetHighlight) { currentTargetHighlight.remove(); currentTargetHighlight = null; }
     activeElement = null;
-    activeExistingAnnotation = null;
+    activeExistingFeedback = null;
     activeOriginalText = null;
     activeTextDirty = false;
     activeOriginalCssText = null;
@@ -1256,10 +1256,10 @@ import VibeShadowHost from './shadow-host.js';
       }
       activePendingAttachments = null;
     }
-    const actuallyReEnable = !!(reEnableInspection && VibeInspectionMode.isActive());
-    if (hadPopover && !saved) VibeEvents.emit('popover:cancelled');
-    if (hadPopover) VibeEvents.emit('popover:dismissed', { reEnableInspection: actuallyReEnable, saved });
-    if (actuallyReEnable) VibeInspectionMode.reEnable();
+    const actuallyReEnable = !!(reEnableInspection && PinveltoInspectionMode.isActive());
+    if (hadPopover && !saved) PinveltoEvents.emit('popover:cancelled');
+    if (hadPopover) PinveltoEvents.emit('popover:dismissed', { reEnableInspection: actuallyReEnable, saved });
+    if (actuallyReEnable) PinveltoInspectionMode.reEnable();
   }
 
   // --- Drag handle ---
@@ -1297,7 +1297,7 @@ import VibeShadowHost from './shadow-host.js';
   function positionPopover(anchor, targetElement, clickX, clickY) {
     const gap = 10;
     const popoverWidth = 340;
-    const popover = anchor.querySelector('.vibe-popover');
+    const popover = anchor.querySelector('.pinvelto-popover');
     if (!popover) return;
 
     popover.style.position = 'fixed';
@@ -1354,31 +1354,31 @@ import VibeShadowHost from './shadow-host.js';
   function showConfirm(root, title, message) {
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
-      backdrop.className = 'vibe-confirm-backdrop';
+      backdrop.className = 'pinvelto-confirm-backdrop';
       backdrop.innerHTML = `
-        <div class="vibe-confirm">
-          <div class="vibe-confirm-title">${P.escapeHTML(title)}</div>
-          <div class="vibe-confirm-msg">${P.escapeHTML(message)}</div>
-          <label class="vibe-confirm-skip" style="display:flex;align-items:center;gap:6px;margin:8px 0 4px;font-size:12px;color:var(--v-text-secondary,#6b7280);cursor:pointer;user-select:none;">
-            <input type="checkbox" class="vibe-confirm-skip-cb" style="margin:0;">
+        <div class="pinvelto-confirm">
+          <div class="pinvelto-confirm-title">${P.escapeHTML(title)}</div>
+          <div class="pinvelto-confirm-msg">${P.escapeHTML(message)}</div>
+          <label class="pinvelto-confirm-skip" style="display:flex;align-items:center;gap:6px;margin:8px 0 4px;font-size:12px;color:var(--v-text-secondary,#6b7280);cursor:pointer;user-select:none;">
+            <input type="checkbox" class="pinvelto-confirm-skip-cb" style="margin:0;">
             Don't ask again
           </label>
-          <div class="vibe-confirm-actions">
-            <button class="vibe-btn vibe-btn-secondary vibe-confirm-no">Cancel</button>
-            <button class="vibe-btn vibe-btn-danger vibe-confirm-yes">Delete</button>
+          <div class="pinvelto-confirm-actions">
+            <button class="pinvelto-btn pinvelto-btn-secondary pinvelto-confirm-no">Cancel</button>
+            <button class="pinvelto-btn pinvelto-btn-danger pinvelto-confirm-yes">Delete</button>
           </div>
         </div>
       `;
       root.appendChild(backdrop);
 
-      backdrop.querySelector('.vibe-confirm-no').addEventListener('click', () => {
+      backdrop.querySelector('.pinvelto-confirm-no').addEventListener('click', () => {
         backdrop.remove();
         resolve(false);
       });
-      backdrop.querySelector('.vibe-confirm-yes').addEventListener('click', () => {
-        const skipCb = backdrop.querySelector('.vibe-confirm-skip-cb');
+      backdrop.querySelector('.pinvelto-confirm-yes').addEventListener('click', () => {
+        const skipCb = backdrop.querySelector('.pinvelto-confirm-skip-cb');
         if (skipCb && skipCb.checked) {
-          VibeAPI.saveSkipDeleteConfirm(true);
+          PinveltoAPI.saveSkipDeleteConfirm(true);
         }
         backdrop.remove();
         resolve(true);
@@ -1391,9 +1391,9 @@ import VibeShadowHost from './shadow-host.js';
 
   // --- Build annotation data ---
 
-  function buildAnnotation(context, comment, pendingChanges) {
+  function buildFeedback(context, comment, pendingChanges) {
     const annotation = {
-      id: 'vibe_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      id: 'pinvelto_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
       url: window.location.href,
       selector: context.selector,
       comment,
@@ -1409,7 +1409,7 @@ import VibeShadowHost from './shadow-host.js';
       source_file_path: context.source_mapping?.source_file_path || null,
       source_line_range: context.source_mapping?.source_line_range || null,
       project_area: context.source_mapping?.project_area || 'unknown',
-      url_path: context.source_mapping?.url_path || vibeLocationPath(window.location),
+      url_path: context.source_mapping?.url_path || pinveltoLocationPath(window.location),
       source_map_available: context.source_mapping?.source_map_available || false,
       context_hints: context.source_mapping?.context_hints || null,
       screenshot: context.screenshot || null,
@@ -1434,7 +1434,7 @@ import VibeShadowHost from './shadow-host.js';
       attrs.push(`${name}="${P.escapeHTML(normalized.slice(0, maxLen))}"`);
     };
 
-    const classPreview = VibeElementContext.getDisplayClasses(element)
+    const classPreview = PinveltoElementContext.getDisplayClasses(element)
       .slice(0, 6)
       .join(' ');
 
@@ -1447,11 +1447,11 @@ import VibeShadowHost from './shadow-host.js';
     return `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>`;
   }
 
-const VibeAnnotationPopover = {
+const PinveltoFeedbackPopover = {
   init,
   show,
   dismiss,
   bindPopoverKeyListeners,
   unbindPopoverKeyListeners,
 };
-export default VibeAnnotationPopover;
+export default PinveltoFeedbackPopover;

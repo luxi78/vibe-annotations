@@ -256,7 +256,7 @@
     // 6. Mouse activity counters — prove the extension never simulates clicks on
     // the host page (extension UI events are retargeted to its shadow host).
     function isExtensionUI(e) {
-      return !!(e.target && e.target.id === 'vibe-annotations-root');
+      return !!(e.target && e.target.id === 'pinvelto-feedback-root');
     }
     window.addEventListener('click', function(e) {
       if (!isExtensionUI(e)) window.__FIXTURE_STATE.clickCount++;
@@ -303,7 +303,7 @@
     }
     // Controlled extension initialization failure (ticket #10 A13)
     if (params.get('bootFail') === 'true') {
-      document.documentElement.setAttribute('data-vibe-boot-fail', '');
+      document.documentElement.setAttribute('data-pinvelto-boot-fail', '');
     }
   </script>
 </head>
@@ -331,7 +331,7 @@
     <input type="text" id="host-input" value="editable page content">
   </div>
 
-  <div id="variants-container" data-vibe-active="1" style="margin-top: 20px; width: 300px;">
+  <div id="variants-container" data-pinvelto-active="1" style="margin-top: 20px; width: 300px;">
     <div data-variant="1" class="variant-child" style="padding: 10px; background: #1e293b; border-radius: 4px;">Variant 1 Alpha</div>
     <div data-variant="2" class="variant-child" style="padding: 10px; background: #334155; border-radius: 4px; display: none;">Variant 2 Beta</div>
   </div>

@@ -78,7 +78,7 @@ test('inspection mode swallows all mouse events and does not trigger dismiss lis
   };
 
   const mockRoot = new MockNode('div');
-  mockRoot.id = 'vibe-annotations-root';
+  mockRoot.id = 'pinvelto-feedback-root';
   const mockShadow = {
     appendChild: (el) => { mockRoot.appendChild(el); },
     children: []
@@ -124,21 +124,21 @@ test('inspection mode swallows all mouse events and does not trigger dismiss lis
   document.addEventListener('mouseup', dismissListener, true);
   document.addEventListener('click', dismissListener, true);
 
-  // 2. Load Vibe modules
-  const { default: VibeEvents } = await import('../lib/content/event-bus.js');
-  const { default: VibeShadowHost } = await import('../lib/content/shadow-host.js');
-  const { default: VibeInspectionMode } = await import('../lib/content/inspection-mode.js');
+  // 2. Load Pinvelto modules
+  const { default: PinveltoEvents } = await import('../lib/content/event-bus.js');
+  const { default: PinveltoShadowHost } = await import('../lib/content/shadow-host.js');
+  const { default: PinveltoInspectionMode } = await import('../lib/content/inspection-mode.js');
 
-  VibeShadowHost.init();
-  VibeInspectionMode.init();
+  PinveltoShadowHost.init();
+  PinveltoInspectionMode.init();
 
   let clickedElementPayload = null;
-  VibeEvents.on('inspection:elementClicked', (payload) => {
+  PinveltoEvents.on('inspection:elementClicked', (payload) => {
     clickedElementPayload = payload;
   });
 
   // 3. Start inspection mode
-  VibeInspectionMode.start();
+  PinveltoInspectionMode.start();
 
   // Helper to dispatch event through the DOM capture chain (window -> document -> target)
   function dispatchSimulatedEvent(type, target) {
@@ -198,5 +198,5 @@ test('inspection mode swallows all mouse events and does not trigger dismiss lis
     `Host dialog received leaked events: ${JSON.stringify(hostReceivedEvents)}`
   );
 
-  VibeInspectionMode.stop();
+  PinveltoInspectionMode.stop();
 });

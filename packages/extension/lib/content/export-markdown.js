@@ -15,15 +15,15 @@ function truncate(s, n) {
 }
 function attachmentPath(annotationId, att) {
   const ext = EXT_BY_MIME[att.mime] || 'bin';
-  return `~/.vibe-annotations/attachments/${annotationId}__${att.id}.${ext}`;
+  return `~/.pinvelto-feedback/attachments/${annotationId}__${att.id}.${ext}`;
 }
 
-export function renderAnnotationsMarkdown(annotations, host) {
-  const count = annotations.length;
-  let md = `# Vibe Annotations — ${host} · ${count} annotation${count === 1 ? '' : 's'}\n\n`;
+export function renderFeedbackMarkdown(pinveltoFeedback, host) {
+  const count = pinveltoFeedback.length;
+  let md = `# Pinvelto — ${host} · ${count} Feedback${count === 1 ? '' : 's'}\n\n`;
   md += `Follow my instructions on these elements. When applying design changes, map values to the project design system (Tailwind classes, CSS variables, or design tokens).\n\n---\n\n`;
 
-  const sorted = [...annotations].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const sorted = [...pinveltoFeedback].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   sorted.forEach((a, i) => {
     if (a.type === 'stylesheet') {
       md += `## ${i + 1}. Stylesheet change\n\n`;
@@ -40,9 +40,9 @@ export function renderAnnotationsMarkdown(annotations, host) {
     if (componentHint) md += `- **Component:** \`${componentHint.replace('Component:', '').trim()}\`\n`;
     if (a.source_file_path) md += `- **Source:** \`${a.source_file_path}${a.source_line_range ? ` (lines ${a.source_line_range})` : ''}\`\n`;
     if (a.url_path) md += `- **Page:** ${a.url_path}\n`;
-    // A data-vibe-id is injected live by the extension (not in the source) — swap it
+    // A data-pinvelto-id is injected live by the extension (not in the source) — swap it
     // for the readable DOM path so an agent/reader can actually locate the element.
-    const selector = (a.selector && a.selector.includes('data-vibe-id')) ? (ec.path || null) : a.selector;
+    const selector = (a.selector && a.selector.includes('data-pinvelto-id')) ? (ec.path || null) : a.selector;
     if (selector) md += `- **Selector:** \`${selector}\`\n`;
     if (ec.tag || ec.text) md += `- **Element:** \`${ec.tag || ''}\` "${truncate(ec.text, 60)}"\n`;
 
@@ -71,4 +71,4 @@ export function renderAnnotationsMarkdown(annotations, host) {
   return md;
 }
 
-export default { renderAnnotationsMarkdown };
+export default { renderFeedbackMarkdown };

@@ -29,13 +29,13 @@ async function openFramedFixture(page, context, { topOrigin = TOP_ORIGIN, ...ori
   await routeFramedFixture(context, topOrigin, origins);
   await page.goto(framedFixtureUrl(topOrigin, origins));
 
-  await expect(page.locator('#vibe-annotations-root')).toBeAttached({ timeout: 10000 });
+  await expect(page.locator('#pinvelto-feedback-root')).toBeAttached({ timeout: 10000 });
   const frames = await waitForFixtureFrames(page);
 
   // The manifest content script is registered for all frames, so both controllable
   // frames have their own extension instance before any session exists.
-  await expect(frames.sameOrigin.locator('#vibe-annotations-root')).toBeAttached({ timeout: 10000 });
-  await expect(frames.crossOrigin.locator('#vibe-annotations-root')).toBeAttached({ timeout: 10000 });
+  await expect(frames.sameOrigin.locator('#pinvelto-feedback-root')).toBeAttached({ timeout: 10000 });
+  await expect(frames.crossOrigin.locator('#pinvelto-feedback-root')).toBeAttached({ timeout: 10000 });
 
   return frames;
 }
@@ -43,19 +43,19 @@ async function openFramedFixture(page, context, { topOrigin = TOP_ORIGIN, ...ori
 // The session evidence a frame publishes on its own shadow host. `mirror` is only
 // asserted when the scenario has an opinion about which frame owns the state machine.
 async function expectSessionState(target, state, { mirror } = {}) {
-  const host = target.locator('#vibe-annotations-root');
-  await expect(host).toHaveAttribute('data-vibe-session-state', state, { timeout: 10000 });
+  const host = target.locator('#pinvelto-feedback-root');
+  await expect(host).toHaveAttribute('data-pinvelto-session-state', state, { timeout: 10000 });
   if (mirror !== undefined) {
-    await expect(host).toHaveAttribute('data-vibe-session-mirror', String(mirror));
+    await expect(host).toHaveAttribute('data-pinvelto-session-mirror', String(mirror));
   }
 }
 
 // A controllable frame that no longer participates releases to the idle state and
 // drops the overlay it was annotating with.
 async function expectReleasedSession(target) {
-  await expect(target.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
-  await expect(target.locator('#vibe-annotations-root'))
-    .toHaveAttribute('data-vibe-session-state', 'idle', { timeout: 5000 });
+  await expect(target.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
+  await expect(target.locator('#pinvelto-feedback-root'))
+    .toHaveAttribute('data-pinvelto-session-state', 'idle', { timeout: 5000 });
 }
 
 const readTopState = (page) => page.evaluate(() => window.__FIXTURE_STATE);
@@ -86,21 +86,21 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
 
     // The mirrored frames activate their own overlay, so annotating from a frame is
     // the same action as annotating from the top page.
-    await expect(frames.sameOrigin.locator('style[data-vibe-cursor]')).toBeAttached();
-    await expect(frames.crossOrigin.locator('style[data-vibe-cursor]')).toBeAttached();
+    await expect(frames.sameOrigin.locator('style[data-pinvelto-cursor]')).toBeAttached();
+    await expect(frames.crossOrigin.locator('style[data-pinvelto-cursor]')).toBeAttached();
 
     // --- Focus transition into the same-origin frame ---
     // Clicking the host rectangle there is a real element selection: the frame's own
     // state machine drives it and the state change is published to the tab.
     await frames.sameOrigin.locator('#canvas-rect').click();
-    await expect(frames.sameOrigin.locator('#vibe-annotations-root').locator('.vibe-popover'))
+    await expect(frames.sameOrigin.locator('#pinvelto-feedback-root').locator('.pinvelto-popover'))
       .toBeVisible({ timeout: 5000 });
     await expectSessionState(frames.sameOrigin, 'editing');
     await expectSessionState(frames.crossOrigin, 'selection');
 
     // Editor Esc returns to selection without ending the session.
     await page.keyboard.press('Escape');
-    await expect(frames.sameOrigin.locator('#vibe-annotations-root').locator('.vibe-popover'))
+    await expect(frames.sameOrigin.locator('#pinvelto-feedback-root').locator('.pinvelto-popover'))
       .not.toBeVisible({ timeout: 5000 });
     await expectSessionState(frames.sameOrigin, 'selection');
     await expectSessionState(frames.crossOrigin, 'selection', { mirror: true });
@@ -130,7 +130,7 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
     await expectSessionState(page, 'idle');
     await expectSessionState(frames.sameOrigin, 'idle');
     await expectSessionState(frames.crossOrigin, 'idle');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
     await expectReleasedSession(frames.crossOrigin);
 
     child = await readFrameFixtureState(frames.sameOrigin);
@@ -162,21 +162,21 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
 
     // Annotating from the cross-origin frame: select an element there and save.
     await frames.crossOrigin.locator('#canvas-rect').click();
-    const vibeRoot = frames.crossOrigin.locator('#vibe-annotations-root');
-    const popover = vibeRoot.locator('.vibe-popover');
+    const pinveltoRoot = frames.crossOrigin.locator('#pinvelto-feedback-root');
+    const popover = pinveltoRoot.locator('.pinvelto-popover');
     await expect(popover).toBeVisible({ timeout: 5000 });
 
-    const textarea = popover.locator('.vibe-textarea');
+    const textarea = popover.locator('.pinvelto-textarea');
     await expect(textarea).toBeFocused();
-    await textarea.fill('annotation from an authorized cross-origin frame');
+    await textarea.fill('Feedback from an authorized cross-origin frame');
 
     // Typing and editing stay native inside the extension editor.
     await page.keyboard.press('Backspace');
-    await expect(textarea).toHaveValue('annotation from an authorized cross-origin fram');
+    await expect(textarea).toHaveValue('Feedback from an authorized cross-origin fram');
 
     const isMac = process.platform === 'darwin';
     await page.keyboard.press(isMac ? 'Meta+Enter' : 'Control+Enter');
-    await expect(vibeRoot.locator('.vibe-badge')).toHaveCount(1, { timeout: 5000 });
+    await expect(pinveltoRoot.locator('.pinvelto-badge')).toHaveCount(1, { timeout: 5000 });
 
     // The save shortcut ran exactly once in the frame's own session, and the frame's
     // host received none of it.
@@ -235,7 +235,7 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
     // Session exit is consistent: leaving from the top page after one frame
     // navigated and another was removed releases every level that remains.
     await page.locator('#canvas-rect').click();
-    await expect(page.locator('#vibe-annotations-root').locator('.vibe-popover'))
+    await expect(page.locator('#pinvelto-feedback-root').locator('.pinvelto-popover'))
       .toBeVisible({ timeout: 5000 });
     await page.keyboard.press('Escape');
     await expectSessionState(page, 'selection');
@@ -261,8 +261,8 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
     const replacement = page.frame({ name: 'same-origin' });
 
     await expectSessionState(page, 'idle');
-    await expect(replacement.locator('#vibe-annotations-root')).toHaveAttribute('data-vibe-session-state', 'idle');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(replacement.locator('#pinvelto-feedback-root')).toHaveAttribute('data-pinvelto-session-state', 'idle');
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
 
     // --- The frame that owns the session is removed outright ---
     await enterAnnotateMode(replacement);
@@ -271,7 +271,7 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
     await page.evaluate(() => window.__removeFrame('same-origin-frame'));
     await expect(page.locator('iframe[name="same-origin"]')).toHaveCount(0);
     await expectSessionState(page, 'idle');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
 
     // The host owns its keyboard again: a fresh key belongs to it.
     await page.locator('#canvas-rect').click();
@@ -290,7 +290,7 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
     // The unlisted origin is outside every declared host permission, so the
     // extension is not injected there at all: no UI, no session evidence.
     expect(new URL(frames.unlisted.url()).origin).toBe(new URL(UNLISTED_ORIGIN).origin);
-    await expect(frames.unlisted.locator('#vibe-annotations-root')).toHaveCount(0);
+    await expect(frames.unlisted.locator('#pinvelto-feedback-root')).toHaveCount(0);
     expect(await readSessionEvidence(frames.unlisted)).toBeNull();
 
     await enterAnnotateMode(page);
@@ -299,7 +299,7 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
     await expectSessionState(frames.crossOrigin, 'selection', { mirror: true });
 
     // Still nothing is claimed for the frame the extension cannot reach.
-    await expect(frames.unlisted.locator('#vibe-annotations-root')).toHaveCount(0);
+    await expect(frames.unlisted.locator('#pinvelto-feedback-root')).toHaveCount(0);
     expect(await readSessionEvidence(frames.unlisted)).toBeNull();
 
     // The honest consequence: keys pressed while that frame has focus reach its own
@@ -324,22 +324,22 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
     context,
     backgroundWorker,
   }) => {
-    const CONTROLLED_ORIGIN = 'http://vibe-injection.test:3005';
+    const CONTROLLED_ORIGIN = 'http://pinvelto-injection.test:3005';
     const CONTROLLED_PATTERN = `${CONTROLLED_ORIGIN}/*`;
     await routeFramedFixture(context, CONTROLLED_ORIGIN);
 
     // A page whose extension instance could not initialize, reached at runtime.
     await page.goto(`${CONTROLLED_ORIGIN}/selected-rectangle.html?bootFail=true`);
-    await expect(page.locator('#vibe-annotations-root')).toHaveCount(0);
-    await page.evaluate(() => document.documentElement.removeAttribute('data-vibe-boot-fail'));
+    await expect(page.locator('#pinvelto-feedback-root')).toHaveCount(0);
+    await page.evaluate(() => document.documentElement.removeAttribute('data-pinvelto-boot-fail'));
 
     await page.bringToFront();
     await injectContentScriptsAsToolbarIcon(backgroundWorker, {
       bootIntent: 'show-permission-prompt',
-      bootData: { originPattern: CONTROLLED_PATTERN, hostname: 'vibe-injection.test' },
+      bootData: { originPattern: CONTROLLED_PATTERN, hostname: 'pinvelto-injection.test' },
     });
 
-    const enableBtn = page.locator('#vibe-annotations-root').locator('.vibe-permission-primary');
+    const enableBtn = page.locator('#pinvelto-feedback-root').locator('.pinvelto-permission-primary');
     await expect(enableBtn).toBeVisible({ timeout: 10000 });
     await enableBtn.click();
 
@@ -357,10 +357,10 @@ test.describe('Frame Session Synchronization (Ticket #12)', () => {
 
     // Frames of the enabled origin take part in one session with the top page.
     await page.goto(framedFixtureUrl(CONTROLLED_ORIGIN));
-    await expect(page.locator('#vibe-annotations-root')).toBeAttached({ timeout: 10000 });
+    await expect(page.locator('#pinvelto-feedback-root')).toBeAttached({ timeout: 10000 });
     const frames = await waitForFixtureFrames(page);
-    await expect(frames.sameOrigin.locator('#vibe-annotations-root')).toBeAttached({ timeout: 10000 });
-    await expect(frames.crossOrigin.locator('#vibe-annotations-root')).toBeAttached({ timeout: 10000 });
+    await expect(frames.sameOrigin.locator('#pinvelto-feedback-root')).toBeAttached({ timeout: 10000 });
+    await expect(frames.crossOrigin.locator('#pinvelto-feedback-root')).toBeAttached({ timeout: 10000 });
 
     await enterAnnotateMode(page);
     await expectSessionState(frames.sameOrigin, 'selection', { mirror: true });
