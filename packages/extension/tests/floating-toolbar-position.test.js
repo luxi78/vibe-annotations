@@ -200,26 +200,26 @@ globalThis.cancelAnimationFrame = () => {};
 // Mock fetch for health checks
 globalThis.fetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
 
-// Setup VibeShadowHost mock before loading modules
-const { default: VibeShadowHost } = await import('../lib/content/shadow-host.js');
-VibeShadowHost.getRoot = () => shadowRootMock;
+// Setup PinveltoShadowHost mock before loading modules
+const { default: PinveltoShadowHost } = await import('../lib/content/shadow-host.js');
+PinveltoShadowHost.getRoot = () => shadowRootMock;
 
-const { default: VibeEvents } = await import('../lib/content/event-bus.js');
-const { default: VibeToolbar } = await import('../lib/content/floating-toolbar.js');
+const { default: PinveltoEvents } = await import('../lib/content/event-bus.js');
+const { default: PinveltoToolbar } = await import('../lib/content/floating-toolbar.js');
 
 test('floating toolbar position lifecycle', async (t) => {
-  const getToolbar = () => shadowRootMock.children.find(c => c.classList.contains('vibe-toolbar'));
+  const getToolbar = () => shadowRootMock.children.find(c => c.classList.contains('pinvelto-toolbar'));
 
   t.afterEach(() => {
     // Ensure background polling timers are cleanly stopped after each test
-    VibeEvents.emit('overlay:closed');
+    PinveltoEvents.emit('overlay:closed');
   });
 
   await t.test('closing overlay does not wipe saved position and reopening restores it', async () => {
     // Pre-seed storage with a saved position
-    mockStorage.vibeToolbarPos = { right: '120px', top: '80px' };
+    mockStorage.pinveltoToolbarPos = { right: '120px', top: '80px' };
 
-    await VibeToolbar.init();
+    await PinveltoToolbar.init();
 
     const toolbar = getToolbar();
     assert.ok(toolbar, 'Toolbar element should be created');
@@ -227,11 +227,11 @@ test('floating toolbar position lifecycle', async (t) => {
     assert.strictEqual(toolbar.style.top, '80px');
 
     // Close the overlay
-    VibeEvents.emit('overlay:closed');
+    PinveltoEvents.emit('overlay:closed');
 
     // Acceptance criterion: Closing the overlay does not clear or delete the saved position from storage
     assert.deepStrictEqual(
-      mockStorage.vibeToolbarPos,
+      mockStorage.pinveltoToolbarPos,
       { right: '120px', top: '80px' },
       'Saved position in storage must NOT be cleared when overlay is closed'
     );
@@ -239,10 +239,10 @@ test('floating toolbar position lifecycle', async (t) => {
     assert.strictEqual(toolbar.style.top, '80px', 'Toolbar style.top should not be blanked');
 
     // Change stored coordinates (e.g. from another tab or external update)
-    mockStorage.vibeToolbarPos = { right: '200px', top: '150px' };
+    mockStorage.pinveltoToolbarPos = { right: '200px', top: '150px' };
 
     // Reopen the overlay
-    VibeEvents.emit('overlay:shown');
+    PinveltoEvents.emit('overlay:shown');
     // Wait a tick for async restorePosition to complete
     await new Promise(resolve => setTimeout(resolve, 10));
 
@@ -278,9 +278,9 @@ test('floating toolbar position lifecycle', async (t) => {
     mouseup({});
 
     // Acceptance criterion: Moving the floating toolbar saves its position.
-    assert.ok(mockStorage.vibeToolbarPos, 'Position should be saved to storage');
-    assert.strictEqual(toolbar.style.right, mockStorage.vibeToolbarPos.right);
-    assert.strictEqual(toolbar.style.top, mockStorage.vibeToolbarPos.top);
+    assert.ok(mockStorage.pinveltoToolbarPos, 'Position should be saved to storage');
+    assert.strictEqual(toolbar.style.right, mockStorage.pinveltoToolbarPos.right);
+    assert.strictEqual(toolbar.style.top, mockStorage.pinveltoToolbarPos.top);
   });
 
   await t.test('site selector mousedown is not captured as toolbar dragging', async () => {
@@ -288,7 +288,7 @@ test('floating toolbar position lifecycle', async (t) => {
     assert.ok(toolbar, 'Toolbar element exists');
 
     const selector = new MockElement('select');
-    selector.classList.add('vibe-viewall-site-select');
+    selector.classList.add('pinvelto-viewall-site-select');
     toolbar.appendChild(selector);
 
     let defaultPrevented = false;
@@ -306,13 +306,13 @@ test('floating toolbar position lifecycle', async (t) => {
 
   await t.test('refreshing page preserves toolbar position from storage', async () => {
     // Storage retained the position from prior operations
-    mockStorage.vibeToolbarPos = { right: '350px', top: '220px' };
+    mockStorage.pinveltoToolbarPos = { right: '350px', top: '220px' };
 
     // Fresh DOM on page reload
     shadowRootMock.children = [];
 
     // Simulate page reload calling init()
-    await VibeToolbar.init();
+    await PinveltoToolbar.init();
 
     const toolbar = getToolbar();
     assert.ok(toolbar, 'Toolbar element exists');
@@ -325,10 +325,10 @@ test('floating toolbar position lifecycle', async (t) => {
     window.innerHeight = 1080;
 
     // Saved position exceeding viewport dimensions
-    mockStorage.vibeToolbarPos = { right: '2500px', top: '1500px' };
+    mockStorage.pinveltoToolbarPos = { right: '2500px', top: '1500px' };
 
     shadowRootMock.children = [];
-    await VibeToolbar.init();
+    await PinveltoToolbar.init();
 
     const toolbar = getToolbar();
     assert.ok(toolbar, 'Toolbar element exists');
@@ -338,8 +338,8 @@ test('floating toolbar position lifecycle', async (t) => {
     assert.strictEqual(toolbar.style.top, '1032px', 'Excessive top coordinate clamped to viewport edge - 8px');
 
     // Saved position with negative or sub-minimum coordinates
-    mockStorage.vibeToolbarPos = { right: '-50px', top: '2px' };
-    VibeEvents.emit('overlay:shown');
+    mockStorage.pinveltoToolbarPos = { right: '-50px', top: '2px' };
+    PinveltoEvents.emit('overlay:shown');
     await new Promise(resolve => setTimeout(resolve, 10));
 
     assert.strictEqual(toolbar.style.right, '8px', 'Sub-minimum right coordinate clamped to 8px');
@@ -351,10 +351,10 @@ test('floating toolbar position lifecycle', async (t) => {
     window.innerWidth = 300;
     window.innerHeight = 200;
 
-    mockStorage.vibeToolbarPos = { right: '200px', top: '180px' };
+    mockStorage.pinveltoToolbarPos = { right: '200px', top: '180px' };
 
     shadowRootMock.children = [];
-    await VibeToolbar.init();
+    await PinveltoToolbar.init();
 
     const toolbar = getToolbar();
     assert.ok(toolbar, 'Toolbar element exists');
@@ -366,9 +366,9 @@ test('floating toolbar position lifecycle', async (t) => {
     // Viewport smaller than toolbar itself (width 150 < 200, height 30 < 40)
     window.innerWidth = 150;
     window.innerHeight = 30;
-    mockStorage.vibeToolbarPos = { right: '50px', top: '50px' };
+    mockStorage.pinveltoToolbarPos = { right: '50px', top: '50px' };
 
-    VibeEvents.emit('overlay:shown');
+    PinveltoEvents.emit('overlay:shown');
     await new Promise(resolve => setTimeout(resolve, 10));
 
     assert.strictEqual(toolbar.style.right, '8px', 'Extremely narrow viewport maintains at least 8px margin');
@@ -379,10 +379,10 @@ test('floating toolbar position lifecycle', async (t) => {
     window.innerWidth = 1920;
     window.innerHeight = 1080;
 
-    mockStorage.vibeToolbarPos = { right: '500px', top: '200px' };
+    mockStorage.pinveltoToolbarPos = { right: '500px', top: '200px' };
 
     shadowRootMock.children = [];
-    await VibeToolbar.init();
+    await PinveltoToolbar.init();
 
     const toolbar = getToolbar();
     assert.ok(toolbar, 'Toolbar element exists');
@@ -419,17 +419,17 @@ test('floating toolbar position lifecycle', async (t) => {
     window.innerWidth = 1920;
     window.innerHeight = 1080;
 
-    mockStorage.vibeToolbarPos = { right: '300px', top: '150px' };
+    mockStorage.pinveltoToolbarPos = { right: '300px', top: '150px' };
 
     shadowRootMock.children = [];
-    await VibeToolbar.init();
+    await PinveltoToolbar.init();
 
     const toolbar = getToolbar();
     assert.strictEqual(toolbar.style.right, '300px');
     assert.strictEqual(toolbar.style.top, '150px');
 
     // Close the overlay
-    VibeEvents.emit('overlay:closed');
+    PinveltoEvents.emit('overlay:closed');
 
     // Resize window to narrow width while closed
     window.innerWidth = 400;
@@ -439,7 +439,7 @@ test('floating toolbar position lifecycle', async (t) => {
     assert.strictEqual(toolbar.style.right, '300px', 'Closed toolbar should not be adjusted on resize');
 
     // Reopen the overlay
-    VibeEvents.emit('overlay:shown');
+    PinveltoEvents.emit('overlay:shown');
     await new Promise(resolve => setTimeout(resolve, 10));
 
     // Upon reopening, restorePosition clamps to new window width (400 - 200 - 8 = 192px)
@@ -451,10 +451,10 @@ test('floating toolbar position lifecycle', async (t) => {
     // Very constrained window
     window.innerWidth = 150;
     window.innerHeight = 50;
-    delete mockStorage.vibeToolbarPos;
+    delete mockStorage.pinveltoToolbarPos;
 
     shadowRootMock.children = [];
-    await VibeToolbar.init();
+    await PinveltoToolbar.init();
 
     const toolbar = getToolbar();
     assert.ok(toolbar, 'Toolbar element exists');
@@ -465,10 +465,10 @@ test('floating toolbar position lifecycle', async (t) => {
   await t.test('dragging toolbar clamps within viewport bounds', async () => {
     window.innerWidth = 800;
     window.innerHeight = 600;
-    mockStorage.vibeToolbarPos = { right: '100px', top: '100px' };
+    mockStorage.pinveltoToolbarPos = { right: '100px', top: '100px' };
 
     shadowRootMock.children = [];
-    await VibeToolbar.init();
+    await PinveltoToolbar.init();
 
     const toolbar = getToolbar();
 

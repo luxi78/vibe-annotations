@@ -1,3 +1,13 @@
+## Pinvelto acceptance build and isolation
+
+Run `pnpm test:e2e` from `packages/extension`, or `node tests/run-e2e.js tests/e2e/pinvelto-workflow.spec.js` for the integrated workflow. The runner builds a separate `.output-e2e/chrome-mv3` artifact with `PINVELTO_E2E_BUILD=1` and `VITE_PINVELTO_SERVICE_URL=http://127.0.0.1:3005` scoped to the build child process. The harness requires its test marker and never loads the normal `.output` production artifact. Normal `pnpm build` still targets `.output/chrome-mv3` with port 3847.
+
+The fixture web server owns port 3005 and cannot reuse an existing unrelated server. Initial service-worker probes therefore reach only that controlled fixture. Page request routing does not provide the worker isolation guarantee and is not used for it.
+
+Tests opting into `test.use({ realService: true })` receive a `pinveltoService` fixture: an actual spawned service with a fresh temporary home, ephemeral service port, and real MCP SDK client. The fresh profile stores its temporary endpoint in `pinveltoServiceUrl` before navigating to the webpage. The helper exposes `url`, `home`, `client`, and `call(name, args)` for later acceptance slices. Teardown closes the owned browser/client/process and removes its temporary state. Existing regressions can still control external Chrome/network boundaries; the integrated browser-to-MCP workflow does not mock protocol exchange or persisted Feedback.
+
+The integrated test creates Feedback through the actual editor, uploads a screenshot of the fixture rectangle through the file control, verifies decoded visual context and persisted bytes through MCP and HTTP, updates via MCP, and waits for the visible browser result. It also verifies all seven branded tools and rejects the old tool alias. A separate real HTTP foreign-service case verifies offline presentation and absence of data mutations.
+
 # Extension E2E Test Harness & Keyboard Conflict Baselines
 
 This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, browser/headless configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, the automated IME composition coverage for A7, the A12/A13 session-recovery and focus-restoration coverage for ticket #10, the A16 injection-path coverage (static, dynamic, late) for ticket #11, and the A15 cross-frame session coverage for ticket #12.

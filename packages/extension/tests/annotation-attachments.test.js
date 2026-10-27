@@ -447,13 +447,13 @@ globalThis.chrome = {
   }
 };
 
-// Setup VibeShadowHost root
-import VibeShadowHost from '../lib/content/shadow-host.js';
-import VibeAnnotationPopover from '../lib/content/annotation-popover.js';
-import VibeAPI from '../lib/content/api-bridge.js';
+// Setup PinveltoShadowHost root
+import PinveltoShadowHost from '../lib/content/shadow-host.js';
+import PinveltoFeedbackPopover from '../lib/content/annotation-popover.js';
+import PinveltoAPI from '../lib/content/api-bridge.js';
 
 const mockShadowRoot = new MockElement('div');
-VibeShadowHost.getRoot = () => mockShadowRoot;
+PinveltoShadowHost.getRoot = () => mockShadowRoot;
 
 test('attachment thumbnails stable identity and in-place updates', async (t) => {
   t.beforeEach(() => {
@@ -464,7 +464,7 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
   });
 
   t.afterEach(() => {
-    VibeAnnotationPopover.dismiss();
+    PinveltoFeedbackPopover.dismiss();
   });
 
   await t.test('Slice 1: adding pending attachments assigns stable identities and preserves unaffected thumbnail DOM nodes', async () => {
@@ -476,13 +476,13 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
       bounding_box: { left: 50, top: 50, width: 100, height: 40 }
     };
 
-    await VibeAnnotationPopover.show(targetElement, context, null, 100, 70);
+    await PinveltoFeedbackPopover.show(targetElement, context, null, 100, 70);
 
-    const popover = mockShadowRoot.querySelector('.vibe-popover');
+    const popover = mockShadowRoot.querySelector('.pinvelto-popover');
     assert.ok(popover, 'Popover must be rendered');
 
-    const attachInput = popover.querySelector('.vibe-attach-input');
-    const attachmentsEl = popover.querySelector('.vibe-attachments');
+    const attachInput = popover.querySelector('.pinvelto-attach-input');
+    const attachmentsEl = popover.querySelector('.pinvelto-attachments');
     assert.ok(attachInput, 'File input must exist');
     assert.ok(attachmentsEl, 'Attachments container must exist');
     assert.ok(attachmentsEl.classList.contains('empty'), 'Attachments container starts empty');
@@ -492,7 +492,7 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     attachInput.files = [fileA];
     attachInput.dispatchEvent({ type: 'change', target: attachInput });
 
-    const tilesAfterA = attachmentsEl.querySelectorAll('.vibe-att-tile');
+    const tilesAfterA = attachmentsEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tilesAfterA.length, 1, 'Should have 1 thumbnail');
     const tileA = tilesAfterA[0];
     const pendingIdA = tileA.getAttribute('data-pending-id');
@@ -503,7 +503,7 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     attachInput.files = [fileB];
     attachInput.dispatchEvent({ type: 'change', target: attachInput });
 
-    const tilesAfterB = attachmentsEl.querySelectorAll('.vibe-att-tile');
+    const tilesAfterB = attachmentsEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tilesAfterB.length, 2, 'Should have 2 thumbnails');
     assert.equal(tilesAfterB[0], tileA, 'Thumbnail A DOM node MUST remain preserved by reference');
     const tileB = tilesAfterB[1];
@@ -516,7 +516,7 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     attachInput.files = [fileC];
     attachInput.dispatchEvent({ type: 'change', target: attachInput });
 
-    const tilesAfterC = attachmentsEl.querySelectorAll('.vibe-att-tile');
+    const tilesAfterC = attachmentsEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tilesAfterC.length, 3, 'Should have 3 thumbnails');
     assert.equal(tilesAfterC[0], tileA, 'Thumbnail A DOM node preserved');
     assert.equal(tilesAfterC[1], tileB, 'Thumbnail B DOM node preserved');
@@ -525,11 +525,11 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     assert.ok(pendingIdC, 'Item C must have a stable data-pending-id');
 
     // 4. Remove middle item B
-    const removeBtnB = tileB.querySelector('.vibe-att-remove');
+    const removeBtnB = tileB.querySelector('.pinvelto-att-remove');
     assert.ok(removeBtnB, 'Remove button B exists');
     removeBtnB.click();
 
-    const tilesAfterRemoveB = attachmentsEl.querySelectorAll('.vibe-att-tile');
+    const tilesAfterRemoveB = attachmentsEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tilesAfterRemoveB.length, 2, 'Should have 2 thumbnails remaining');
     assert.equal(tilesAfterRemoveB[0], tileA, 'Thumbnail A DOM node preserved after removing B');
     assert.equal(tilesAfterRemoveB[1], tileC, 'Thumbnail C DOM node preserved after removing B');
@@ -537,11 +537,11 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     assert.equal(tilesAfterRemoveB[1].getAttribute('data-pending-id'), pendingIdC, 'C retains its stable ID (not renumbered)');
 
     // 5. Remove item C (was previously at index 2, now at index 1)
-    const removeBtnC = tileC.querySelector('.vibe-att-remove');
+    const removeBtnC = tileC.querySelector('.pinvelto-att-remove');
     assert.ok(removeBtnC, 'Remove button C exists');
     removeBtnC.click();
 
-    const tilesAfterRemoveC = attachmentsEl.querySelectorAll('.vibe-att-tile');
+    const tilesAfterRemoveC = attachmentsEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tilesAfterRemoveC.length, 1, 'Should have 1 thumbnail remaining');
     assert.equal(tilesAfterRemoveC[0], tileA, 'Only thumbnail A remains and is unchanged');
   });
@@ -555,7 +555,7 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
       bounding_box: { left: 0, top: 0, width: 200, height: 100 }
     };
 
-    const existingAnnotation = {
+    const existingFeedback = {
       id: 'ann-123',
       comment: 'Initial comment',
       attachments: [
@@ -564,13 +564,13 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
       ]
     };
 
-    await VibeAnnotationPopover.show(targetElement, context, existingAnnotation, 100, 50);
+    await PinveltoFeedbackPopover.show(targetElement, context, existingFeedback, 100, 50);
 
-    const popover = mockShadowRoot.querySelector('.vibe-popover');
-    const attachmentsEl = popover.querySelector('.vibe-attachments');
+    const popover = mockShadowRoot.querySelector('.pinvelto-popover');
+    const attachmentsEl = popover.querySelector('.pinvelto-attachments');
     assert.ok(attachmentsEl, 'Attachments container exists');
 
-    const initialTiles = attachmentsEl.querySelectorAll('.vibe-att-tile');
+    const initialTiles = attachmentsEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(initialTiles.length, 2, 'Should display 2 saved attachments');
     const tileUser1 = initialTiles[0];
     const tileCap1 = initialTiles[1];
@@ -579,39 +579,39 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
 
     // 1. Remove saved capture att-cap-1
     let removedAttId = null;
-    VibeAPI.removeAttachment = async (_annId, attId) => {
+    PinveltoAPI.removeAttachment = async (_annId, attId) => {
       removedAttId = attId;
       return { success: true };
     };
 
-    const removeCapBtn = tileCap1.querySelector('.vibe-att-remove');
+    const removeCapBtn = tileCap1.querySelector('.pinvelto-att-remove');
     removeCapBtn.click();
     await new Promise(r => setTimeout(r, 10));
 
-    const tilesAfterRemove = attachmentsEl.querySelectorAll('.vibe-att-tile');
+    const tilesAfterRemove = attachmentsEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tilesAfterRemove.length, 1, 'Only 1 attachment remains');
     assert.equal(tilesAfterRemove[0], tileUser1, 'Surviving saved user attachment DOM node must be preserved');
-    assert.equal(removedAttId, 'att-cap-1', 'VibeAPI.removeAttachment must be called with att-cap-1');
+    assert.equal(removedAttId, 'att-cap-1', 'PinveltoAPI.removeAttachment must be called with att-cap-1');
 
     // 2. Singular capture replacement on pending attachments
-    VibeAnnotationPopover.dismiss();
+    PinveltoFeedbackPopover.dismiss();
 
-    await VibeAnnotationPopover.show(targetElement, context, null, 100, 50);
-    const newPopover = mockShadowRoot.querySelector('.vibe-popover');
-    const newAttachEl = newPopover.querySelector('.vibe-attachments');
-    const newAttachInput = newPopover.querySelector('.vibe-attach-input');
+    await PinveltoFeedbackPopover.show(targetElement, context, null, 100, 50);
+    const newPopover = mockShadowRoot.querySelector('.pinvelto-popover');
+    const newAttachEl = newPopover.querySelector('.pinvelto-attachments');
+    const newAttachInput = newPopover.querySelector('.pinvelto-attach-input');
     const shotOpt = newPopover.querySelector('[data-add="shot"]');
 
     // Setup screenshot mocks
-    VibeAPI.requestScreenshotPermission = async () => true;
-    VibeAPI.captureVisibleTab = async () => 'data:image/png;base64,mockpixels';
+    PinveltoAPI.requestScreenshotPermission = async () => true;
+    PinveltoAPI.captureVisibleTab = async () => 'data:image/png;base64,mockpixels';
 
     // Add a regular user image
     const imgFile = { name: 'user.png', type: 'image/png', size: 1000 };
     newAttachInput.files = [imgFile];
     newAttachInput.dispatchEvent({ type: 'change', target: newAttachInput });
 
-    const tiles1 = newAttachEl.querySelectorAll('.vibe-att-tile');
+    const tiles1 = newAttachEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tiles1.length, 1);
     const userPendingTile = tiles1[0];
 
@@ -619,7 +619,7 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     shotOpt.click();
     await new Promise(r => setTimeout(r, 20));
 
-    const tiles2 = newAttachEl.querySelectorAll('.vibe-att-tile');
+    const tiles2 = newAttachEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tiles2.length, 2, 'Should have user image + first capture');
     const firstCaptureTile = tiles2[0];
     assert.equal(tiles2[1], userPendingTile, 'User pending thumbnail DOM node preserved');
@@ -629,7 +629,7 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     shotOpt.click();
     await new Promise(r => setTimeout(r, 20));
 
-    const tiles3 = newAttachEl.querySelectorAll('.vibe-att-tile');
+    const tiles3 = newAttachEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tiles3.length, 2, 'Still only 2 thumbnails (capture was replaced, not appended)');
     assert.equal(tiles3[1], userPendingTile, 'User pending thumbnail DOM node still preserved');
     assert.notEqual(tiles3[0], firstCaptureTile, 'Old capture tile replaced with new capture tile');
@@ -645,12 +645,12 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
       bounding_box: { left: 0, top: 0, width: 200, height: 100 }
     };
 
-    await VibeAnnotationPopover.show(targetElement, context, null, 100, 50);
-    const popover = mockShadowRoot.querySelector('.vibe-popover');
-    const attachEl = popover.querySelector('.vibe-attachments');
-    const attachInput = popover.querySelector('.vibe-attach-input');
-    const textarea = popover.querySelector('.vibe-textarea');
-    const addBtn = popover.querySelector('.vibe-add-btn');
+    await PinveltoFeedbackPopover.show(targetElement, context, null, 100, 50);
+    const popover = mockShadowRoot.querySelector('.pinvelto-popover');
+    const attachEl = popover.querySelector('.pinvelto-attachments');
+    const attachInput = popover.querySelector('.pinvelto-attach-input');
+    const textarea = popover.querySelector('.pinvelto-textarea');
+    const addBtn = popover.querySelector('.pinvelto-add-btn');
 
     // 1. Unrelated editor input is preserved during attachment operations
     textarea.value = 'Draft comment keeping its value';
@@ -666,12 +666,12 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
 
     assert.equal(textarea.value, 'Draft comment keeping its value', 'Textarea value preserved after adding attachments');
 
-    const tiles = attachEl.querySelectorAll('.vibe-att-tile');
+    const tiles = attachEl.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tiles.length, 3, 'Should have 3 thumbnails');
     const [tile1, tile2, tile3] = tiles;
-    const btn1 = tile1.querySelector('.vibe-att-remove');
-    const btn2 = tile2.querySelector('.vibe-att-remove');
-    const btn3 = tile3.querySelector('.vibe-att-remove');
+    const btn1 = tile1.querySelector('.pinvelto-att-remove');
+    const btn2 = tile2.querySelector('.pinvelto-att-remove');
+    const btn3 = tile3.querySelector('.pinvelto-att-remove');
 
     // 2. Focus continuity when removing middle thumbnail (tile2)
     btn2.focus();
@@ -707,17 +707,17 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     };
 
     // --- Scenario A: Cancel / Dismiss cleans up all pending Object URLs ---
-    await VibeAnnotationPopover.show(targetElement, context, null, 100, 50);
-    const popover = mockShadowRoot.querySelector('.vibe-popover');
-    const attachInput = popover.querySelector('.vibe-attach-input');
-    const cancelBtn = popover.querySelector('.vibe-cancel-btn');
+    await PinveltoFeedbackPopover.show(targetElement, context, null, 100, 50);
+    const popover = mockShadowRoot.querySelector('.pinvelto-popover');
+    const attachInput = popover.querySelector('.pinvelto-attach-input');
+    const cancelBtn = popover.querySelector('.pinvelto-cancel-btn');
 
     const fileA = { name: 'cancel-1.png', type: 'image/png', size: 1000 };
     const fileB = { name: 'cancel-2.png', type: 'image/png', size: 2000 };
     attachInput.files = [fileA, fileB];
     attachInput.dispatchEvent({ type: 'change', target: attachInput });
 
-    const tiles = popover.querySelectorAll('.vibe-att-tile');
+    const tiles = popover.querySelectorAll('.pinvelto-att-tile');
     assert.equal(tiles.length, 2);
     const urlA = tiles[0].querySelector('img')?.getAttribute('src');
     const urlB = tiles[1].querySelector('img')?.getAttribute('src');
@@ -732,29 +732,29 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     assert.equal(revokedUrls.has(urlB), true, 'URL B must be revoked on cancel');
 
     // --- Scenario B: Save uploads pending attachments and releases Object URLs ---
-    await VibeAnnotationPopover.show(targetElement, context, null, 100, 50);
-    const popover2 = mockShadowRoot.querySelector('.vibe-popover');
-    const attachInput2 = popover2.querySelector('.vibe-attach-input');
-    const textarea2 = popover2.querySelector('.vibe-textarea');
-    const saveBtn2 = popover2.querySelector('.vibe-save-btn');
+    await PinveltoFeedbackPopover.show(targetElement, context, null, 100, 50);
+    const popover2 = mockShadowRoot.querySelector('.pinvelto-popover');
+    const attachInput2 = popover2.querySelector('.pinvelto-attach-input');
+    const textarea2 = popover2.querySelector('.pinvelto-textarea');
+    const saveBtn2 = popover2.querySelector('.pinvelto-save-btn');
 
     const fileC = { name: 'save-1.png', type: 'image/png', size: 3000 };
     attachInput2.files = [fileC];
     attachInput2.dispatchEvent({ type: 'change', target: attachInput2 });
 
-    const tiles2 = popover2.querySelectorAll('.vibe-att-tile');
+    const tiles2 = popover2.querySelectorAll('.pinvelto-att-tile');
     const urlC = tiles2[0].querySelector('img')?.getAttribute('src');
     assert.ok(urlC);
     assert.equal(revokedUrls.has(urlC), false, 'URL C not revoked while editing');
 
-    textarea2.value = 'Annotation with attachment';
+    textarea2.value = 'Feedback with attachment';
 
     const uploaded = [];
-    VibeAPI.saveAnnotation = async (ann) => {
+    PinveltoAPI.saveFeedback = async (ann) => {
       ann.id = 'saved-ann-id';
       return { success: true, annotation: ann };
     };
-    VibeAPI.uploadUserImage = async (annId, blob, mime, kind) => {
+    PinveltoAPI.uploadUserImage = async (annId, blob, mime, kind) => {
       uploaded.push({ annId, blob, mime, kind });
       return { id: 'remote-att-1', kind, mime };
     };
@@ -763,7 +763,7 @@ test('attachment thumbnails stable identity and in-place updates', async (t) => 
     await new Promise(r => setTimeout(r, 20));
 
     assert.equal(uploaded.length, 1, 'Pending image must be uploaded on save');
-    assert.equal(uploaded[0].annId, 'saved-ann-id', 'Upload targets new annotation id');
+    assert.equal(uploaded[0].annId, 'saved-ann-id', 'Upload targets new Feedback id');
     assert.equal(uploaded[0].blob, fileC, 'Upload receives original blob');
     assert.equal(revokedUrls.has(urlC), true, 'URL C must be revoked after save completion');
   });

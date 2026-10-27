@@ -8,9 +8,9 @@
 
 // Message actions of the protocol.
 export const SESSION_SYNC = {
-  HELLO: 'vibeSessionHello',
-  STATE: 'vibeSessionState',
-  REMOTE_STATE: 'vibeSessionRemoteState',
+  HELLO: 'pinveltoSessionHello',
+  STATE: 'pinveltoSessionState',
+  REMOTE_STATE: 'pinveltoSessionRemoteState',
 };
 
 // The states a frame's keyboard router can be in.

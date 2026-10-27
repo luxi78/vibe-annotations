@@ -50,13 +50,13 @@ test.describe('Keyboard Conflict Baselines (Extension v2.0.2)', () => {
     await page.keyboard.press('Escape');
 
     // Baseline outcome on v2.0.2:
-    // Because focus was on .vibe-tb-annotate inside shadow root,
+    // Because focus was on .pinvelto-tb-annotate inside shadow root,
     // shadow-host.js calls stopPropagation(), so Esc never reaches document shortcut handler!
     // As a result, Annotate mode fails to exit.
     //
     // TARGET REGRESSION (Ticket #6):
     // Centralized keyboard routing ensures Esc exits Annotate regardless of toolbar focus.
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 2000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 2000 });
   });
 
   test('A2 Baseline: Consecutive Esc sequence after selection exit', async ({

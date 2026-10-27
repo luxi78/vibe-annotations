@@ -57,12 +57,12 @@ function createKeyEvent({ type = 'keydown', key, code }) {
   };
 }
 
-test('VibeKeyboardRouter cross-frame session sync', async (t) => {
+test('PinveltoKeyboardRouter cross-frame session sync', async (t) => {
   globalThis.window = { addEventListener() {}, removeEventListener() {} };
 
   const chromeState = createChromeMock();
-  const { default: VibeEvents } = await import('../lib/content/event-bus.js');
-  const { default: VibeKeyboardRouter, SessionState } = await import('../lib/content/keyboard-router.js');
+  const { default: PinveltoEvents } = await import('../lib/content/event-bus.js');
+  const { default: PinveltoKeyboardRouter, SessionState } = await import('../lib/content/keyboard-router.js');
 
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
   const reports = () => chromeState.sent.filter((m) => m.action === SESSION_STATE);
@@ -76,11 +76,11 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
 
   // Reset this frame to a freshly booted document that receives `helloResponse`.
   async function bootFrame(helloResponse = { state: 'idle', ownerNonce: null }) {
-    VibeKeyboardRouter.teardown();
-    VibeKeyboardRouter.resetForTesting();
+    PinveltoKeyboardRouter.teardown();
+    PinveltoKeyboardRouter.resetForTesting();
     chromeState.sent.length = 0;
     chromeState.helloResponse = helloResponse;
-    VibeKeyboardRouter.init();
+    PinveltoKeyboardRouter.init();
     await flush();
   }
 
@@ -90,13 +90,13 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
     const hello = chromeState.sent.find((m) => m.action === SESSION_HELLO);
     assert.ok(hello, 'A booting frame must ask the coordinator for the tab session');
     assert.ok(hello.nonce, 'The hello must identify this document');
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.IDLE);
   });
 
   await t.test('a frame that loads mid-session joins it instead of leaking shortcuts', async () => {
     await bootFrame({ state: SessionState.SELECTION, ownerNonce: 'frame-that-owns-the-session' });
 
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION,
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.SELECTION,
       'The loaded frame must own the keyboard immediately');
     assert.strictEqual(reports().length, 0,
       'Joining an existing session is not a local transition and must not be announced');
@@ -107,28 +107,28 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
 
     let started = 0;
     const onStart = () => { started++; };
-    VibeEvents.on('inspection:start', onStart);
+    PinveltoEvents.on('inspection:start', onStart);
     try {
       assert.strictEqual(started, 0, 'No overlay can be driven before the frame has one');
 
-      VibeKeyboardRouter.onUiReady();
+      PinveltoKeyboardRouter.onUiReady();
       assert.strictEqual(started, 1, 'The mirrored session must activate the frame overlay');
-      assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION);
+      assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.SELECTION);
 
-      VibeKeyboardRouter.onUiReady();
+      PinveltoKeyboardRouter.onUiReady();
       assert.strictEqual(reports().length, 0, 'Activating a mirror never announces a transition');
     } finally {
-      VibeEvents.off('inspection:start', onStart);
+      PinveltoEvents.off('inspection:start', onStart);
     }
   });
 
   await t.test('a local transition is published with this document\'s nonce', async () => {
     await bootFrame();
 
-    VibeEvents.emit('inspection:start');
+    PinveltoEvents.emit('inspection:start');
 
     const report = reports().pop();
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION);
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.SELECTION);
     assert.ok(report, 'Entering the session locally must be published');
     assert.strictEqual(report.state, SessionState.SELECTION);
     assert.strictEqual(report.nonce, helloNonce(),
@@ -137,21 +137,21 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
 
   await t.test('the coordinator\'s echo of this frame\'s own transition is ignored', async () => {
     await bootFrame();
-    VibeEvents.emit('inspection:start');
+    PinveltoEvents.emit('inspection:start');
     const ownNonce = helloNonce();
     chromeState.sent.length = 0;
 
     // Echo of our own selection, then of our own exit.
     deliverRemote({ action: SESSION_REMOTE_STATE, state: SessionState.SELECTION, ownerNonce: ownNonce });
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION,
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.SELECTION,
       'A frame must not treat its own echo as a remote state');
 
-    VibeEvents.emit('inspection:stop');
+    PinveltoEvents.emit('inspection:stop');
     const exitReport = reports().pop();
     assert.strictEqual(exitReport.state, SessionState.IDLE);
 
     deliverRemote({ action: SESSION_REMOTE_STATE, state: SessionState.SELECTION, ownerNonce: ownNonce });
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE,
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.IDLE,
       'A frame that just exited must not resurrect its session from its own echo');
   });
 
@@ -162,18 +162,18 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
     // is still in flight when the new session starts (a real user flow: Esc then click
     // Annotate again). The release is stamped with this document's nonce, so this frame
     // recognizes it as the consequence of its own superseded transition.
-    VibeEvents.emit('inspection:start');
-    VibeEvents.emit('inspection:stop');
-    VibeEvents.emit('inspection:start');
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION);
+    PinveltoEvents.emit('inspection:start');
+    PinveltoEvents.emit('inspection:stop');
+    PinveltoEvents.emit('inspection:start');
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.SELECTION);
 
     deliverRemote({ action: SESSION_REMOTE_STATE, state: SessionState.IDLE, ownerNonce: helloNonce() });
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION,
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.SELECTION,
       'The in-flight release of a superseded local exit must not tear down the new session');
 
     // A release reported by another frame still ends it.
     deliverRemote({ action: SESSION_REMOTE_STATE, state: SessionState.IDLE, ownerNonce: 'other-frame' });
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.IDLE);
   });
 
   await t.test('a remote state from another frame is applied silently and never echoed back', async () => {
@@ -182,12 +182,12 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
 
     deliverRemote({ action: SESSION_REMOTE_STATE, state: SessionState.EDITING, ownerNonce: 'other-frame' });
 
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.SELECTION,
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.SELECTION,
       'A mirror owns the keyboard in selection while another frame edits');
     assert.strictEqual(reports().length, 0,
       'Applying a remote state must not be reported as a local transition');
 
-    VibeKeyboardRouter.onUiReady();
+    PinveltoKeyboardRouter.onUiReady();
     assert.strictEqual(reports().length, 0);
   });
 
@@ -195,9 +195,9 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
     await bootFrame({ state: SessionState.SELECTION, ownerNonce: 'other-frame' });
     chromeState.sent.length = 0;
 
-    VibeKeyboardRouter.onKeyDown(createKeyEvent({ key: 'Escape' }));
+    PinveltoKeyboardRouter.onKeyDown(createKeyEvent({ key: 'Escape' }));
 
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.IDLE);
     const report = reports().pop();
     assert.ok(report, 'Exiting from a mirrored frame must release the shared session');
     assert.strictEqual(report.state, SessionState.IDLE);
@@ -209,7 +209,7 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
 
     deliverRemote({ action: SESSION_REMOTE_STATE, state: SessionState.IDLE, ownerNonce: null });
 
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.IDLE);
     assert.strictEqual(reports().length, 0, 'Applying the release is not a local transition');
   });
 
@@ -217,18 +217,18 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
     await bootFrame({ state: SessionState.SELECTION, ownerNonce: 'other-frame' });
     chromeState.sent.length = 0;
 
-    VibeKeyboardRouter.onPageHide();
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+    PinveltoKeyboardRouter.onPageHide();
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.IDLE);
     assert.strictEqual(reports().length, 0,
       'A mirror going away must not end the session the rest of the tab is using');
 
     // This frame drives the session itself: nothing else can observe it disappearing.
     await bootFrame();
-    VibeEvents.emit('inspection:start');
+    PinveltoEvents.emit('inspection:start');
     chromeState.sent.length = 0;
 
-    VibeKeyboardRouter.onPageHide();
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+    PinveltoKeyboardRouter.onPageHide();
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.IDLE);
     const report = reports().pop();
     assert.ok(report, 'The owner must report its release when its document goes away');
     assert.strictEqual(report.state, SessionState.IDLE);
@@ -238,10 +238,10 @@ test('VibeKeyboardRouter cross-frame session sync', async (t) => {
     await bootFrame({ state: SessionState.SELECTION, ownerNonce: 'other-frame' });
     assert.strictEqual(chromeState.listeners.length, 1);
 
-    VibeKeyboardRouter.teardown();
+    PinveltoKeyboardRouter.teardown();
     assert.strictEqual(chromeState.listeners.length, 0, 'Teardown must stop listening for session traffic');
 
     deliverRemote({ action: SESSION_REMOTE_STATE, state: SessionState.SELECTION, ownerNonce: 'other-frame' });
-    assert.strictEqual(VibeKeyboardRouter.getState(), SessionState.IDLE);
+    assert.strictEqual(PinveltoKeyboardRouter.getState(), SessionState.IDLE);
   });
 });

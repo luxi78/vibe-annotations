@@ -36,7 +36,7 @@ export function createServer() {
 
     if (url.pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', time: Date.now() }));
+      res.end(JSON.stringify({ status: 'ok', product: 'pinvelto', version: '0.5.1', time: Date.now() }));
       return;
     }
 

@@ -15,16 +15,16 @@ test('keyboard router install evidence', async (t) => {
     removeEventListener: () => {},
   };
 
-  const { default: VibeKeyboardRouter } = await import('../lib/content/keyboard-router.js');
+  const { default: PinveltoKeyboardRouter } = await import('../lib/content/keyboard-router.js');
 
   function installWith({ readyState, lateInjection = false }) {
-    VibeKeyboardRouter.teardown();
-    VibeKeyboardRouter.resetForTesting();
+    PinveltoKeyboardRouter.teardown();
+    PinveltoKeyboardRouter.resetForTesting();
     globalThis.document.readyState = readyState;
-    if (lateInjection) globalThis.window.__VIBE_LATE_INJECTION = true;
-    else delete globalThis.window.__VIBE_LATE_INJECTION;
-    VibeKeyboardRouter.init();
-    return VibeKeyboardRouter.getInstallEvidence();
+    if (lateInjection) globalThis.window.__PINVELTO_LATE_INJECTION = true;
+    else delete globalThis.window.__PINVELTO_LATE_INJECTION;
+    PinveltoKeyboardRouter.init();
+    return PinveltoKeyboardRouter.getInstallEvidence();
   }
 
   await t.test('a document_start injection is recorded as early capture', () => {
@@ -51,12 +51,12 @@ test('keyboard router install evidence', async (t) => {
 
   await t.test('teardown keeps the recorded injection evidence', () => {
     const before = installWith({ readyState: 'loading' });
-    VibeKeyboardRouter.teardown();
-    assert.deepStrictEqual(VibeKeyboardRouter.getInstallEvidence(), before);
+    PinveltoKeyboardRouter.teardown();
+    assert.deepStrictEqual(PinveltoKeyboardRouter.getInstallEvidence(), before);
   });
 
   await t.test('resetForTesting clears the evidence for a fresh capture', () => {
-    VibeKeyboardRouter.resetForTesting();
-    assert.strictEqual(VibeKeyboardRouter.getInstallEvidence(), null);
+    PinveltoKeyboardRouter.resetForTesting();
+    assert.strictEqual(PinveltoKeyboardRouter.getInstallEvidence(), null);
   });
 });

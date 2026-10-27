@@ -2,8 +2,8 @@
 // gives focus back on exit. Restoration never simulates clicks, never touches the
 // host's logical selection, and never scrolls the page (preventScroll).
 
-import VibeEvents from './event-bus.js';
-import VibeShadowHost from './shadow-host.js';
+import PinveltoEvents from './event-bus.js';
+import PinveltoShadowHost from './shadow-host.js';
 
 let lastHostFocus = null;
 let restoreTarget = null;
@@ -11,7 +11,7 @@ let wired = false;
 
 // host.contains() does not cross shadow boundaries, so walk the root chain.
 function isOurUI(el) {
-  const host = VibeShadowHost.getHost?.();
+  const host = PinveltoShadowHost.getHost?.();
   if (!host || !el) return false;
 
   let node = el;
@@ -75,8 +75,8 @@ function init() {
   wired = true;
 
   document.addEventListener('focusin', onFocusIn, true);
-  VibeEvents.on('inspection:start', onSessionStart);
-  VibeEvents.on('inspection:stopped', onSessionEnd);
+  PinveltoEvents.on('inspection:start', onSessionStart);
+  PinveltoEvents.on('inspection:stopped', onSessionEnd);
 }
 
 function teardown() {
@@ -84,11 +84,11 @@ function teardown() {
   wired = false;
 
   document.removeEventListener('focusin', onFocusIn, true);
-  VibeEvents.off('inspection:start', onSessionStart);
-  VibeEvents.off('inspection:stopped', onSessionEnd);
+  PinveltoEvents.off('inspection:start', onSessionStart);
+  PinveltoEvents.off('inspection:stopped', onSessionEnd);
   lastHostFocus = null;
   restoreTarget = null;
 }
 
-const VibeSessionFocus = { init, teardown };
-export default VibeSessionFocus;
+const PinveltoSessionFocus = { init, teardown };
+export default PinveltoSessionFocus;

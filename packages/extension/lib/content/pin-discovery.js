@@ -1,7 +1,7 @@
 // Orchestrates asynchronous pin rendering, retries, and late-loading element discovery.
 // Guarantees non-overlapping attempts, completed-result inspection, and lifecycle cancellation.
 
-import VibeBadgeManager from './badge-manager.js';
+import PinveltoBadgeManager from './badge-manager.js';
 
 let currentCycleId = 0;
 let activeCycle = null;
@@ -12,8 +12,8 @@ let observerCycleId = 0;
 let lazyObserver = null;
 let inFlightDiscoveryPromise = null;
 
-export function filterEligibleElementAnnotations(annotations) {
-  return (annotations || []).filter((a) =>
+export function filterEligibleElementFeedback(pinveltoFeedback) {
+  return (pinveltoFeedback || []).filter((a) =>
     a &&
     a.type !== 'stylesheet' &&
     a.status !== 'resolved' &&
@@ -24,7 +24,7 @@ export function filterEligibleElementAnnotations(annotations) {
 function cancelDiscovery(reason = 'cancelled') {
   currentCycleId++;
   inFlightDiscoveryPromise = null;
-  try { VibeBadgeManager.cancelPendingRenders?.(); } catch {}
+  try { PinveltoBadgeManager.cancelPendingRenders?.(); } catch {}
   if (retryTimer) {
     clearTimeout(retryTimer);
     retryTimer = null;
@@ -46,7 +46,7 @@ function cancelDiscovery(reason = 'cancelled') {
 }
 
 async function startDiscovery({
-  annotations = [],
+  pinveltoFeedback = [],
   maxAttempts = 5,
   delay = 500,
   renderFn = null,
@@ -67,22 +67,22 @@ async function startDiscovery({
   if (lazyObserver) { lazyObserver.disconnect(); lazyObserver = null; }
 
   const effectiveRender = renderFn || (async (anns) => {
-    return await VibeBadgeManager.render(anns);
+    return await PinveltoBadgeManager.render(anns);
   });
 
-  const eligibleAnnotations = filterEligibleElementAnnotations(annotations);
-  const totalEligibleCount = eligibleAnnotations.length;
+  const eligibleFeedback = filterEligibleElementFeedback(pinveltoFeedback);
+  const totalEligibleCount = eligibleFeedback.length;
 
   let attempts = 0;
   let cycleResolved = false;
 
   const cycleInfo = {
     cycleId,
-    annotations,
-    eligibleAnnotations,
+    pinveltoFeedback,
+    eligibleFeedback,
     attempts: 0,
     isCompleted: false,
-    unresolvedIds: eligibleAnnotations.map((a) => a.id)
+    unresolvedIds: eligibleFeedback.map((a) => a.id)
   };
   activeCycle = cycleInfo;
 
@@ -116,9 +116,9 @@ async function startDiscovery({
 
       let renderResult = null;
       try {
-        renderResult = await effectiveRender(annotations);
+        renderResult = await effectiveRender(pinveltoFeedback);
       } catch (err) {
-        renderResult = { error: err, count: VibeBadgeManager.getCount() };
+        renderResult = { error: err, count: PinveltoBadgeManager.getCount() };
       }
 
       // Check if cancelled/superseded during await
@@ -135,8 +135,8 @@ async function startDiscovery({
       if (renderResult && Array.isArray(renderResult.unresolvedIds)) {
         unresolvedIds = renderResult.unresolvedIds;
       } else {
-        const renderedSet = new Set(VibeBadgeManager.getRenderedBadgeIds?.() || []);
-        unresolvedIds = eligibleAnnotations
+        const renderedSet = new Set(PinveltoBadgeManager.getRenderedBadgeIds?.() || []);
+        unresolvedIds = eligibleFeedback
           .filter((a) => !renderedSet.has(a.id))
           .map((a) => a.id);
       }
@@ -160,8 +160,8 @@ async function startDiscovery({
       // If maxAttempts reached and unresolved targets remain, hand off to lazy element observer
       startLazyObserver({
         cycleId,
-        annotations,
-        eligibleAnnotations,
+        pinveltoFeedback,
+        eligibleFeedback,
         effectiveRender,
         onAllFound: () => finishCycle([])
       });
@@ -182,8 +182,8 @@ async function startDiscovery({
 
 function startLazyObserver({
   cycleId,
-  annotations,
-  eligibleAnnotations,
+  pinveltoFeedback,
+  eligibleFeedback,
   effectiveRender,
   onAllFound
 }) {
@@ -209,12 +209,12 @@ function startLazyObserver({
       debounceTimer = null;
       if (cycleId !== currentCycleId) return;
 
-      const result = await effectiveRender(annotations);
+      const result = await effectiveRender(pinveltoFeedback);
       if (cycleId !== currentCycleId) return;
 
       const unresolved = (result && Array.isArray(result.unresolvedIds))
         ? result.unresolvedIds
-        : eligibleAnnotations.filter((a) => !(VibeBadgeManager.getRenderedBadgeIds?.() || []).includes(a.id)).map(a => a.id);
+        : eligibleFeedback.filter((a) => !(PinveltoBadgeManager.getRenderedBadgeIds?.() || []).includes(a.id)).map(a => a.id);
 
       if (unresolved.length === 0) {
         if (lazyObserver) {
@@ -261,13 +261,13 @@ function teardown() {
   cancelDiscovery('teardown');
 }
 
-const VibePinDiscovery = {
+const PinveltoPinDiscovery = {
   startDiscovery,
   cancelDiscovery,
-  filterEligibleElementAnnotations,
+  filterEligibleElementFeedback,
   isObserverActive,
   getActiveCycle,
   teardown
 };
 
-export default VibePinDiscovery;
+export default PinveltoPinDiscovery;

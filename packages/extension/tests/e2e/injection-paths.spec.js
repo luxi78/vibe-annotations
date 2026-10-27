@@ -21,7 +21,7 @@ import {
 // host permissions (the test profile pre-grants only those), which is what makes
 // runtime injection and site enable reachable without answering the native permission
 // bubble — see docs/e2e-testing.md for the coverage boundary.
-const CONTROLLED_ORIGIN = 'http://vibe-injection.test:3005';
+const CONTROLLED_ORIGIN = 'http://pinvelto-injection.test:3005';
 const CONTROLLED_PATTERN = `${CONTROLLED_ORIGIN}/*`;
 
 const readState = (page) => page.evaluate(() => window.__FIXTURE_STATE);
@@ -35,9 +35,9 @@ const readRegistrations = (backgroundWorker) =>
 // cleared afterwards so the injected instance can boot (tests/fixtures/selected-rectangle.html).
 async function openPageWithoutProtection(page) {
   await page.goto(`${CONTROLLED_ORIGIN}/selected-rectangle.html?bootFail=true`);
-  await expect(page.locator('#vibe-annotations-root')).toHaveCount(0);
-  await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached();
-  await page.evaluate(() => document.documentElement.removeAttribute('data-vibe-boot-fail'));
+  await expect(page.locator('#pinvelto-feedback-root')).toHaveCount(0);
+  await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached();
+  await page.evaluate(() => document.documentElement.removeAttribute('data-pinvelto-boot-fail'));
 }
 
 test.describe('Keyboard Injection Paths (Ticket #11)', () => {
@@ -68,8 +68,8 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
     ]);
 
     await page.goto(`${FIXTURE_ORIGIN}/selected-rectangle.html`);
-    const vibeRoot = page.locator('#vibe-annotations-root');
-    await expect(vibeRoot).toBeAttached({ timeout: 10000 });
+    const pinveltoRoot = page.locator('#pinvelto-feedback-root');
+    await expect(pinveltoRoot).toBeAttached({ timeout: 10000 });
 
     // Timing/world evidence: the router installed while the document was still
     // parsing, before the fixture's earliest host listeners were registered.
@@ -82,7 +82,7 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
     expect(evidence.installedAt).toBeLessThan(fixtureState.earlyListenersRegisteredAt);
 
     // Full protection is claimed: no refresh guidance is shown.
-    await expect(vibeRoot.locator('.vibe-refresh-banner')).toHaveCount(0);
+    await expect(pinveltoRoot.locator('.pinvelto-refresh-banner')).toHaveCount(0);
 
     // Early window capture, document capture/bubble and property listeners receive no
     // annotation-mode keys, including keypress events.
@@ -99,7 +99,7 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
 
     // Exiting keeps host state intact, and the host owns the same listeners again.
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
     let state = await readState(page);
     expect(state.cancelCount, 'Exit Esc must stay inside the session').toBe(0);
     expect(state.selected, 'Host selection untouched by the session').toBe(true);
@@ -126,14 +126,14 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
     await page.bringToFront();
     await injectContentScriptsAsToolbarIcon(backgroundWorker);
 
-    const vibeRoot = page.locator('#vibe-annotations-root');
-    await expect(vibeRoot.locator('.vibe-toolbar')).toBeVisible({ timeout: 10000 });
+    const pinveltoRoot = page.locator('#pinvelto-feedback-root');
+    await expect(pinveltoRoot.locator('.pinvelto-toolbar')).toBeVisible({ timeout: 10000 });
 
     // The refresh requirement is explicit and visible.
-    const banner = vibeRoot.locator('.vibe-refresh-banner');
+    const banner = pinveltoRoot.locator('.pinvelto-refresh-banner');
     await expect(banner).toBeVisible();
     await expect(banner).toContainText(/reload/i);
-    await expect(banner.locator('.vibe-refresh-action')).toBeVisible();
+    await expect(banner.locator('.pinvelto-refresh-action')).toBeVisible();
 
     // Timing/world evidence for the late path.
     const evidence = await readKeyboardEvidence(page);
@@ -154,7 +154,7 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
     // The session stays usable: partial protection still keeps host commands out,
     // and the exit key is drained out of the session.
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
     const state = await readState(page);
     expect(state.cancelCount, 'Host commands stay blocked by the session').toBe(0);
     expect(state.selected, 'Host selection stays untouched by the session').toBe(true);
@@ -177,11 +177,11 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
     await page.bringToFront();
     await injectContentScriptsAsToolbarIcon(backgroundWorker, {
       bootIntent: 'show-permission-prompt',
-      bootData: { originPattern: CONTROLLED_PATTERN, hostname: 'vibe-injection.test' },
+      bootData: { originPattern: CONTROLLED_PATTERN, hostname: 'pinvelto-injection.test' },
     });
 
-    const vibeRoot = page.locator('#vibe-annotations-root');
-    const enableBtn = vibeRoot.locator('.vibe-permission-primary');
+    const pinveltoRoot = page.locator('#pinvelto-feedback-root');
+    const enableBtn = pinveltoRoot.locator('.pinvelto-permission-primary');
     await expect(enableBtn).toBeVisible({ timeout: 10000 });
     await enableBtn.click();
 
@@ -196,19 +196,19 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
     expect(siteScript.runAt).toBe('document_start');
     expect(siteScript.world).toBe('ISOLATED');
     expect(siteScript.persistAcrossSessions).toBe(true);
-    const { vibeEnabledSites } = await backgroundWorker.evaluate(() => chrome.storage.local.get(['vibeEnabledSites']));
-    expect(vibeEnabledSites).toContain(CONTROLLED_PATTERN);
+    const { pinveltoEnabledSites } = await backgroundWorker.evaluate(() => chrome.storage.local.get(['pinveltoEnabledSites']));
+    expect(pinveltoEnabledSites).toContain(CONTROLLED_PATTERN);
 
     // The instance that just arrived is late, so it asks for the reload.
-    await expect(vibeRoot.locator('.vibe-toolbar')).toBeVisible({ timeout: 10000 });
-    await expect(vibeRoot.locator('.vibe-refresh-banner')).toBeVisible();
+    await expect(pinveltoRoot.locator('.pinvelto-toolbar')).toBeVisible({ timeout: 10000 });
+    await expect(pinveltoRoot.locator('.pinvelto-refresh-banner')).toBeVisible();
     const lateEvidence = await readKeyboardEvidence(page);
     expect(lateEvidence.earlyCapture).toBe(false);
     expect(lateEvidence.lateInjection).toBe(true);
 
     // After the reload the dynamically enabled page passes the early-capture checks.
     await page.goto(`${CONTROLLED_ORIGIN}/selected-rectangle.html`);
-    await expect(vibeRoot).toBeAttached({ timeout: 10000 });
+    await expect(pinveltoRoot).toBeAttached({ timeout: 10000 });
 
     const fixtureState = await readState(page);
     const evidence = await readKeyboardEvidence(page);
@@ -217,7 +217,7 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
     expect(evidence.earlyCapture).toBe(true);
     expect(evidence.lateInjection).toBe(false);
     expect(evidence.installedAt).toBeLessThan(fixtureState.earlyListenersRegisteredAt);
-    await expect(vibeRoot.locator('.vibe-refresh-banner')).toHaveCount(0);
+    await expect(pinveltoRoot.locator('.pinvelto-refresh-banner')).toHaveCount(0);
 
     // Full isolation on the reloaded page: host capture/bubble/property listeners see
     // no annotation-mode keys and host commands do not run.
@@ -229,7 +229,7 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
     expect((await readLog(page)).length, 'Host listeners must receive zero events after the reload').toBe(0);
 
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
     let state = await readState(page);
     expect(state.cancelCount, 'Exit Esc must stay inside the session').toBe(0);
     expect(state.selected).toBe(true);
@@ -239,13 +239,13 @@ test.describe('Keyboard Injection Paths (Ticket #11)', () => {
     expect(state.cancelCount, 'Fresh Esc must reach the host after the reloaded session').toBe(1);
     expect(state.selected).toBe(false);
 
-    // Annotation startup keeps working on the dynamically enabled origin.
+    // Feedback startup keeps working on the dynamically enabled origin.
     await page.evaluate(() => window.__resetFixtureState());
     await enterAnnotateMode(page);
     const { textarea } = await openPopover(page);
-    await textarea.fill('dynamic origin annotation');
+    await textarea.fill('dynamic origin Feedback');
     const isMac = process.platform === 'darwin';
     await page.keyboard.press(isMac ? 'Meta+Enter' : 'Control+Enter');
-    await expect(vibeRoot.locator('.vibe-badge')).toHaveCount(1, { timeout: 5000 });
+    await expect(pinveltoRoot.locator('.pinvelto-badge')).toHaveCount(1, { timeout: 5000 });
   });
 });

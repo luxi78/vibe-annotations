@@ -4,7 +4,7 @@ import { defineConfig } from 'wxt';
 // the actual manifest.json from this config plus discovered entrypoints.
 export default defineConfig({
   srcDir: '.',
-  outDir: '.output',
+  outDir: process.env.PINVELTO_E2E_BUILD === '1' ? '.output-e2e' : '.output',
   // Avoid clashing with the Next.js website dev server on :3000.
   dev: {
     server: { port: 3010 },
@@ -16,7 +16,7 @@ export default defineConfig({
   manifest: {
     name: 'Pinvelto — Visual Feedback for AI Coding Agents',
     description:
-      'Visual annotations for localhost dev projects. Send feedback to AI coding agents like Claude & Cursor via MCP.',
+      'Pinvelto webpage Feedback for local development. Send Feedback to AI coding agents like Claude & Cursor via MCP.',
     author: 'Raphael Regnier - Spellbind Creative Studio',
     permissions: ['activeTab', 'storage', 'scripting'],
     // '*://*/*' covers the "enable on all sites" annotation flow (http/https).

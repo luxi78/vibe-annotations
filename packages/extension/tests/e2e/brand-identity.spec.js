@@ -9,7 +9,7 @@ test('installed product identifies Pinvelto and displays its Feedback Window mar
   expect(identity.title).toBe('Pinvelto');
   expect(Object.keys(identity.icons).sort()).toEqual(['128', '16', '32', '48']);
   await page.goto(`${FIXTURE_ORIGIN}/selected-rectangle.html`);
-  const logo = page.locator('.vibe-toolbar-logo');
+  const logo = page.locator('.pinvelto-toolbar-logo');
   await expect(logo).toBeVisible();
   expect(await logo.evaluate(image => image.complete && image.naturalWidth >= 128)).toBe(true);
   await expect(logo).toHaveAttribute('alt', 'Pinvelto');

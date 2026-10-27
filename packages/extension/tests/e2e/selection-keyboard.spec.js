@@ -25,7 +25,7 @@ test.describe('Annotate Selection Keyboard Ownership & Exit Drain (Ticket #6)', 
     await page.keyboard.press('Escape');
 
     // Selection mode exited: crosshair cursor removed
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
 
     // Logical selection preserved, cancelCount and escCount remain 0
     const state = await page.evaluate(() => window.__FIXTURE_STATE);
@@ -46,7 +46,7 @@ test.describe('Annotate Selection Keyboard Ownership & Exit Drain (Ticket #6)', 
     await page.keyboard.press('Escape');
 
     // Selection mode exits cleanly
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
 
     const state = await page.evaluate(() => window.__FIXTURE_STATE);
     expect(state.cancelCount).toBe(0);
@@ -62,7 +62,7 @@ test.describe('Annotate Selection Keyboard Ownership & Exit Drain (Ticket #6)', 
 
     // Step 1: First Esc exits Annotate selection mode
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
 
     const stateAfterA1 = await page.evaluate(() => window.__FIXTURE_STATE);
     expect(stateAfterA1.cancelCount, 'First Esc must not cancel host selection').toBe(0);
@@ -79,13 +79,13 @@ test.describe('Annotate Selection Keyboard Ownership & Exit Drain (Ticket #6)', 
   test('A4: ArrowUp, ArrowDown, and Enter navigate and confirm selection without leaking to host', async ({
     page,
   }) => {
-    const vibeRoot = await enterAnnotateMode(page);
+    const pinveltoRoot = await enterAnnotateMode(page);
 
     // Hover over the subtitle inside canvas rect to start highlight
     const subtitle = page.locator('.rect-subtitle');
     await subtitle.hover();
 
-    const highlight = vibeRoot.locator('.vibe-highlight');
+    const highlight = pinveltoRoot.locator('.pinvelto-highlight');
     await expect(highlight).toBeVisible({ timeout: 3000 });
 
     // Clear event log
@@ -100,7 +100,7 @@ test.describe('Annotate Selection Keyboard Ownership & Exit Drain (Ticket #6)', 
     // Press Enter to confirm element and open popover
     await page.keyboard.press('Enter');
 
-    const popover = vibeRoot.locator('.vibe-popover');
+    const popover = pinveltoRoot.locator('.pinvelto-popover');
     await expect(popover).toBeVisible({ timeout: 5000 });
 
     // Host listeners must receive NO ArrowUp, ArrowDown, or Enter events
@@ -205,7 +205,7 @@ test.describe('Annotate Selection Keyboard Ownership & Exit Drain (Ticket #6)', 
     });
 
     // Annotate mode exited
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
 
     // Host must NOT have received any of the Esc events (initial, repeats, or keyup)
     const state = await page.evaluate(() => window.__FIXTURE_STATE);

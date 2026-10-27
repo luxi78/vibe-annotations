@@ -1,8 +1,8 @@
-// Creates and manages the shadow DOM host for all Vibe UI.
+// Creates and manages the shadow DOM host for all Pinvelto UI.
 
-import { VIBE_STYLES } from './styles.js';
-import VibeAPI from './api-bridge.js';
-import VibeEvents from './event-bus.js';
+import { PINVELTO_STYLES } from './styles.js';
+import PinveltoAPI from './api-bridge.js';
+import PinveltoEvents from './event-bus.js';
 
 let hostEl = null;
 let shadowRoot = null;
@@ -11,7 +11,7 @@ function init() {
   if (hostEl) return shadowRoot;
 
   hostEl = document.createElement('div');
-  hostEl.id = 'vibe-annotations-root';
+  hostEl.id = 'pinvelto-feedback-root';
   hostEl.style.cssText = `
     position: fixed !important;
     top: 0 !important;
@@ -27,7 +27,7 @@ function init() {
 
   // Inject styles synchronously
   const styleEl = document.createElement('style');
-  styleEl.textContent = VIBE_STYLES;
+  styleEl.textContent = PINVELTO_STYLES;
   shadowRoot.appendChild(styleEl);
 
   // Hidden state is checked async in content.js after init
@@ -65,13 +65,13 @@ function destroy() {
 
 function hide() {
   if (hostEl) hostEl.style.display = 'none';
-  VibeAPI.saveOverlayHidden(true);
+  PinveltoAPI.saveOverlayHidden(true);
 }
 
 function show() {
   if (hostEl) hostEl.style.display = '';
-  VibeAPI.saveOverlayHidden(false);
-  VibeEvents.emit('overlay:shown');
+  PinveltoAPI.saveOverlayHidden(false);
+  PinveltoEvents.emit('overlay:shown');
 }
 
 function isVisible() {
@@ -82,5 +82,5 @@ function toggle() {
   if (isVisible()) { hide(); } else { show(); }
 }
 
-const VibeShadowHost = { init, getRoot, getHost, destroy, hide, show, isVisible, toggle };
-export default VibeShadowHost;
+const PinveltoShadowHost = { init, getRoot, getHost, destroy, hide, show, isVisible, toggle };
+export default PinveltoShadowHost;

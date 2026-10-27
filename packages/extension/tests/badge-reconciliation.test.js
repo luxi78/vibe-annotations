@@ -3,7 +3,7 @@ import assert from 'node:assert';
 
 // Mock storage
 const mockStorage = {
-  annotations: []
+  pinveltoFeedback: []
 };
 
 globalThis.chrome = {
@@ -251,24 +251,24 @@ globalThis.ResizeObserver = class {
 };
 
 // Import modules
-const { default: _VibeEvents } = await import('../lib/content/event-bus.js');
-const { default: VibeShadowHost } = await import('../lib/content/shadow-host.js');
-const { default: _VibeElementContext } = await import('../lib/content/element-context.js');
-const { default: _VibeAPI } = await import('../lib/content/api-bridge.js');
-const { default: VibeBadgeManager } = await import('../lib/content/badge-manager.js');
+const { default: _PinveltoEvents } = await import('../lib/content/event-bus.js');
+const { default: PinveltoShadowHost } = await import('../lib/content/shadow-host.js');
+const { default: _PinveltoElementContext } = await import('../lib/content/element-context.js');
+const { default: _PinveltoAPI } = await import('../lib/content/api-bridge.js');
+const { default: PinveltoBadgeManager } = await import('../lib/content/badge-manager.js');
 
 test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
   t.beforeEach(() => {
     mockHead.children = [];
     mockBody.children = [];
-    mockStorage.annotations = [];
-    VibeShadowHost.destroy();
-    VibeShadowHost.init();
-    VibeBadgeManager.clearAll();
-    VibeBadgeManager.init();
+    mockStorage.pinveltoFeedback = [];
+    PinveltoShadowHost.destroy();
+    PinveltoShadowHost.init();
+    PinveltoBadgeManager.clearAll();
+    PinveltoBadgeManager.init();
   });
 
-  await t.test('unchanged annotations retain existing pins and preview styles without clearing or reverting', async () => {
+  await t.test('unchanged Feedback retain existing pins and preview styles without clearing or reverting', async () => {
     // 1. Setup host element
     const hostTarget = new MockElement('button');
     hostTarget.id = 'submit-btn';
@@ -298,23 +298,23 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       }
     };
 
-    mockStorage.annotations = [annotation1];
+    mockStorage.pinveltoFeedback = [annotation1];
 
     // Initial render
-    await VibeBadgeManager.render([annotation1]);
+    await PinveltoBadgeManager.render([annotation1]);
 
-    const shadowRoot = VibeShadowHost.getRoot();
-    const pin1 = shadowRoot.querySelector('.vibe-badge[data-annotation-id="ann-1"]');
+    const shadowRoot = PinveltoShadowHost.getRoot();
+    const pin1 = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="ann-1"]');
     assert.ok(pin1, 'Pin 1 must be rendered in shadow DOM');
     assert.strictEqual(hostTarget.style.color, 'red', 'Style must be applied to host target');
 
     // Clear history to watch subsequent refresh
     styleHistory.length = 0;
 
-    // Refresh with identical annotations
-    await VibeBadgeManager.render([annotation1]);
+    // Refresh with identical pinveltoFeedback
+    await PinveltoBadgeManager.render([annotation1]);
 
-    const pinAfterRefresh = shadowRoot.querySelector('.vibe-badge[data-annotation-id="ann-1"]');
+    const pinAfterRefresh = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="ann-1"]');
     assert.strictEqual(
       pinAfterRefresh,
       pin1,
@@ -354,11 +354,11 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       }
     };
 
-    mockStorage.annotations = [ann1];
-    await VibeBadgeManager.render([ann1]);
+    mockStorage.pinveltoFeedback = [ann1];
+    await PinveltoBadgeManager.render([ann1]);
 
-    const shadowRoot = VibeShadowHost.getRoot();
-    const pin1 = shadowRoot.querySelector('.vibe-badge[data-annotation-id="ann-1"]');
+    const shadowRoot = PinveltoShadowHost.getRoot();
+    const pin1 = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="ann-1"]');
     assert.ok(pin1, 'Pin 1 exists');
     assert.strictEqual(hostEl1.style.color, 'red');
 
@@ -375,11 +375,11 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       }
     };
 
-    mockStorage.annotations = [ann1, ann2];
-    await VibeBadgeManager.render([ann1, ann2]);
+    mockStorage.pinveltoFeedback = [ann1, ann2];
+    await PinveltoBadgeManager.render([ann1, ann2]);
 
-    const pin1AfterAdd = shadowRoot.querySelector('.vibe-badge[data-annotation-id="ann-1"]');
-    const pin2AfterAdd = shadowRoot.querySelector('.vibe-badge[data-annotation-id="ann-2"]');
+    const pin1AfterAdd = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="ann-1"]');
+    const pin2AfterAdd = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="ann-2"]');
     assert.strictEqual(pin1AfterAdd, pin1, 'Pin 1 remains the same DOM instance after Pin 2 is added');
     assert.ok(pin2AfterAdd, 'Pin 2 is added');
     assert.strictEqual(hostEl2.style.fontSize, '18px');
@@ -393,28 +393,28 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       }
     };
 
-    mockStorage.annotations = [ann1Updated, ann2];
-    await VibeBadgeManager.render([ann1Updated, ann2]);
+    mockStorage.pinveltoFeedback = [ann1Updated, ann2];
+    await PinveltoBadgeManager.render([ann1Updated, ann2]);
 
-    const pin1AfterUpdate = shadowRoot.querySelector('.vibe-badge[data-annotation-id="ann-1"]');
+    const pin1AfterUpdate = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="ann-1"]');
     assert.strictEqual(pin1AfterUpdate, pin1, 'Pin 1 remains the same DOM instance after update');
     assert.strictEqual(hostEl1.style.color, 'green', 'Host element 1 style updated to green');
-    const tooltip1 = pin1AfterUpdate.querySelector('.vibe-badge-tooltip');
+    const tooltip1 = pin1AfterUpdate.querySelector('.pinvelto-badge-tooltip');
     assert.strictEqual(tooltip1?.textContent, 'Updated button comment', 'Tooltip text updated');
 
     // 3. DELETION: Remove ann-1, keeping only ann-2
-    mockStorage.annotations = [ann2];
-    await VibeBadgeManager.render([ann2]);
+    mockStorage.pinveltoFeedback = [ann2];
+    await PinveltoBadgeManager.render([ann2]);
 
-    const pin1AfterDelete = shadowRoot.querySelector('.vibe-badge[data-annotation-id="ann-1"]');
-    const pin2AfterDelete = shadowRoot.querySelector('.vibe-badge[data-annotation-id="ann-2"]');
+    const pin1AfterDelete = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="ann-1"]');
+    const pin2AfterDelete = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="ann-2"]');
     assert.strictEqual(pin1AfterDelete, null, 'Pin 1 was removed from shadow DOM');
     assert.strictEqual(pin2AfterDelete, pin2AfterAdd, 'Pin 2 remains the exact same DOM instance');
     assert.strictEqual(hostEl1.style.color, 'rgb(0, 0, 0)', 'Host element 1 pending changes reverted to original');
     assert.strictEqual(hostEl2.style.fontSize, '18px', 'Host element 2 styles remain intact');
   });
 
-  await t.test('stylesheet and companion CSS annotations reconcile in place without node replacement', async () => {
+  await t.test('stylesheet and companion CSS Feedback reconcile in place without node replacement', async () => {
     const sheetAnn = {
       id: 'sheet-1',
       type: 'stylesheet',
@@ -438,12 +438,12 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       created_at: '2026-01-01T01:00:00.000Z'
     };
 
-    mockStorage.annotations = [sheetAnn, compAnn];
-    await VibeBadgeManager.render([sheetAnn, compAnn]);
+    mockStorage.pinveltoFeedback = [sheetAnn, compAnn];
+    await PinveltoBadgeManager.render([sheetAnn, compAnn]);
 
-    const sheetStyleEl = mockHead.querySelector('style[data-vibe-style="sheet-1"]');
-    const compStyleEl = mockHead.querySelector('style[data-vibe-style="comp-1"]');
-    const compPin = VibeShadowHost.getRoot().querySelector('.vibe-badge[data-annotation-id="comp-1"]');
+    const sheetStyleEl = mockHead.querySelector('style[data-pinvelto-style="sheet-1"]');
+    const compStyleEl = mockHead.querySelector('style[data-pinvelto-style="comp-1"]');
+    const compPin = PinveltoShadowHost.getRoot().querySelector('.pinvelto-badge[data-annotation-id="comp-1"]');
 
     assert.ok(sheetStyleEl, 'Stylesheet style tag is injected');
     assert.strictEqual(sheetStyleEl.textContent, 'body { background: black; }');
@@ -451,12 +451,12 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
     assert.strictEqual(compStyleEl.textContent, '#style-btn:hover { opacity: 0.8; }');
     assert.ok(compPin, 'Companion pin is rendered');
 
-    // Refresh with identical annotations: assert node continuity
-    await VibeBadgeManager.render([sheetAnn, compAnn]);
+    // Refresh with identical pinveltoFeedback: assert node continuity
+    await PinveltoBadgeManager.render([sheetAnn, compAnn]);
 
-    const sheetAfterRefresh = mockHead.querySelector('style[data-vibe-style="sheet-1"]');
-    const compAfterRefresh = mockHead.querySelector('style[data-vibe-style="comp-1"]');
-    const pinAfterRefresh = VibeShadowHost.getRoot().querySelector('.vibe-badge[data-annotation-id="comp-1"]');
+    const sheetAfterRefresh = mockHead.querySelector('style[data-pinvelto-style="sheet-1"]');
+    const compAfterRefresh = mockHead.querySelector('style[data-pinvelto-style="comp-1"]');
+    const pinAfterRefresh = PinveltoShadowHost.getRoot().querySelector('.pinvelto-badge[data-annotation-id="comp-1"]');
 
     assert.strictEqual(sheetAfterRefresh, sheetStyleEl, 'Stylesheet tag retains exact DOM instance');
     assert.strictEqual(compAfterRefresh, compStyleEl, 'Companion style tag retains exact DOM instance');
@@ -464,11 +464,11 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
 
     // Update CSS content in place
     const sheetUpdated = { ...sheetAnn, css: 'body { background: #111; }' };
-    mockStorage.annotations = [sheetUpdated, compAnn];
-    await VibeBadgeManager.render([sheetUpdated, compAnn]);
+    mockStorage.pinveltoFeedback = [sheetUpdated, compAnn];
+    await PinveltoBadgeManager.render([sheetUpdated, compAnn]);
 
     assert.strictEqual(
-      mockHead.querySelector('style[data-vibe-style="sheet-1"]'),
+      mockHead.querySelector('style[data-pinvelto-style="sheet-1"]'),
       sheetStyleEl,
       'Updated stylesheet tag retains same DOM instance'
     );
@@ -476,13 +476,13 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
 
     // Delete stylesheet annotation, remove companion CSS from comp-1
     const compNoCss = { ...compAnn, css: undefined };
-    mockStorage.annotations = [compNoCss];
-    await VibeBadgeManager.render([compNoCss]);
+    mockStorage.pinveltoFeedback = [compNoCss];
+    await PinveltoBadgeManager.render([compNoCss]);
 
-    assert.strictEqual(mockHead.querySelector('style[data-vibe-style="sheet-1"]'), null, 'Stylesheet tag was removed');
-    assert.strictEqual(mockHead.querySelector('style[data-vibe-style="comp-1"]'), null, 'Companion style tag was removed');
+    assert.strictEqual(mockHead.querySelector('style[data-pinvelto-style="sheet-1"]'), null, 'Stylesheet tag was removed');
+    assert.strictEqual(mockHead.querySelector('style[data-pinvelto-style="comp-1"]'), null, 'Companion style tag was removed');
     assert.strictEqual(
-      VibeShadowHost.getRoot().querySelector('.vibe-badge[data-annotation-id="comp-1"]'),
+      PinveltoShadowHost.getRoot().querySelector('.pinvelto-badge[data-annotation-id="comp-1"]'),
       compPin,
       'Pin for comp-1 remains mounted despite companion css removal'
     );
@@ -497,18 +497,18 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       id: 'page-1',
       url: 'http://localhost:3000/page1',
       selector: '#num-btn',
-      comment: 'Page annotation',
+      comment: 'Page Feedback',
       status: 'open',
       created_at: '2026-01-01T12:00:00.000Z'
     };
 
-    mockStorage.annotations = [pageAnn];
-    await VibeBadgeManager.render([pageAnn]);
+    mockStorage.pinveltoFeedback = [pageAnn];
+    await PinveltoBadgeManager.render([pageAnn]);
 
-    const shadowRoot = VibeShadowHost.getRoot();
-    const pin = shadowRoot.querySelector('.vibe-badge[data-annotation-id="page-1"]');
+    const shadowRoot = PinveltoShadowHost.getRoot();
+    const pin = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="page-1"]');
     assert.ok(pin, 'Pin rendered');
-    const label = pin.querySelector('.vibe-badge-label');
+    const label = pin.querySelector('.pinvelto-badge-label');
     assert.strictEqual(label.textContent, '1', 'Initial project index is 1');
 
     // 1. Earlier project annotation inserted: numbering updates in place
@@ -521,10 +521,10 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       created_at: '2026-01-01T10:00:00.000Z'
     };
 
-    mockStorage.annotations = [earlierAnn, pageAnn];
-    await VibeBadgeManager.render([pageAnn]); // render current page only
+    mockStorage.pinveltoFeedback = [earlierAnn, pageAnn];
+    await PinveltoBadgeManager.render([pageAnn]); // render current page only
 
-    const pinAfterRenumber = shadowRoot.querySelector('.vibe-badge[data-annotation-id="page-1"]');
+    const pinAfterRenumber = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="page-1"]');
     assert.strictEqual(pinAfterRenumber, pin, 'Pin DOM instance is preserved during renumbering');
     assert.strictEqual(label.textContent, '2', 'Numbering updated in place to 2');
 
@@ -537,27 +537,27 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       status: 'open',
       created_at: '2026-01-01T14:00:00.000Z'
     };
-    mockStorage.annotations = [earlierAnn, pageAnn, laterAnn];
-    await VibeBadgeManager.render([pageAnn]);
+    mockStorage.pinveltoFeedback = [earlierAnn, pageAnn, laterAnn];
+    await PinveltoBadgeManager.render([pageAnn]);
 
     assert.strictEqual(label.textContent, '2', 'Numbering remains 2');
     assert.strictEqual(
-      shadowRoot.querySelector('.vibe-badge[data-annotation-id="page-1"]'),
+      shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="page-1"]'),
       pin,
       'Pin remains unchanged'
     );
 
     // 3. Watch mode transition in place
-    _VibeEvents.emit('watch:changed', { active: true });
+    _PinveltoEvents.emit('watch:changed', { active: true });
     assert.ok(pin.classList.contains('watching'), 'Badge has watching class');
     assert.strictEqual(pin.querySelector('svg') !== null, true, 'Badge label displays eye SVG in watch mode');
     assert.strictEqual(
-      shadowRoot.querySelector('.vibe-badge[data-annotation-id="page-1"]'),
+      shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="page-1"]'),
       pin,
       'Pin remains the same DOM instance in watch mode'
     );
 
-    _VibeEvents.emit('watch:changed', { active: false });
+    _PinveltoEvents.emit('watch:changed', { active: false });
     assert.strictEqual(pin.classList.contains('watching'), false, 'Badge no longer has watching class');
     assert.strictEqual(label.textContent, '2', 'Badge restores project index 2');
 
@@ -569,15 +569,15 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       status: 'resolved',
       created_at: '2026-01-01T08:00:00.000Z'
     };
-    mockStorage.annotations = [resolvedAnn, earlierAnn, pageAnn, laterAnn];
-    await VibeBadgeManager.render([resolvedAnn, pageAnn]);
+    mockStorage.pinveltoFeedback = [resolvedAnn, earlierAnn, pageAnn, laterAnn];
+    await PinveltoBadgeManager.render([resolvedAnn, pageAnn]);
 
     assert.strictEqual(
-      shadowRoot.querySelector('.vibe-badge[data-annotation-id="res-1"]'),
+      shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="res-1"]'),
       null,
-      'Resolved annotation gets no pin'
+      'Resolved Feedback gets no pin'
     );
-    assert.strictEqual(label.textContent, '2', 'Resolved annotation does not shift project index');
+    assert.strictEqual(label.textContent, '2', 'Resolved Feedback does not shift project index');
   });
 
   await t.test('Seam 2 (Rematching): disconnected elements are rematched without rebuilding unrelated pins', async () => {
@@ -612,12 +612,12 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       }
     };
 
-    mockStorage.annotations = [ann1, ann2];
-    await VibeBadgeManager.render([ann1, ann2]);
+    mockStorage.pinveltoFeedback = [ann1, ann2];
+    await PinveltoBadgeManager.render([ann1, ann2]);
 
-    const shadowRoot = VibeShadowHost.getRoot();
-    const pin1 = shadowRoot.querySelector('.vibe-badge[data-annotation-id="r-1"]');
-    const pin2 = shadowRoot.querySelector('.vibe-badge[data-annotation-id="r-2"]');
+    const shadowRoot = PinveltoShadowHost.getRoot();
+    const pin1 = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="r-1"]');
+    const pin2 = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="r-2"]');
     assert.ok(pin1 && pin2);
 
     // Simulate SPA framework replacing btn1 with a fresh DOM node
@@ -628,17 +628,17 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
     mockBody.appendChild(newBtn1);
 
     // Re-render: should reconcile r-1 to newBtn1 and leave pin2 completely untouched
-    await VibeBadgeManager.render([ann1, ann2]);
+    await PinveltoBadgeManager.render([ann1, ann2]);
 
-    const pin1After = shadowRoot.querySelector('.vibe-badge[data-annotation-id="r-1"]');
-    const pin2After = shadowRoot.querySelector('.vibe-badge[data-annotation-id="r-2"]');
+    const pin1After = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="r-1"]');
+    const pin2After = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="r-2"]');
 
     assert.strictEqual(pin1After, pin1, 'Pin 1 preserves DOM identity when target element is replaced');
     assert.strictEqual(pin2After, pin2, 'Pin 2 remains untouched');
     assert.strictEqual(newBtn1.style.color, 'red', 'Pending changes applied to new target element');
 
     // Test targetBadge functionality with new target
-    VibeBadgeManager.targetBadge('r-1');
+    PinveltoBadgeManager.targetBadge('r-1');
     assert.strictEqual(newBtn1.scrollIntoViewCalls, 1, 'targetBadge scrolls new target into view');
     assert.ok(pin1.classList.contains('targeted'), 'Pin 1 receives targeted class');
   });
@@ -661,11 +661,11 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       }
     };
 
-    mockStorage.annotations = [ann];
-    await VibeBadgeManager.render([ann]);
+    mockStorage.pinveltoFeedback = [ann];
+    await PinveltoBadgeManager.render([ann]);
 
-    const shadowRoot = VibeShadowHost.getRoot();
-    const pin = shadowRoot.querySelector('.vibe-badge[data-annotation-id="async-1"]');
+    const shadowRoot = PinveltoShadowHost.getRoot();
+    const pin = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="async-1"]');
     assert.ok(pin, 'Initial pin exists');
     assert.strictEqual(btn.style.color, 'purple');
 
@@ -676,10 +676,10 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
     };
 
     // Render attempt during error
-    await VibeBadgeManager.render([ann]);
+    await PinveltoBadgeManager.render([ann]);
 
     // Pin and styles must NOT be cleared!
-    const pinAfterFailure = shadowRoot.querySelector('.vibe-badge[data-annotation-id="async-1"]');
+    const pinAfterFailure = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="async-1"]');
     assert.strictEqual(pinAfterFailure, pin, 'Pin is preserved and NOT wiped on failed read');
     assert.strictEqual(btn.style.color, 'purple', 'Preview styles are preserved on failed read');
 
@@ -691,28 +691,28 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
     let resolveDelayedA;
     const delayedPromise = new Promise(r => { resolveDelayedA = r; });
 
-    const origLoadProjectAnnotations = _VibeAPI.loadProjectAnnotations;
+    const origLoadProjectFeedback = _PinveltoAPI.loadProjectFeedback;
     let intercept = true;
-    _VibeAPI.loadProjectAnnotations = async (...args) => {
+    _PinveltoAPI.loadProjectFeedback = async (...args) => {
       if (intercept) {
         intercept = false;
         await delayedPromise;
         return [ann]; // stale return for Render A
       }
-      return origLoadProjectAnnotations.apply(_VibeAPI, args);
+      return origLoadProjectFeedback.apply(_PinveltoAPI, args);
     };
 
     // Trigger Render A (slow)
-    const renderPromiseA = VibeBadgeManager.render([ann]);
+    const renderPromiseA = PinveltoBadgeManager.render([ann]);
 
     // Trigger Render B (fast, with updated comment)
     const annUpdated = { ...ann, comment: 'Updated comment from Render B' };
-    mockStorage.annotations = [annUpdated];
-    await VibeBadgeManager.render([annUpdated]);
+    mockStorage.pinveltoFeedback = [annUpdated];
+    await PinveltoBadgeManager.render([annUpdated]);
 
-    const pinAfterB = shadowRoot.querySelector('.vibe-badge[data-annotation-id="async-1"]');
+    const pinAfterB = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="async-1"]');
     assert.strictEqual(
-      pinAfterB.querySelector('.vibe-badge-tooltip')?.textContent,
+      pinAfterB.querySelector('.pinvelto-badge-tooltip')?.textContent,
       'Updated comment from Render B',
       'Render B took effect'
     );
@@ -722,15 +722,15 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
     await renderPromiseA;
 
     // Stale Render A must NOT have overwritten Render B's results
-    const pinFinal = shadowRoot.querySelector('.vibe-badge[data-annotation-id="async-1"]');
+    const pinFinal = shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="async-1"]');
     assert.strictEqual(pinFinal, pin, 'Pin preserves identity');
     assert.strictEqual(
-      pinFinal.querySelector('.vibe-badge-tooltip')?.textContent,
+      pinFinal.querySelector('.pinvelto-badge-tooltip')?.textContent,
       'Updated comment from Render B',
       'Stale Render A was ignored and did not overwrite Render B'
     );
 
-    _VibeAPI.loadProjectAnnotations = origLoadProjectAnnotations;
+    _PinveltoAPI.loadProjectFeedback = origLoadProjectFeedback;
   });
 
   await t.test('Seam 4 (Teardown): explicit overlay close and clearAll perform thorough cleanup', async () => {
@@ -761,34 +761,34 @@ test('Badge manager reconciliation - Seam 1 (Core Continuity)', async (t) => {
       created_at: '2026-01-01T00:00:00.000Z'
     };
 
-    mockStorage.annotations = [elemAnn, sheetAnn];
-    await VibeBadgeManager.render([elemAnn, sheetAnn]);
+    mockStorage.pinveltoFeedback = [elemAnn, sheetAnn];
+    await PinveltoBadgeManager.render([elemAnn, sheetAnn]);
 
-    const shadowRoot = VibeShadowHost.getRoot();
-    assert.ok(shadowRoot.querySelector('.vibe-badge[data-annotation-id="td-1"]'));
+    const shadowRoot = PinveltoShadowHost.getRoot();
+    assert.ok(shadowRoot.querySelector('.pinvelto-badge[data-annotation-id="td-1"]'));
     assert.strictEqual(btn.style.padding, '30px');
-    assert.ok(mockHead.querySelector('style[data-vibe-style="td-1"]'));
-    assert.ok(mockHead.querySelector('style[data-vibe-style="td-sheet"]'));
+    assert.ok(mockHead.querySelector('style[data-pinvelto-style="td-1"]'));
+    assert.ok(mockHead.querySelector('style[data-pinvelto-style="td-sheet"]'));
 
     // Trigger genuine teardown via clearAll
-    VibeBadgeManager.clearAll([elemAnn, sheetAnn]);
+    PinveltoBadgeManager.clearAll([elemAnn, sheetAnn]);
 
     assert.strictEqual(
-      shadowRoot.querySelector('.vibe-badge'),
+      shadowRoot.querySelector('.pinvelto-badge'),
       null,
       'All badges removed from shadow root'
     );
     assert.strictEqual(btn.style.padding, '10px', 'Inline pending styles reverted to original');
     assert.strictEqual(
-      mockHead.querySelector('style[data-vibe-style="td-1"]'),
+      mockHead.querySelector('style[data-pinvelto-style="td-1"]'),
       null,
       'Companion style tag removed'
     );
     assert.strictEqual(
-      mockHead.querySelector('style[data-vibe-style="td-sheet"]'),
+      mockHead.querySelector('style[data-pinvelto-style="td-sheet"]'),
       null,
       'Stylesheet tag removed'
     );
-    assert.strictEqual(VibeBadgeManager.getCount(), 0, 'Badge count is 0');
+    assert.strictEqual(PinveltoBadgeManager.getCount(), 0, 'Badge count is 0');
   });
 });

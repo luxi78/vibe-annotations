@@ -26,9 +26,9 @@ test('shadow-host contains keyboard events at hostEl boundary', async () => {
   };
 
   // Import after setting up mock DOM
-  const { default: VibeShadowHost } = await import('../lib/content/shadow-host.js');
+  const { default: PinveltoShadowHost } = await import('../lib/content/shadow-host.js');
 
-  VibeShadowHost.init();
+  PinveltoShadowHost.init();
 
   const requiredEvents = ['keydown', 'keyup', 'keypress', 'pointerdown', 'mousedown', 'click', 'focusin', 'focusout'];
   for (const ev of requiredEvents) {

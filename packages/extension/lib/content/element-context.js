@@ -2,8 +2,8 @@
 // screenshot capture, source mapping, parent chain.
 // Operates on host page DOM. No UI.
 
-import VibeShadowDOMUtils from './shadow-dom-utils.js';
-import { vibeLocationPath } from './event-bus.js';
+import PinveltoShadowDOMUtils from './shadow-dom-utils.js';
+import { pinveltoLocationPath } from './event-bus.js';
 
 
   let delayForTesting = 0;
@@ -16,9 +16,9 @@ import { vibeLocationPath } from './event-bus.js';
 
   async function generate(element) {
     const domDelay = typeof document !== 'undefined'
-      ? (parseInt(document.documentElement?.getAttribute('data-vibe-context-delay') || '', 10) || 0)
+      ? (parseInt(document.documentElement?.getAttribute('data-pinvelto-context-delay') || '', 10) || 0)
       : 0;
-    const delay = delayForTesting || domDelay || (typeof window !== 'undefined' && window.__VIBE_CONTEXT_DELAY_MS) || 0;
+    const delay = delayForTesting || domDelay || (typeof window !== 'undefined' && window.__PINVELTO_CONTEXT_DELAY_MS) || 0;
     if (delay > 0) {
       await new Promise((r) => setTimeout(r, delay));
     }
@@ -122,7 +122,7 @@ import { vibeLocationPath } from './event-bus.js';
     if (pathSel && isUnique(pathSel)) return pathSel;
 
     // Last resort: a best-effort STRUCTURAL selector. It may not be perfectly unique,
-    // but unlike a runtime-injected data-vibe-id it actually exists in the source — so
+    // but unlike a runtime-injected data-pinvelto-id it actually exists in the source — so
     // an agent grepping the codebase (or another person reading the annotation) can
     // find the element. Live badge anchoring still disambiguates via text / class /
     // position (see findElementBySelector), so uniqueness here isn't required.
@@ -131,12 +131,12 @@ import { vibeLocationPath } from './event-bus.js';
 
   // Build "host >> host >> innerSelector" for elements inside shadow DOM
   function generateShadowAwareSelector(element) {
-    if (!VibeShadowDOMUtils.isInShadowDOM(element)) return null;
+    if (!PinveltoShadowDOMUtils.isInShadowDOM(element)) return null;
 
     const root = element.getRootNode();
-    if (!VibeShadowDOMUtils.isShadowRoot(root)) return null;
+    if (!PinveltoShadowDOMUtils.isShadowRoot(root)) return null;
 
-    const shadowHosts = VibeShadowDOMUtils.getShadowPath(element);
+    const shadowHosts = PinveltoShadowDOMUtils.getShadowPath(element);
     if (!shadowHosts.length) return null;
 
     const hostSelectors = [];
@@ -149,7 +149,7 @@ import { vibeLocationPath } from './event-bus.js';
     }
 
     const innerSelector = generateSelectorInRoot(element, root);
-    return VibeShadowDOMUtils.buildShadowSelector(hostSelectors, innerSelector);
+    return PinveltoShadowDOMUtils.buildShadowSelector(hostSelectors, innerSelector);
   }
 
   // Generate a selector for `element` scoped to `root` (document or ShadowRoot)
@@ -168,7 +168,7 @@ import { vibeLocationPath } from './event-bus.js';
     // Path-based fallback within this root
     const pathParts = [];
     let current = element;
-    while (current && current !== root && !(VibeShadowDOMUtils.isShadowRoot(current))) {
+    while (current && current !== root && !(PinveltoShadowDOMUtils.isShadowRoot(current))) {
       const tag = current.tagName.toLowerCase();
       let part = tag;
       const parent = current.parentElement;
@@ -186,7 +186,7 @@ import { vibeLocationPath } from './event-bus.js';
     const pathSel = pathParts.join(' > ');
     if (pathSel && isUniqueIn(pathSel, root)) return pathSel;
 
-    // Prefer a structural path (greppable in source) over an injected data-vibe-id.
+    // Prefer a structural path (greppable in source) over an injected data-pinvelto-id.
     return pathSel || generateDataAttributeSelector(element);
   }
 
@@ -210,7 +210,7 @@ import { vibeLocationPath } from './event-bus.js';
     }
 
     // Second pass: check nearest ancestor with a stable attribute (scoped selector)
-    let parent = VibeShadowDOMUtils.getParentElement(element);
+    let parent = PinveltoShadowDOMUtils.getParentElement(element);
     let depth = 0;
     while (parent && parent.tagName !== 'BODY' && depth < 5) {
       for (const attr of stableAttrs.slice(0, 8)) { // test attrs only
@@ -220,7 +220,7 @@ import { vibeLocationPath } from './event-bus.js';
           // Build child selector relative to this stable parent
           const childTag = tag;
           // Check if element is a direct child — use child combinator only if so
-          const isDirectChild = VibeShadowDOMUtils.getParentElement(element) === parent;
+          const isDirectChild = PinveltoShadowDOMUtils.getParentElement(element) === parent;
           if (isDirectChild) {
             const directChildren = Array.from(parent.querySelectorAll(`:scope > ${childTag}`));
             if (directChildren.length === 1 && directChildren[0] === element) {
@@ -237,7 +237,7 @@ import { vibeLocationPath } from './event-bus.js';
           }
         }
       }
-      parent = VibeShadowDOMUtils.getParentElement(parent);
+      parent = PinveltoShadowDOMUtils.getParentElement(parent);
       depth++;
     }
 
@@ -253,7 +253,7 @@ import { vibeLocationPath } from './event-bus.js';
     const sanitized = text.replace(/[^\w\s]/g, '').trim();
     if (!sanitized || sanitized.length >= 50) return null;
 
-    const candidates = VibeShadowDOMUtils.querySelectorAllDeep(document, tag);
+    const candidates = PinveltoShadowDOMUtils.querySelectorAllDeep(document, tag);
     const matches = candidates.filter(el =>
       el.textContent?.trim().replace(/[^\w\s]/g, '').trim() === sanitized
     );
@@ -274,10 +274,10 @@ import { vibeLocationPath } from './event-bus.js';
   function generateLimitedContextSelector(element) {
     const classSel = generateClassSelector(element);
     if (!classSel) return null;
-    const parent = VibeShadowDOMUtils.getParentElement(element);
+    const parent = PinveltoShadowDOMUtils.getParentElement(element);
     if (!parent || parent.tagName === 'BODY') return null;
     const pClasses = Array.from(parent.classList)
-      .filter(c => !c.startsWith('vibe-'))
+      .filter(c => !c.startsWith('pinvelto-'))
       .filter(isStableClass)
       .slice(0, 2);
     if (!pClasses.length) return null;
@@ -286,7 +286,7 @@ import { vibeLocationPath } from './event-bus.js';
 
   function generateFallbackSelector(element) {
     const tag = element.tagName.toLowerCase();
-    const parent = VibeShadowDOMUtils.getParentElement(element);
+    const parent = PinveltoShadowDOMUtils.getParentElement(element);
     if (!parent) return null;
 
     // Build qualified parent selector — require classes or ID to avoid fragile bare-tag selectors
@@ -295,7 +295,7 @@ import { vibeLocationPath } from './event-bus.js';
       parentSel += `#${CSS.escape(parent.id)}`;
     } else {
       const pClasses = Array.from(parent.classList)
-        .filter(c => !c.startsWith('vibe-'))
+        .filter(c => !c.startsWith('pinvelto-'))
         .filter(isStableClass)
         .slice(0, 3);
       if (pClasses.length) {
@@ -324,7 +324,7 @@ import { vibeLocationPath } from './event-bus.js';
       let id = tag;
 
       const stable = Array.from(current.classList)
-        .filter(c => !c.startsWith('vibe-'))
+        .filter(c => !c.startsWith('pinvelto-'))
         .filter(isStableClass)
         .slice(0, 2);
 
@@ -335,7 +335,7 @@ import { vibeLocationPath } from './event-bus.js';
       } else if (current.getAttribute('role')) {
         id = `${tag}[role="${current.getAttribute('role')}"]`;
       } else {
-        const siblings = Array.from(VibeShadowDOMUtils.getParentElement(current)?.children || []);
+        const siblings = Array.from(PinveltoShadowDOMUtils.getParentElement(current)?.children || []);
         const same = siblings.filter(s => s.tagName.toLowerCase() === tag);
         if (same.length > 1) {
           id = `${tag}:nth-of-type(${same.indexOf(current) + 1})`;
@@ -343,16 +343,16 @@ import { vibeLocationPath } from './event-bus.js';
       }
 
       path.unshift(id);
-      current = VibeShadowDOMUtils.getParentElement(current);
+      current = PinveltoShadowDOMUtils.getParentElement(current);
       depth++;
     }
     return path.length ? path.join(' > ') : null;
   }
 
   function generateDataAttributeSelector(element) {
-    const id = `vibe-annotation-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    element.setAttribute('data-vibe-id', id);
-    return `[data-vibe-id="${id}"]`;
+    const id = `pinvelto-annotation-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    element.setAttribute('data-pinvelto-id', id);
+    return `[data-pinvelto-id="${id}"]`;
   }
 
   function isStableClass(cls) {
@@ -366,7 +366,7 @@ import { vibeLocationPath } from './event-bus.js';
   }
 
   function isUnique(selector) {
-    try { return VibeShadowDOMUtils.querySelectorCountDeep(document, selector, 1) === 1; }
+    try { return PinveltoShadowDOMUtils.querySelectorCountDeep(document, selector, 1) === 1; }
     catch { return false; }
   }
 
@@ -382,7 +382,7 @@ import { vibeLocationPath } from './event-bus.js';
     try {
       const srcInfo = await extractSourceInfo(element);
       const projectArea = getProjectAreaFromURL();
-      const urlPath = vibeLocationPath(window.location);
+      const urlPath = pinveltoLocationPath(window.location);
       const hints = withIdentityHints(generateContextHints(element), srcInfo);
       return {
         source_file_path: srcInfo.filePath || null,
@@ -397,7 +397,7 @@ import { vibeLocationPath } from './event-bus.js';
         source_file_path: null,
         source_line_range: null,
         project_area: 'unknown',
-        url_path: vibeLocationPath(window.location),
+        url_path: pinveltoLocationPath(window.location),
         source_map_available: false,
         context_hints: generateContextHints(element)
       };
@@ -436,20 +436,20 @@ import { vibeLocationPath } from './event-bus.js';
   // the MAIN world re-selects the same shared node and reads its fiber/instance.
   // The marker is always stripped, and a timeout guarantees we never hang the
   // capture (on non-framework pages the MAIN world replies null immediately).
-  const FIBER_PROBE_ATTR = 'data-vibe-fiber-probe';
+  const FIBER_PROBE_ATTR = 'data-pinvelto-fiber-probe';
   let probeSeq = 0;
 
   function readSourceFromMainWorld(element) {
     return new Promise((resolve) => {
       let settled = false;
       const marker = 'fp_' + (++probeSeq) + '_' + Date.now();
-      const id = '__vibe_main_' + marker;
+      const id = '__pinvelto_main_' + marker;
 
       function finish(value) {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        document.removeEventListener('vibe-bridge:main-response', handler);
+        document.removeEventListener('pinvelto-bridge:main-response', handler);
         try { element.removeAttribute(FIBER_PROBE_ATTR); } catch { /* detached */ }
         resolve(value);
       }
@@ -463,8 +463,8 @@ import { vibeLocationPath } from './event-bus.js';
 
       try {
         element.setAttribute(FIBER_PROBE_ATTR, marker);
-        document.addEventListener('vibe-bridge:main-response', handler);
-        document.dispatchEvent(new CustomEvent('vibe-bridge:main-request', {
+        document.addEventListener('pinvelto-bridge:main-response', handler);
+        document.dispatchEvent(new CustomEvent('pinvelto-bridge:main-request', {
           detail: { id, method: 'readSource', args: { marker } }
         }));
       } catch {
@@ -499,7 +499,7 @@ import { vibeLocationPath } from './event-bus.js';
       const np = current.getAttribute('data-nextjs-path');
       if (np) return { filePath: normalizeSourcePath(np), lineRange: null, hasSourceMap: true };
 
-      current = VibeShadowDOMUtils.getParentElement(current);
+      current = PinveltoShadowDOMUtils.getParentElement(current);
       depth++;
     }
     return null;
@@ -574,7 +574,7 @@ import { vibeLocationPath } from './event-bus.js';
     let current = el;
     while (current) {
       try { if (current.matches && current.matches(selector)) return current; } catch { /* skip */ }
-      current = VibeShadowDOMUtils.getParentElement(current);
+      current = PinveltoShadowDOMUtils.getParentElement(current);
     }
     return null;
   }
@@ -596,13 +596,13 @@ import { vibeLocationPath } from './event-bus.js';
   }
 
   function getComponentDepth(el) {
-    let depth = 0, current = VibeShadowDOMUtils.getParentElement(el);
+    let depth = 0, current = PinveltoShadowDOMUtils.getParentElement(el);
     while (current && depth < 10 && current.tagName !== 'BODY') {
       const cls = Array.from(current.classList);
       if (cls.some(c => /^[A-Z][a-zA-Z0-9]*/.test(c) || c.includes('component') || c.includes('container') || c.includes('wrapper'))) {
         depth++;
       }
-      current = VibeShadowDOMUtils.getParentElement(current);
+      current = PinveltoShadowDOMUtils.getParentElement(current);
     }
     return depth;
   }
@@ -628,7 +628,7 @@ import { vibeLocationPath } from './event-bus.js';
     let current = element;
     while (current && current.tagName !== 'BODY' && segments.length < maxDepth) {
       segments.unshift(formatPathSegment(current));
-      current = VibeShadowDOMUtils.getParentElement(current);
+      current = PinveltoShadowDOMUtils.getParentElement(current);
     }
     return segments.join(' > ');
   }
@@ -648,7 +648,7 @@ import { vibeLocationPath } from './event-bus.js';
     const ariaLabel = element.getAttribute('aria-label');
     if (ariaLabel) return `${tag}[aria-label="${sanitizePathValue(ariaLabel, 24)}"]`;
 
-    const parent = VibeShadowDOMUtils.getParentElement(element);
+    const parent = PinveltoShadowDOMUtils.getParentElement(element);
     if (parent) {
       const siblings = Array.from(parent.children).filter(el => el.tagName === element.tagName);
       if (siblings.length > 1) {
@@ -685,14 +685,14 @@ import { vibeLocationPath } from './event-bus.js';
 
     return classes
       .filter(Boolean)
-      .filter(c => !c.startsWith('vibe-'))
+      .filter(c => !c.startsWith('pinvelto-'))
       .filter(isStableClass)
       .filter(c => !isGenericFrameworkClass(c));
   }
 
   function getParentChainContext(element, maxDepth = 3) {
     const chain = [];
-    let current = VibeShadowDOMUtils.getParentElement(element);
+    let current = PinveltoShadowDOMUtils.getParentElement(element);
     let depth = 0;
     while (current && depth < maxDepth && current.tagName !== 'BODY') {
       const info = {
@@ -706,7 +706,7 @@ import { vibeLocationPath } from './event-bus.js';
         ['nav', 'header', 'footer', 'main', 'section', 'article', 'aside'].includes(info.tag)) {
         chain.push(info);
       }
-      current = VibeShadowDOMUtils.getParentElement(current);
+      current = PinveltoShadowDOMUtils.getParentElement(current);
       depth++;
     }
     return chain.length ? chain : null;
@@ -717,19 +717,19 @@ import { vibeLocationPath } from './event-bus.js';
   function resolveSelector(selector) {
     if (!selector) return null;
     // Shadow compound selector: host >> host >> inner
-    if (VibeShadowDOMUtils.isShadowSelector(selector)) {
-      return VibeShadowDOMUtils.findByShadowSelector(document, selector);
+    if (PinveltoShadowDOMUtils.isShadowSelector(selector)) {
+      return PinveltoShadowDOMUtils.findByShadowSelector(document, selector);
     }
     // Regular selector — try deep (covers elements inside shadow roots)
-    return VibeShadowDOMUtils.querySelectorDeep(document, selector);
+    return PinveltoShadowDOMUtils.querySelectorDeep(document, selector);
   }
 
   // For shadow selectors, try to resolve the host chain even when the full
   // selector fails — this lets us scope text/class fallbacks to the correct
   // shadow root instead of searching the entire document.
   function resolveShadowRoot(selector) {
-    if (!VibeShadowDOMUtils.isShadowSelector(selector)) return null;
-    const parts = selector.split(VibeShadowDOMUtils.SHADOW_SEPARATOR).map(s => s.trim()).filter(Boolean);
+    if (!PinveltoShadowDOMUtils.isShadowSelector(selector)) return null;
+    const parts = selector.split(PinveltoShadowDOMUtils.SHADOW_SEPARATOR).map(s => s.trim()).filter(Boolean);
     if (parts.length < 2) return null;
     // Walk the host chain (all parts except the last)
     let currentRoot = document;
@@ -777,7 +777,7 @@ import { vibeLocationPath } from './event-bus.js';
       // Search scoped root first, fall back to deep search
       let candidates = scopeRoot !== document
         ? Array.from(scopeRoot.querySelectorAll(tag))
-        : VibeShadowDOMUtils.querySelectorAllDeep(document, tag);
+        : PinveltoShadowDOMUtils.querySelectorAllDeep(document, tag);
 
       let matches = candidates.filter(el => normalizeText(el.textContent) === sanitized);
 
@@ -789,7 +789,7 @@ import { vibeLocationPath } from './event-bus.js';
 
       // If scoped search found nothing, try deep search as last resort
       if (matches.length === 0 && scopeRoot !== document) {
-        candidates = VibeShadowDOMUtils.querySelectorAllDeep(document, tag);
+        candidates = PinveltoShadowDOMUtils.querySelectorAllDeep(document, tag);
         matches = candidates.filter(el => normalizeText(el.textContent) === sanitized);
       }
 
@@ -825,17 +825,17 @@ import { vibeLocationPath } from './event-bus.js';
           // Scope to shadow root if available
           const candidates = scopeRoot !== document
             ? Array.from(scopeRoot.querySelectorAll(sel))
-            : VibeShadowDOMUtils.querySelectorAllDeep(document, sel);
+            : PinveltoShadowDOMUtils.querySelectorAllDeep(document, sel);
           if (candidates.length === 1) return candidates[0];
         } catch { /* continue */ }
       }
     }
 
-    // Fallback: data-vibe-id
-    if (annotation.selector.includes('data-vibe-id')) {
-      const m = annotation.selector.match(/data-vibe-id="([^"]+)"/);
+    // Fallback: data-pinvelto-id
+    if (annotation.selector.includes('data-pinvelto-id')) {
+      const m = annotation.selector.match(/data-pinvelto-id="([^"]+)"/);
       if (m) {
-        const el = VibeShadowDOMUtils.querySelectorDeep(document, `[data-vibe-id="${m[1]}"]`);
+        const el = PinveltoShadowDOMUtils.querySelectorDeep(document, `[data-pinvelto-id="${m[1]}"]`);
         if (el) return el;
       }
     }
@@ -927,7 +927,7 @@ import { vibeLocationPath } from './event-bus.js';
     }
   }
 
-const VibeElementContext = {
+const PinveltoElementContext = {
   generate,
   setDelayForTesting,
   generateSelector,
@@ -935,4 +935,4 @@ const VibeElementContext = {
   scanPageColorVariables,
   getDisplayClasses,
 };
-export default VibeElementContext;
+export default PinveltoElementContext;

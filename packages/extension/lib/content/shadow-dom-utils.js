@@ -145,27 +145,27 @@
 
   // --- Keyboard DOM navigation helpers ---
 
-  function isVibeHost(el) {
-    return el && el.id === 'vibe-annotations-root';
+  function isPinveltoHost(el) {
+    return el && el.id === 'pinvelto-feedback-root';
   }
 
-  /** Walk up, skipping Vibe's own shadow host. */
+  /** Walk up, skipping Pinvelto's own shadow host. */
   function getNavigableParent(node) {
     let parent = getParentElement(node);
-    if (parent && isVibeHost(parent)) parent = getParentElement(parent);
+    if (parent && isPinveltoHost(parent)) parent = getParentElement(parent);
     return parent;
   }
 
-  /** Drill into first child, preferring open shadow roots. Skips Vibe UI. */
+  /** Drill into first child, preferring open shadow roots. Skips Pinvelto UI. */
   function getFirstDrillChild(element) {
     if (!element || element.nodeType !== Node.ELEMENT_NODE) return null;
-    if (isVibeHost(element)) return null;
+    if (isPinveltoHost(element)) return null;
     if (element.shadowRoot && element.shadowRoot.firstElementChild) {
       const child = element.shadowRoot.firstElementChild;
-      return isVibeHost(child) ? null : child;
+      return isPinveltoHost(child) ? null : child;
     }
     const child = element.firstElementChild;
-    return (child && isVibeHost(child)) ? child.nextElementSibling : child || null;
+    return (child && isPinveltoHost(child)) ? child.nextElementSibling : child || null;
   }
 
   // --- Deep elementFromPoint (drills into shadow roots) ---
@@ -182,7 +182,7 @@
     return current;
   }
 
-const VibeShadowDOMUtils = {
+const PinveltoShadowDOMUtils = {
   isShadowRoot,
   isInShadowDOM,
   getParentElement,
@@ -198,4 +198,4 @@ const VibeShadowDOMUtils = {
   getFirstDrillChild,
   SHADOW_SEPARATOR,
 };
-export default VibeShadowDOMUtils;
+export default PinveltoShadowDOMUtils;

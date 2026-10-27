@@ -253,7 +253,7 @@ globalThis.document = {
   activeElement: null
 };
 
-const { default: VibePopoverPanels } = await import('../lib/content/popover-panels.js');
+const { default: PinveltoPopoverPanels } = await import('../lib/content/popover-panels.js');
 
 test('Design alignment controls: direction changes preserve matrix controls and keyboard focus in place', async (t) => {
   await t.test('switching layout direction updates dataset, aria-label, title, and active class without recreating matrix cell DOM nodes', () => {
@@ -276,16 +276,16 @@ test('Design alignment controls: direction changes preserve matrix controls and 
     };
     const resetBtn = new MockElement('button');
 
-    const html = VibePopoverPanels.buildContainerToolbarHTML(pc, s);
+    const html = PinveltoPopoverPanels.buildContainerToolbarHTML(pc, s);
     popover.innerHTML = html.layout;
 
-    VibePopoverPanels.wireContainerToolbar(popover, targetElement, pc, s, resetBtn);
+    PinveltoPopoverPanels.wireContainerToolbar(popover, targetElement, pc, s, resetBtn);
 
-    const matrixContainer = popover.querySelector('.vibe-align-matrix');
+    const matrixContainer = popover.querySelector('.pinvelto-align-matrix');
     assert.ok(matrixContainer, 'Matrix container exists');
     assert.strictEqual(matrixContainer.dataset.direction, 'hflex');
 
-    const initialCells = Array.from(popover.querySelectorAll('.vibe-matrix-cell'));
+    const initialCells = Array.from(popover.querySelectorAll('.pinvelto-matrix-cell'));
     assert.strictEqual(initialCells.length, 9, 'Initial matrix renders 9 cells');
 
     // Give keyboard focus to the center cell (index 4: center, center)
@@ -294,12 +294,12 @@ test('Design alignment controls: direction changes preserve matrix controls and 
     assert.strictEqual(globalThis.document.activeElement, centerCell, 'Center cell is focused');
 
     // Switch to vertical flex (vflex)
-    const vflexBtn = popover.querySelector('.vibe-flow-group [data-mode="vflex"]');
+    const vflexBtn = popover.querySelector('.pinvelto-flow-group [data-mode="vflex"]');
     assert.ok(vflexBtn, 'vflex button exists');
     vflexBtn.click();
 
     // After mode switch:
-    const afterCells = Array.from(popover.querySelectorAll('.vibe-matrix-cell'));
+    const afterCells = Array.from(popover.querySelectorAll('.pinvelto-matrix-cell'));
     assert.strictEqual(afterCells.length, 9);
 
     // CRITICAL: Every cell DOM node must be strictly identical (in-place update, not rebuilt innerHTML)
@@ -358,15 +358,15 @@ test('Design alignment controls: direction changes preserve matrix controls and 
     };
     const resetBtn = new MockElement('button');
 
-    const html = VibePopoverPanels.buildContainerToolbarHTML(pc, s);
+    const html = PinveltoPopoverPanels.buildContainerToolbarHTML(pc, s);
     popover.innerHTML = html.layout;
 
-    const buildPendingChanges = VibePopoverPanels.wireContainerToolbar(popover, targetElement, pc, s, resetBtn);
+    const buildPendingChanges = PinveltoPopoverPanels.wireContainerToolbar(popover, targetElement, pc, s, resetBtn);
 
-    const cells = Array.from(popover.querySelectorAll('.vibe-matrix-cell'));
+    const cells = Array.from(popover.querySelectorAll('.pinvelto-matrix-cell'));
 
     // Switch to vflex
-    const vflexBtn = popover.querySelector('.vibe-flow-group [data-mode="vflex"]');
+    const vflexBtn = popover.querySelector('.pinvelto-flow-group [data-mode="vflex"]');
     vflexBtn.click();
 
     // Click cell at row 0, col 2 (top right in vflex: jc='flex-start', ai='flex-end')
@@ -382,7 +382,7 @@ test('Design alignment controls: direction changes preserve matrix controls and 
     assert.strictEqual(pending1.alignItems?.value, 'flex-end', 'Pending alignItems recorded');
 
     // Switch back to hflex
-    const hflexBtn = popover.querySelector('.vibe-flow-group [data-mode="hflex"]');
+    const hflexBtn = popover.querySelector('.pinvelto-flow-group [data-mode="hflex"]');
     hflexBtn.click();
 
     // In hflex, row 2, col 1 (bottom center): jc='center', ai='flex-end'
@@ -423,13 +423,13 @@ test('Design alignment controls: direction changes preserve matrix controls and 
     };
     const resetBtn = new MockElement('button');
 
-    const html = VibePopoverPanels.buildContainerToolbarHTML(pc, s);
+    const html = PinveltoPopoverPanels.buildContainerToolbarHTML(pc, s);
     popover.innerHTML = html.layout;
 
-    VibePopoverPanels.wireContainerToolbar(popover, targetElement, pc, s, resetBtn);
+    PinveltoPopoverPanels.wireContainerToolbar(popover, targetElement, pc, s, resetBtn);
 
-    const vflexBtn = popover.querySelector('.vibe-flow-group [data-mode="vflex"]');
-    const hflexBtn = popover.querySelector('.vibe-flow-group [data-mode="hflex"]');
+    const vflexBtn = popover.querySelector('.pinvelto-flow-group [data-mode="vflex"]');
+    const hflexBtn = popover.querySelector('.pinvelto-flow-group [data-mode="hflex"]');
 
     // Repeatedly toggle direction 10 times
     for (let i = 0; i < 5; i++) {
@@ -437,7 +437,7 @@ test('Design alignment controls: direction changes preserve matrix controls and 
       hflexBtn.click();
     }
 
-    const cells = Array.from(popover.querySelectorAll('.vibe-matrix-cell'));
+    const cells = Array.from(popover.querySelectorAll('.pinvelto-matrix-cell'));
 
     // Check each cell has exactly 1 click listener
     for (let i = 0; i < 9; i++) {
@@ -482,25 +482,25 @@ test('Design alignment controls: direction changes preserve matrix controls and 
     };
     const resetBtn = new MockElement('button');
 
-    const html = VibePopoverPanels.buildContainerToolbarHTML(pc, s);
+    const html = PinveltoPopoverPanels.buildContainerToolbarHTML(pc, s);
     popover.innerHTML = html.layout;
 
-    const buildPendingChanges = VibePopoverPanels.wireContainerToolbar(popover, targetElement, pc, s, resetBtn);
+    const buildPendingChanges = PinveltoPopoverPanels.wireContainerToolbar(popover, targetElement, pc, s, resetBtn);
 
-    const initialCells = Array.from(popover.querySelectorAll('.vibe-matrix-cell'));
+    const initialCells = Array.from(popover.querySelectorAll('.pinvelto-matrix-cell'));
 
     // Initial state: center cell (index 4) is active
     assert.ok(initialCells[4].classList.contains('active'), 'Initial state reflects existing pending changes');
 
     // 1. Toggle Space Auto
-    const spaceAutoCheck = popover.querySelector('.vibe-space-auto-check');
+    const spaceAutoCheck = popover.querySelector('.pinvelto-space-auto-check');
     assert.ok(spaceAutoCheck, 'Space auto checkbox exists');
 
     spaceAutoCheck.checked = true;
     spaceAutoCheck.dispatchEvent({ type: 'change', target: spaceAutoCheck });
 
     // Assert: space-between clears active class on matrix cells, but preserves DOM nodes
-    const cellsAfterSpaceAuto = Array.from(popover.querySelectorAll('.vibe-matrix-cell'));
+    const cellsAfterSpaceAuto = Array.from(popover.querySelectorAll('.pinvelto-matrix-cell'));
     for (let i = 0; i < 9; i++) {
       assert.strictEqual(cellsAfterSpaceAuto[i], initialCells[i], 'Cells preserved during space-auto toggle');
       assert.ok(!cellsAfterSpaceAuto[i].classList.contains('active'), `Cell ${i} not active when space-auto is enabled`);
@@ -520,7 +520,7 @@ test('Design alignment controls: direction changes preserve matrix controls and 
     resetBtn.click();
 
     // Assert: reset restores origJC ('flex-start') and origAI ('stretch')
-    const cellsAfterReset = Array.from(popover.querySelectorAll('.vibe-matrix-cell'));
+    const cellsAfterReset = Array.from(popover.querySelectorAll('.pinvelto-matrix-cell'));
     for (let i = 0; i < 9; i++) {
       assert.strictEqual(cellsAfterReset[i], initialCells[i], 'Cells preserved across reset');
     }

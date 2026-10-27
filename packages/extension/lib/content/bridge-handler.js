@@ -1,16 +1,16 @@
 // Content-world handler for the bridge API
 // Listens for CustomEvents from the page-world bridge-api.js
-// Uses existing internal modules to create/read/delete annotations
+// Uses existing internal modules to create/read/delete pinveltoFeedback
 
-import VibeAPI from './api-bridge.js';
-import VibeElementContext from './element-context.js';
-import VibeEvents, { vibeLocationPath } from './event-bus.js';
+import PinveltoAPI from './api-bridge.js';
+import PinveltoElementContext from './element-context.js';
+import PinveltoEvents, { pinveltoLocationPath } from './event-bus.js';
 
-  let getAnnotations = null; // Getter function for content.js annotations array
+  let getFeedback = null; // Getter function for content.js pinveltoFeedback array
 
   function init(annotationsGetter) {
-    getAnnotations = annotationsGetter;
-    document.addEventListener('vibe-bridge:request', handleRequest);
+    getFeedback = annotationsGetter;
+    document.addEventListener('pinvelto-bridge:request', handleRequest);
   }
 
   async function handleRequest(e) {
@@ -20,19 +20,19 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
     try {
       let result;
       switch (method) {
-        case 'createAnnotation':
+        case 'createFeedback':
           result = await handleCreate(args);
           break;
-        case 'createStyleAnnotation':
+        case 'createStyleFeedback':
           result = await handleCreateStyle(args);
           break;
-        case 'getAnnotations':
-          result = handleGetAnnotations();
+        case 'getFeedback':
+          result = handleGetFeedback();
           break;
-        case 'exportAnnotations':
+        case 'exportFeedback':
           result = await handleExport(args);
           break;
-        case 'deleteAnnotation':
+        case 'pinvelto:deleteFeedback':
           result = await handleDelete(args);
           break;
         case 'status':
@@ -48,7 +48,7 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
   }
 
   function respond(id, result, error) {
-    document.dispatchEvent(new CustomEvent('vibe-bridge:response', {
+    document.dispatchEvent(new CustomEvent('pinvelto-bridge:response', {
       detail: error ? { id, error } : { id, result }
     }));
   }
@@ -74,7 +74,7 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
     if (!el) throw new Error('Element not found: ' + selector);
 
     // Generate element context (captures computed styles BEFORE our changes)
-    const context = await VibeElementContext.generate(el);
+    const context = await PinveltoElementContext.generate(el);
 
     const pendingChanges = {};
     const computed = window.getComputedStyle(el);
@@ -110,7 +110,7 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
 
     // Build annotation
     const annotation = {
-      id: 'vibe_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      id: 'pinvelto_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
       url: window.location.href,
       selector: context.selector,
       comment: comment || '',
@@ -129,7 +129,7 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
       source_file_path: context.source_mapping?.source_file_path || null,
       source_line_range: context.source_mapping?.source_line_range || null,
       project_area: context.source_mapping?.project_area || 'unknown',
-      url_path: context.source_mapping?.url_path || vibeLocationPath(window.location),
+      url_path: context.source_mapping?.url_path || pinveltoLocationPath(window.location),
       source_map_available: context.source_mapping?.source_map_available || false,
       context_hints: context.source_mapping?.context_hints || null,
       parent_chain: context.parent_chain || null,
@@ -144,13 +144,13 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
       annotation.css = css;
       // Inject companion <style> for live preview
       const style = document.createElement('style');
-      style.setAttribute('data-vibe-style', annotation.id);
+      style.setAttribute('data-pinvelto-style', annotation.id);
       style.textContent = css;
       document.head.appendChild(style);
     }
 
-    await VibeAPI.saveAnnotation(annotation);
-    VibeEvents.emit('annotation:saved', { annotation, element: el });
+    await PinveltoAPI.saveFeedback(annotation);
+    PinveltoEvents.emit('Feedback:saved', { annotation, element: el });
 
     return { id: annotation.id, success: true };
   }
@@ -159,28 +159,28 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
     if (!css || typeof css !== 'string') throw new Error('css string is required');
 
     const annotation = {
-      id: 'vibe_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+      id: 'pinvelto_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
       type: 'stylesheet',
       url: window.location.href,
       css,
       comment: comment || '',
       viewport: { width: window.innerWidth, height: window.innerHeight },
-      url_path: vibeLocationPath(window.location),
+      url_path: pinveltoLocationPath(window.location),
       status: 'pending',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
 
-    await VibeAPI.saveAnnotation(annotation);
-    VibeEvents.emit('annotation:saved', { annotation });
+    await PinveltoAPI.saveFeedback(annotation);
+    PinveltoEvents.emit('Feedback:saved', { annotation });
 
     return { id: annotation.id, success: true };
   }
 
-  function handleGetAnnotations() {
-    const annotations = getAnnotations ? getAnnotations() : [];
-    if (!annotations) return [];
-    return annotations.map(a => {
+  function handleGetFeedback() {
+    const pinveltoFeedback = getFeedback ? getFeedback() : [];
+    if (!pinveltoFeedback) return [];
+    return pinveltoFeedback.map(a => {
       if (a.type === 'stylesheet') {
         return { id: a.id, type: 'stylesheet', css: a.css, comment: a.comment, url_path: a.url_path, status: a.status };
       }
@@ -200,13 +200,13 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
   }
 
   async function handleExport({ scope }) {
-    const annotations = scope === 'page'
-      ? await VibeAPI.loadAnnotations()
-      : await VibeAPI.loadProjectAnnotations();
+    const pinveltoFeedback = scope === 'page'
+      ? await PinveltoAPI.loadFeedback()
+      : await PinveltoAPI.loadProjectFeedback();
 
     const loc = window.location;
     return {
-      vibe_annotations_export: true,
+      pinvelto_annotations_export: true,
       version: '1.0',
       exported_at: new Date().toISOString(),
       source: {
@@ -215,7 +215,7 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
         port: loc.port || ''
       },
       scope: scope || 'project',
-      annotations: annotations.map(a => {
+      pinveltoFeedback: pinveltoFeedback.map(a => {
         const cleaned = { ...a };
         delete cleaned.screenshot;
         return cleaned;
@@ -225,15 +225,15 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
 
   async function handleDelete({ id }) {
     if (!id) throw new Error('id is required');
-    await VibeAPI.deleteAnnotation(id);
-    VibeEvents.emit('annotation:deleted', { id });
+    await PinveltoAPI.deleteFeedback(id);
+    PinveltoEvents.emit('Feedback:deleted', { id });
     return { success: true };
   }
 
   async function handleStatus() {
     // Agent-facing status query — probe live rather than answering from the
     // background's poll cache, which can lag by up to a backoff interval.
-    const server = await VibeAPI.checkServerStatus({ fresh: true });
+    const server = await PinveltoAPI.checkServerStatus({ fresh: true });
     return { extension: true, server: server.connected };
   }
 
@@ -252,5 +252,5 @@ import VibeEvents, { vibeLocationPath } from './event-bus.js';
     return `<${tag}${attrs.length ? ' ' + attrs.join(' ') : ''}>`;
   }
 
-const VibeBridgeHandler = { init };
-export default VibeBridgeHandler;
+const PinveltoBridgeHandler = { init };
+export default PinveltoBridgeHandler;

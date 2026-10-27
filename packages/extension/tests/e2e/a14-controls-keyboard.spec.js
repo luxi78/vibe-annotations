@@ -22,22 +22,22 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await page.evaluate(() => (window.__EVENT_LOG = []));
 
     // Navigate focus to the Design tab via Shift+Tab or Tab and activate with Enter
-    const designTab = popover.locator('.vibe-mode-tab[data-mode="design"]');
+    const designTab = popover.locator('.pinvelto-mode-tab[data-mode="design"]');
     await designTab.focus();
     await page.keyboard.press('Enter');
 
     // Confirm Design panel is shown
-    const designPanel = popover.locator('.vibe-mode-panel[data-mode="design"]');
+    const designPanel = popover.locator('.pinvelto-mode-panel[data-mode="design"]');
     await expect(designPanel).toBeVisible();
 
     // Find the Sizing accordion toggle and activate with Enter
-    const sizingSection = popover.locator('.vibe-design-section', { hasText: 'Sizing' });
-    const sizingToggle = sizingSection.locator('.vibe-design-sec-toggle');
+    const sizingSection = popover.locator('.pinvelto-design-section', { hasText: 'Sizing' });
+    const sizingToggle = sizingSection.locator('.pinvelto-design-sec-toggle');
     await sizingToggle.focus();
     await page.keyboard.press('Enter');
 
     // Confirm Sizing section body is visible
-    const sizingBody = sizingSection.locator('.vibe-design-sec-body');
+    const sizingBody = sizingSection.locator('.pinvelto-design-sec-body');
     await expect(sizingBody).toBeVisible();
 
     // Locate the width sizing input
@@ -84,13 +84,13 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     page,
     backgroundWorker,
   }) => {
-    const vibeRoot = page.locator('#vibe-annotations-root');
+    const pinveltoRoot = page.locator('#pinvelto-feedback-root');
 
     // Seed an annotation in variants mode for #variants-container
     await backgroundWorker.evaluate(async (data) => {
       await chrome.storage.local.set(data);
     }, {
-      annotations: [
+      pinveltoFeedback: [
         {
           id: 'variants_test_annotation',
           url: `${FIXTURE_ORIGIN}/selected-rectangle.html`,
@@ -99,7 +99,7 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
           comment: 'Test Variants Exploration',
           variantsPayload: {
             container: '#variants-container',
-            attribute: 'data-vibe-active',
+            attribute: 'data-pinvelto-active',
             variants: [
               { value: '1', name: 'Alpha' },
               { value: '2', name: 'Beta' },
@@ -117,27 +117,27 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await page.evaluate(() => window.__resetFixtureState());
 
     // Badge should be rendered for the variant annotation
-    const badge = vibeRoot.locator('.vibe-badge[data-annotation-id="variants_test_annotation"]');
+    const badge = pinveltoRoot.locator('.pinvelto-badge[data-annotation-id="variants_test_annotation"]');
     await expect(badge).toBeVisible({ timeout: 5000 });
 
     // Click badge to open Variants review popover
     await badge.click();
 
-    const popover = vibeRoot.locator('.vibe-popover');
+    const popover = pinveltoRoot.locator('.pinvelto-popover');
     await expect(popover).toBeVisible({ timeout: 5000 });
-    await expect(popover.locator('.vibe-variants-review')).toBeVisible();
+    await expect(popover.locator('.pinvelto-variants-review')).toBeVisible();
 
     // Clear event log
     await page.evaluate(() => (window.__EVENT_LOG = []));
 
     // Focus the first radio button and navigate with ArrowDown to the second
-    const radios = popover.locator('input[name="vibe-variant"]');
+    const radios = popover.locator('input[name="pinvelto-variant"]');
     await radios.first().focus();
     await page.keyboard.press('ArrowDown');
 
     // Check that the second radio is now checked and container attribute updated to 2
     await expect(radios.nth(1)).toBeChecked();
-    const containerAttr = await page.locator('#variants-container').getAttribute('data-vibe-active');
+    const containerAttr = await page.locator('#variants-container').getAttribute('data-pinvelto-active');
     expect(containerAttr).toBe('2');
 
     // Press save shortcut (Ctrl+Enter / Cmd+Enter) to choose this variant
@@ -146,7 +146,7 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await page.keyboard.press(`${modKey}+Enter`);
 
     // Choose button is triggered: button updates to "Chosen ✓" and becomes disabled
-    const chooseBtn = popover.locator('.vibe-variants-choose');
+    const chooseBtn = popover.locator('.pinvelto-variants-choose');
     await expect(chooseBtn).toHaveText('Chosen ✓');
     await expect(chooseBtn).toBeDisabled();
 
@@ -167,17 +167,17 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     page,
     backgroundWorker,
   }) => {
-    const vibeRoot = page.locator('#vibe-annotations-root');
+    const pinveltoRoot = page.locator('#pinvelto-feedback-root');
 
     // Open settings dropdown from toolbar
-    const settingsBtn = vibeRoot.locator('.vibe-tb-settings');
+    const settingsBtn = pinveltoRoot.locator('.pinvelto-tb-settings');
     await expect(settingsBtn).toBeVisible({ timeout: 10000 });
     await settingsBtn.click();
 
-    const settingsDropdown = vibeRoot.locator('.vibe-settings-dropdown');
+    const settingsDropdown = pinveltoRoot.locator('.pinvelto-settings-dropdown');
     await expect(settingsDropdown).toBeVisible();
 
-    const shortcutBtn = settingsDropdown.locator('.vibe-shortcut-btn');
+    const shortcutBtn = settingsDropdown.locator('.pinvelto-shortcut-btn');
     await expect(shortcutBtn).toBeVisible();
     const originalText = await shortcutBtn.textContent();
 
@@ -209,7 +209,7 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await page.keyboard.press('Control+Shift+,');
 
     // Should NOT have started selection mode cursor
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached();
 
     // 5. Record a new valid custom shortcut (Control+Shift+K)
     await shortcutBtn.click();
@@ -224,8 +224,8 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
 
     // Verify persisted in chrome.storage.local
     const stored = await backgroundWorker.evaluate(async () => {
-      const res = await chrome.storage.local.get(['vibeCustomShortcut']);
-      return res.vibeCustomShortcut;
+      const res = await chrome.storage.local.get(['pinveltoCustomShortcut']);
+      return res.pinveltoCustomShortcut;
     });
     expect(stored).toBeTruthy();
     expect(stored.key.toLowerCase()).toBe('k');
@@ -257,14 +257,14 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
 
     // Verify focus is STILL inside the popover (first focusable element), NOT on any host element
     const focusedTag = await page.evaluate(() => {
-      const root = document.getElementById('vibe-annotations-root')?.shadowRoot;
+      const root = document.getElementById('pinvelto-feedback-root')?.shadowRoot;
       return root?.activeElement ? root.activeElement.tagName : null;
     });
     expect(focusedTag, 'Focus must remain inside extension Shadow DOM after Tab wrap').toBeTruthy();
 
     const hostFocused = await page.evaluate(() => {
       const active = document.activeElement;
-      return active && active !== document.body && active !== document.getElementById('vibe-annotations-root');
+      return active && active !== document.body && active !== document.getElementById('pinvelto-feedback-root');
     });
     expect(hostFocused, 'Host element must NOT receive focus from Tab wrap').toBe(false);
 
@@ -274,14 +274,14 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await page.keyboard.press('Shift+Tab');
 
     const focusedAfterShiftTab = await page.evaluate(() => {
-      const root = document.getElementById('vibe-annotations-root')?.shadowRoot;
+      const root = document.getElementById('pinvelto-feedback-root')?.shadowRoot;
       return root?.activeElement ? root.activeElement.tagName : null;
     });
     expect(focusedAfterShiftTab, 'Focus must remain inside extension Shadow DOM after Shift+Tab wrap').toBeTruthy();
 
     const hostFocusedAfterShift = await page.evaluate(() => {
       const active = document.activeElement;
-      return active && active !== document.body && active !== document.getElementById('vibe-annotations-root');
+      return active && active !== document.body && active !== document.getElementById('pinvelto-feedback-root');
     });
     expect(hostFocusedAfterShift, 'Host element must NOT receive focus from Shift+Tab wrap').toBe(false);
 
@@ -299,7 +299,7 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
 
     // 1. Enter Annotate mode via keyboard shortcut (default Ctrl+Shift+Comma / Cmd+Shift+Comma)
     await page.keyboard.press(shortcutKey);
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached({ timeout: 5000 });
 
     // Selection mode is now active via shortcut entry point!
     // Assert exclusive session protection:
@@ -307,47 +307,47 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
 
     // Press Escape to exit selection mode
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
 
     // Host rectangle remains selected, cancelCount does not increment (A1 contract)
     const stateAfterEsc = await page.evaluate(() => window.__FIXTURE_STATE);
     expect(stateAfterEsc.cancelCount, 'A1: Esc must not leak to host').toBe(0);
     expect(stateAfterEsc.selected, 'A1: Host rectangle remains selected').toBe(true);
 
-    // 2. Enter Annotate mode via runtime message ('toggleAnnotate')
+    // 2. Enter Annotate mode via runtime message ('pinvelto:toggleAnnotate')
     await backgroundWorker.evaluate(async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      await chrome.tabs.sendMessage(tab.id, { action: 'toggleAnnotate' });
+      await chrome.tabs.sendMessage(tab.id, { action: 'pinvelto:toggleAnnotate' });
     });
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached({ timeout: 5000 });
 
     // Exit selection mode with fresh Esc
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
 
-    // 3. Enter Annotate mode via runtime message ('startAnnotationMode')
+    // 3. Enter Annotate mode via runtime message ('startFeedbackMode')
     await backgroundWorker.evaluate(async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      await chrome.tabs.sendMessage(tab.id, { action: 'startAnnotationMode' });
+      await chrome.tabs.sendMessage(tab.id, { action: 'startFeedbackMode' });
     });
-    await expect(page.locator('style[data-vibe-cursor]')).toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).toBeAttached({ timeout: 5000 });
 
     // Exit selection mode with fresh Esc
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 3000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 3000 });
   });
 
   test('A14 Independent editing: Badge click opens standalone popover with typing isolation, no whole-page hijack, and exits cleanly to IDLE', async ({
     page,
     backgroundWorker,
   }) => {
-    const vibeRoot = page.locator('#vibe-annotations-root');
+    const pinveltoRoot = page.locator('#pinvelto-feedback-root');
 
     // Seed an annotation on #canvas-rect
     await backgroundWorker.evaluate(async (data) => {
       await chrome.storage.local.set(data);
     }, {
-      annotations: [
+      pinveltoFeedback: [
         {
           id: 'independent_test_annotation',
           url: `${FIXTURE_ORIGIN}/selected-rectangle.html`,
@@ -365,19 +365,19 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await page.evaluate(() => window.__resetFixtureState());
 
     // Badge is visible
-    const badge = vibeRoot.locator('.vibe-badge[data-annotation-id="independent_test_annotation"]');
+    const badge = pinveltoRoot.locator('.pinvelto-badge[data-annotation-id="independent_test_annotation"]');
     await expect(badge).toBeVisible({ timeout: 5000 });
 
     // Confirm Annotate mode is NOT active
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached();
 
     // Click badge to enter independent edit
     await badge.click();
 
-    const popover = vibeRoot.locator('.vibe-popover');
+    const popover = pinveltoRoot.locator('.pinvelto-popover');
     await expect(popover).toBeVisible({ timeout: 5000 });
 
-    const textarea = popover.locator('.vibe-textarea');
+    const textarea = popover.locator('.pinvelto-textarea');
     await expect(textarea).toBeFocused();
 
     // Clear event log
@@ -403,7 +403,7 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await expect(popover).not.toBeAttached({ timeout: 3000 });
 
     // Confirm that selection mode was NOT entered! Cursor must NOT be attached!
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached();
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached();
 
     // Host page is back to normal IDLE state: subsequent fresh Esc on host canvas deselects it
     await page.evaluate(() => (window.__EVENT_LOG = []));
@@ -418,26 +418,26 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     page,
   }) => {
     await enterAnnotateMode(page);
-    const vibeRoot = page.locator('#vibe-annotations-root');
+    const pinveltoRoot = page.locator('#pinvelto-feedback-root');
 
     // Click canvas-rect at an offset (x: 10, y: 10) to annotate the container itself
     const canvasRect = page.locator('#canvas-rect');
     await canvasRect.click({ position: { x: 10, y: 10 } });
 
-    const popover = vibeRoot.locator('.vibe-popover');
+    const popover = pinveltoRoot.locator('.pinvelto-popover');
     await expect(popover).toBeVisible({ timeout: 5000 });
 
     // Switch to Design tab
-    const designTab = popover.locator('.vibe-mode-tab[data-mode="design"]');
+    const designTab = popover.locator('.pinvelto-mode-tab[data-mode="design"]');
     await designTab.click();
 
-    const designPanel = popover.locator('.vibe-mode-panel[data-mode="design"]');
+    const designPanel = popover.locator('.pinvelto-mode-panel[data-mode="design"]');
     await expect(designPanel).toBeVisible();
 
     // Confirm Layout section is open and alignment matrix is visible
-    const matrix = popover.locator('.vibe-align-matrix');
+    const matrix = popover.locator('.pinvelto-align-matrix');
     await expect(matrix).toBeVisible();
-    const cells = matrix.locator('.vibe-matrix-cell');
+    const cells = matrix.locator('.pinvelto-matrix-cell');
     await expect(cells).toHaveCount(9);
 
     // Initial mode is vflex (since canvas-rect is flex-direction: column)
@@ -449,7 +449,7 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await expect(centerCell).toBeFocused();
 
     // Switch layout direction to Horizontal flex (hflex)
-    const hflexBtn = popover.locator('.vibe-flow-group [data-mode="hflex"]');
+    const hflexBtn = popover.locator('.pinvelto-flow-group [data-mode="hflex"]');
     await hflexBtn.click();
 
     // Verify matrix container updated direction in place
@@ -462,7 +462,7 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await expect(topRightCell).toHaveAttribute('aria-label', 'Align top right');
 
     // Repeated direction toggles to verify handlers do not duplicate
-    const vflexBtn = popover.locator('.vibe-flow-group [data-mode="vflex"]');
+    const vflexBtn = popover.locator('.pinvelto-flow-group [data-mode="vflex"]');
     await vflexBtn.click();
     await hflexBtn.click();
     await vflexBtn.click();
@@ -488,7 +488,7 @@ test.describe('A14: Design, Variants, Shortcut Recording, Keyboard Access & Entr
     await expect(canvasRect).toHaveCSS('align-items', 'flex-end');
 
     // Test Reset: resets alignment back to original (canvas-rect was column, center, center)
-    const resetBtn = popover.locator('.vibe-design-reset');
+    const resetBtn = popover.locator('.pinvelto-design-reset');
     await resetBtn.click();
     await expect(canvasRect).toHaveCSS('justify-content', 'center');
     await expect(canvasRect).toHaveCSS('align-items', 'center');

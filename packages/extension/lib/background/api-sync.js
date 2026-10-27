@@ -1,8 +1,8 @@
+import { serviceFetch, getServiceUrl } from '../service-url.js';
 // API sync — health checks, bidirectional merge, individual CRUD sync
 import { isSupportedUrl } from './url-filter.js';
 import { updateAllBadges } from './badge.js';
 
-const API_URL = 'http://127.0.0.1:3846';
 let connected = false;
 
 // Last status object produced by checkConnection, so callers (content scripts,
@@ -31,9 +31,10 @@ export async function checkConnection() {
 
 async function probeConnection() {
   try {
-    const response = await fetch(`${API_URL}/health`, { method: 'GET', signal: AbortSignal.timeout(5000) });
+    const response = await serviceFetch(`/health`, { method: 'GET', signal: AbortSignal.timeout(5000) });
     if (response.ok) {
       const data = await response.json();
+      if (data.product !== 'pinvelto' || data.status !== 'ok') throw new Error('Endpoint is not a Pinvelto service');
       connected = true;
       const extensionVersion = chrome.runtime.getManifest().version;
       let versionCompatible = true;
@@ -50,71 +51,71 @@ async function probeConnection() {
           if ((extensionParts[i] || 0) > (minParts[i] || 0)) break;
         }
       }
-      return { connected: true, server_url: API_URL, server_version: data.version, server_status: data.status, version_compatible: versionCompatible, compatibility_message: compatibilityMessage, last_check: new Date().toISOString() };
+      return { connected: true, server_url: getServiceUrl(), server_version: data.version, server_status: data.status, version_compatible: versionCompatible, compatibility_message: compatibilityMessage, last_check: new Date().toISOString() };
     } else {
       connected = false;
-      return { connected: false, server_url: API_URL, error: `Server returned ${response.status}`, last_check: new Date().toISOString() };
+      return { connected: false, server_url: getServiceUrl(), error: `Server returned ${response.status}`, last_check: new Date().toISOString() };
     }
   } catch (error) {
     connected = false;
-    return { connected: false, server_url: API_URL, error: error.message, last_check: new Date().toISOString() };
+    return { connected: false, server_url: getServiceUrl(), error: error.message, last_check: new Date().toISOString() };
   }
 }
 
-export async function syncAll(annotations) {
+export async function syncAll(pinveltoFeedback) {
   try {
-    const response = await fetch(`${API_URL}/api/annotations/sync`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ annotations })
+    const response = await serviceFetch(`/api/annotations/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ annotations: pinveltoFeedback })
     });
     if (!response.ok) throw new Error(`API sync error: ${response.status}`);
     const result = await response.json();
-    if (!result.success) throw new Error(result.error || 'Failed to sync annotations');
-    await chrome.storage.local.set({ apiSyncPending: false, apiLastSync: Date.now(), apiSyncCount: annotations.length });
+    if (!result.success) throw new Error(result.error || 'Failed to sync Feedback');
+    await chrome.storage.local.set({ pinveltoSyncPending: false, pinveltoLastSync: Date.now(), pinveltoSyncCount: pinveltoFeedback.length });
   } catch (error) {
-    console.error('Error syncing annotations to API:', error);
-    await chrome.storage.local.set({ apiSyncPending: true, apiSyncError: error.message, apiLastSync: Date.now() });
+    console.error('Error syncing Feedback to API:', error);
+    await chrome.storage.local.set({ pinveltoSyncPending: true, pinveltoSyncError: error.message, pinveltoLastSync: Date.now() });
     throw error;
   }
 }
 
 // Explicit, user-confirmed global purge. Unlike ordinary per-card deletion,
 // this removes scaffolded variants metadata without requesting source cleanup.
-// Keep the confirmed ID snapshot: annotations created while the dialog was open
+// Keep the confirmed ID snapshot: pinveltoFeedback created while the dialog was open
 // are not authorized for deletion. Tombstones prevent offline resurrection.
-export async function deleteAllStoredAnnotations(ids, storageLockFn) {
+export async function deleteAllStoredFeedback(ids, storageLockFn) {
   if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id)) {
-    throw new Error('Annotation ids must be a confirmed array of non-empty strings');
+    throw new Error('Feedback ids must be a confirmed array of non-empty strings');
   }
   const confirmedIds = new Set(ids);
   if (!confirmedIds.size) return { count: 0, pendingSync: false };
 
   return storageLockFn(async () => {
-    const { annotations = [], deletedAnnotationIds = [], purgedAnnotationIds = [], pendingPurgeAnnotationIds = [] } = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds', 'purgedAnnotationIds', 'pendingPurgeAnnotationIds']);
-    const remaining = annotations.filter(a => !confirmedIds.has(a.id));
-    const count = annotations.length - remaining.length;
-    const pending = [...new Set([...pendingPurgeAnnotationIds, ...confirmedIds])];
+    const { pinveltoFeedback = [], pinveltoDeletedFeedbackIds = [], pinveltoPurgedFeedbackIds = [], pinveltoPendingPurgeFeedbackIds = [] } = await chrome.storage.local.get(['pinveltoFeedback', 'pinveltoDeletedFeedbackIds', 'pinveltoPurgedFeedbackIds', 'pinveltoPendingPurgeFeedbackIds']);
+    const remaining = pinveltoFeedback.filter(a => !confirmedIds.has(a.id));
+    const count = pinveltoFeedback.length - remaining.length;
+    const pending = [...new Set([...pinveltoPendingPurgeFeedbackIds, ...confirmedIds])];
     await chrome.storage.local.set({
-      annotations: remaining,
-      deletedAnnotationIds: [...new Set([...deletedAnnotationIds, ...confirmedIds])],
+      pinveltoFeedback: remaining,
+      pinveltoDeletedFeedbackIds: [...new Set([...pinveltoDeletedFeedbackIds, ...confirmedIds])],
       // Retain intent against late in-flight creates; absence in an older GET
       // is never acknowledgement. Explicit re-import can clear this history.
-      purgedAnnotationIds: [...new Set([...purgedAnnotationIds, ...confirmedIds])],
-      pendingPurgeAnnotationIds: pending,
+      pinveltoPurgedFeedbackIds: [...new Set([...pinveltoPurgedFeedbackIds, ...confirmedIds])],
+      pinveltoPendingPurgeFeedbackIds: pending,
     });
     try {
-      await purgeConfirmedAnnotations([...confirmedIds]);
+      await purgeConfirmedFeedback([...confirmedIds]);
       const remainingPending = pending.filter(id => !confirmedIds.has(id));
-      await chrome.storage.local.set({ pendingPurgeAnnotationIds: remainingPending, annotationPurgeError: '', apiSyncPending: remainingPending.length > 0 });
+      await chrome.storage.local.set({ pinveltoPendingPurgeFeedbackIds: remainingPending, pinveltoPurgeError: '', pinveltoSyncPending: remainingPending.length > 0 });
       return { count, pendingSync: remainingPending.length > 0 };
     } catch (error) {
-      await chrome.storage.local.set({ apiSyncPending: true, annotationPurgeError: error.message });
+      await chrome.storage.local.set({ pinveltoSyncPending: true, pinveltoPurgeError: error.message });
       return { count, pendingSync: true, syncError: error.message };
     }
   });
 }
 
-async function purgeConfirmedAnnotations(ids) {
-  const response = await fetch(`${API_URL}/api/annotations/purge`, {
+async function purgeConfirmedFeedback(ids) {
+  const response = await serviceFetch(`/api/annotations/purge`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, confirm: true }), signal: AbortSignal.timeout(5000),
   });
@@ -130,29 +131,29 @@ export async function saveOne(annotation) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
-    const response = await fetch(`${API_URL}/api/annotations`, {
+    const response = await serviceFetch(`/api/annotations`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(annotation), signal: controller.signal
     });
     clearTimeout(timeout);
     if (!response.ok) throw new Error(`API server error: ${response.status}`);
     const result = await response.json();
-    if (!result.success) throw new Error(result.error || 'Failed to save annotation to API');
+    if (!result.success) throw new Error(result.error || 'Failed to save Feedback to API');
   } catch (error) {
-    console.warn('Failed to save to API server, annotation saved locally:', error.message);
+    console.warn('Failed to save to API server, Feedback saved locally:', error.message);
     throw error;
   }
 }
 
 // Upload an image attachment as a raw binary blob (no base64). kind is 'capture'
 // (the auto element screenshot) or 'user' (paste/upload). The server writes it to
-// ~/.vibe-annotations/attachments/ and records { id, kind, mime } on the annotation.
+// ~/.pinvelto-feedback/attachments/ and records { id, kind, mime } on the annotation.
 // Retries on 404: for a brand-new annotation the attachment can race ahead of the
 // server-side create (saveOne is fire-and-forget), so the annotation may not exist
 // for a moment. Backs off and retries rather than losing the image.
 export async function uploadAttachment(id, blob, kind, mime) {
   const attempts = 5;
   for (let i = 0; i < attempts; i++) {
-    const response = await fetch(`${API_URL}/api/annotations/${id}/attachments`, {
+    const response = await serviceFetch(`/api/annotations/${id}/attachments`, {
       method: 'POST',
       headers: { 'Content-Type': mime, 'X-Attachment-Kind': kind },
       body: blob,
@@ -168,48 +169,48 @@ export async function uploadAttachment(id, blob, kind, mime) {
 
 // Remove a single attachment (unlinks the file server-side).
 export async function deleteAttachment(id, attId) {
-  const response = await fetch(`${API_URL}/api/annotations/${id}/attachments/${attId}`, { method: 'DELETE' });
+  const response = await serviceFetch(`/api/annotations/${id}/attachments/${attId}`, { method: 'DELETE' });
   if (!response.ok) throw new Error(`attachment delete error: ${response.status}`);
   return await response.json();
 }
 
 export async function deleteOne(id) {
   try {
-    const response = await fetch(`${API_URL}/api/annotations/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+    const response = await serviceFetch(`/api/annotations/${id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
     if (!response.ok) throw new Error(`API delete error: ${response.status}`);
     const result = await response.json();
-    if (!result.success) throw new Error(result.error || 'Failed to delete annotation from API');
+    if (!result.success) throw new Error(result.error || 'Failed to delete Feedback from API');
   } catch (error) {
-    console.error('[Background] Error deleting annotation from API:', error);
+    console.error('[Background] Error deleting Feedback from API:', error);
     throw error;
   }
 }
 
 export async function smartSync(storageLockFn) {
-  let serverAnnotations;
+  let serverFeedback;
   try {
-    const response = await fetch(`${API_URL}/api/annotations?limit=0`);
+    const response = await serviceFetch(`/api/annotations?limit=0`);
     if (!response.ok) return;
     const serverResult = await response.json();
     if (!Array.isArray(serverResult.annotations)) return;
-    serverAnnotations = serverResult.annotations;
+    serverFeedback = serverResult.annotations;
   } catch { return; }
 
   return storageLockFn(async () => {
     try {
-      const localResult = await chrome.storage.local.get(['annotations', 'deletedAnnotationIds', 'purgedAnnotationIds', 'pendingPurgeAnnotationIds']);
-      const localAnnotations = localResult.annotations || [];
-      const purgedIds = new Set(localResult.purgedAnnotationIds || []);
-      const deletedIds = new Set([...(localResult.deletedAnnotationIds || []), ...purgedIds]);
-      const localMap = new Map(localAnnotations.map(a => [a.id, a]));
-      const serverMap = new Map(serverAnnotations.map(a => [a.id, a]));
-      const retryPurgeIds = new Set([...(localResult.pendingPurgeAnnotationIds || []), ...[...purgedIds].filter(id => serverMap.has(id))]);
+      const localResult = await chrome.storage.local.get(['pinveltoFeedback', 'pinveltoDeletedFeedbackIds', 'pinveltoPurgedFeedbackIds', 'pinveltoPendingPurgeFeedbackIds']);
+      const localFeedback = localResult.pinveltoFeedback || [];
+      const purgedIds = new Set(localResult.pinveltoPurgedFeedbackIds || []);
+      const deletedIds = new Set([...(localResult.pinveltoDeletedFeedbackIds || []), ...purgedIds]);
+      const localMap = new Map(localFeedback.map(a => [a.id, a]));
+      const serverMap = new Map(serverFeedback.map(a => [a.id, a]));
+      const retryPurgeIds = new Set([...(localResult.pinveltoPendingPurgeFeedbackIds || []), ...[...purgedIds].filter(id => serverMap.has(id))]);
       if (retryPurgeIds.size) {
         try {
-          await purgeConfirmedAnnotations([...retryPurgeIds]);
-          await chrome.storage.local.set({ pendingPurgeAnnotationIds: [], annotationPurgeError: '', apiSyncPending: false });
+          await purgeConfirmedFeedback([...retryPurgeIds]);
+          await chrome.storage.local.set({ pinveltoPendingPurgeFeedbackIds: [], pinveltoPurgeError: '', pinveltoSyncPending: false });
         } catch (error) {
-          await chrome.storage.local.set({ pendingPurgeAnnotationIds: [...retryPurgeIds], annotationPurgeError: error.message, apiSyncPending: true });
+          await chrome.storage.local.set({ pinveltoPendingPurgeFeedbackIds: [...retryPurgeIds], pinveltoPurgeError: error.message, pinveltoSyncPending: true });
         }
       }
       const allIds = new Set([...localMap.keys(), ...serverMap.keys()]);
@@ -232,7 +233,7 @@ export async function smartSync(storageLockFn) {
       }
 
       if (!changed && !flagsChanged) return;
-      await chrome.storage.local.set({ annotations: merged, lastServerSync: Date.now() });
+      await chrome.storage.local.set({ pinveltoFeedback: merged, pinveltoLastServerSync: Date.now() });
 
       if (changed) {
         try {
@@ -241,23 +242,23 @@ export async function smartSync(storageLockFn) {
             // upsert surviving local changes, preserving unconfirmed server IDs.
             for (const annotation of toPush) await saveOne(annotation);
           } else {
-            await fetch(`${API_URL}/api/annotations/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ annotations: merged }) });
+            await serviceFetch(`/api/annotations/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ annotations: merged }) });
           }
           let needsUpdate = false;
           for (const a of merged) { if (!a._synced) { a._synced = true; needsUpdate = true; } }
-          if (needsUpdate) await chrome.storage.local.set({ annotations: merged });
-        } catch (e) { console.warn('Failed to push merged annotations to server:', e.message); }
+          if (needsUpdate) await chrome.storage.local.set({ pinveltoFeedback: merged });
+        } catch (e) { console.warn('Failed to push merged Feedback to server:', e.message); }
       }
 
       for (const id of deletedIds) { if (serverMap.has(id) && !purgedIds.has(id)) deleteOne(id).catch(() => {}); }
-      await chrome.storage.local.set({ deletedAnnotationIds: [...deletedIds].filter(id => serverMap.has(id)) });
-      console.log(`[Vibe] Sync complete — merged: ${merged.length} annotations`);
+      await chrome.storage.local.set({ pinveltoDeletedFeedbackIds: [...deletedIds].filter(id => serverMap.has(id)) });
+      console.log(`[Pinvelto] Sync complete — merged: ${merged.length} Feedback`);
       await updateAllBadges();
 
       try {
         const tabs = await chrome.tabs.query({});
         for (const tab of tabs) {
-          if (await isSupportedUrl(tab.url)) chrome.tabs.sendMessage(tab.id, { action: 'annotationsUpdated' }).catch(() => {});
+          if (await isSupportedUrl(tab.url)) chrome.tabs.sendMessage(tab.id, { action: 'pinvelto:annotationsUpdated' }).catch(() => {});
         }
       } catch { /* ignore */ }
     } catch (error) { console.error('Error during smart sync:', error); }
@@ -269,8 +270,8 @@ export async function smartSync(storageLockFn) {
 // private-network rules block it — but the service worker holds the localhost
 // host permission and isn't subject to the page's origin, so it can.
 export async function fetchExport(urlPattern, format) {
-  const response = await fetch(
-    `${API_URL}/api/export?url=${encodeURIComponent(urlPattern)}&format=${encodeURIComponent(format)}`,
+  const response = await serviceFetch(
+    `/api/export?url=${encodeURIComponent(urlPattern)}&format=${encodeURIComponent(format)}`,
     { signal: AbortSignal.timeout(15000) }
   );
   if (!response.ok) throw new Error(`export failed: ${response.status}`);
@@ -284,7 +285,7 @@ export async function fetchExport(urlPattern, format) {
 // fetchExport: keeps the page's own network log free of extension traffic.
 export async function fetchWatchers() {
   try {
-    const response = await fetch(`${API_URL}/api/watchers`, { signal: AbortSignal.timeout(2000) });
+    const response = await serviceFetch(`/api/watchers`, { signal: AbortSignal.timeout(2000) });
     if (!response.ok) return { watchers: [], watching: false };
     return await response.json();
   } catch {
@@ -294,23 +295,23 @@ export async function fetchWatchers() {
 
 export async function stopWatchers() {
   try {
-    await fetch(`${API_URL}/api/watchers/stop`, { method: 'POST', signal: AbortSignal.timeout(2000) });
+    await serviceFetch(`/api/watchers/stop`, { method: 'POST', signal: AbortSignal.timeout(2000) });
   } catch { /* ignore */ }
 }
 
-export async function fetchAnnotations(url) {
+export async function fetchFeedback(url) {
   try {
-    let apiUrl = `${API_URL}/api/annotations`;
+    let apiUrl = `/api/annotations`;
     if (url) apiUrl += `?url=${encodeURIComponent(url)}`;
-    const response = await fetch(apiUrl);
+    const response = await serviceFetch(apiUrl);
     if (!response.ok) throw new Error(`API server error: ${response.status}`);
     const result = await response.json();
     return result.annotations || [];
   } catch (error) {
-    console.error('[Background] Error getting annotations from API:', error);
-    const result = await chrome.storage.local.get(['annotations']);
-    const annotations = result.annotations || [];
-    if (url) return annotations.filter(a => a.url === url);
-    return annotations;
+    console.error('[Background] Error getting Feedback from API:', error);
+    const result = await chrome.storage.local.get(['pinveltoFeedback']);
+    const pinveltoFeedback = result.pinveltoFeedback || [];
+    if (url) return pinveltoFeedback.filter(a => a.url === url);
+    return pinveltoFeedback;
   }
 }

@@ -8,7 +8,7 @@ test.describe('Annotate Host Focus Restoration (Ticket #10)', () => {
 
   async function readFocus(page) {
     return page.evaluate(() => ({
-      isVibeRoot: document.activeElement === document.querySelector('#vibe-annotations-root'),
+      isPinveltoRoot: document.activeElement === document.querySelector('#pinvelto-feedback-root'),
       isBody: document.activeElement === document.body,
       id: document.activeElement && document.activeElement.id ? document.activeElement.id : null,
       tag: document.activeElement ? document.activeElement.tagName.toLowerCase() : null,
@@ -24,7 +24,7 @@ test.describe('Annotate Host Focus Restoration (Ticket #10)', () => {
     await enterAnnotateMode(page);
 
     // Entry moved DOM focus into the extension UI
-    expect((await readFocus(page)).isVibeRoot, 'Entering Annotate must move DOM focus into the extension UI').toBe(true);
+    expect((await readFocus(page)).isPinveltoRoot, 'Entering Annotate must move DOM focus into the extension UI').toBe(true);
 
     // The page scrolls away from the original element while the session owns the keyboard
     await page.evaluate(() => window.scrollTo(0, 400));
@@ -32,7 +32,7 @@ test.describe('Annotate Host Focus Restoration (Ticket #10)', () => {
 
     // Exit Annotate
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
 
     // Focus went back to the original host element…
     await expect(hostInput).toBeFocused({ timeout: 3000 });
@@ -55,7 +55,7 @@ test.describe('Annotate Host Focus Restoration (Ticket #10)', () => {
 
     await enterAnnotateMode(page);
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
 
     await expect(rect).toBeFocused({ timeout: 3000 });
 
@@ -70,10 +70,10 @@ test.describe('Annotate Host Focus Restoration (Ticket #10)', () => {
     // No host element was focused before entry; focus starts on the toolbar button
     await enterAnnotateMode(page);
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
 
     const focus = await readFocus(page);
-    expect(focus.isVibeRoot, 'Focus must not stay on extension UI after exit').toBe(false);
+    expect(focus.isPinveltoRoot, 'Focus must not stay on extension UI after exit').toBe(false);
     expect(focus.isBody, 'With no original element, focus falls back to the page body').toBe(true);
 
     const state = await page.evaluate(() => window.__FIXTURE_STATE);
@@ -91,7 +91,7 @@ test.describe('Annotate Host Focus Restoration (Ticket #10)', () => {
     await page.evaluate(() => document.getElementById('canvas-rect').focus());
 
     await page.keyboard.press('Escape');
-    await expect(page.locator('style[data-vibe-cursor]')).not.toBeAttached({ timeout: 5000 });
+    await expect(page.locator('style[data-pinvelto-cursor]')).not.toBeAttached({ timeout: 5000 });
 
     await expect(rect).toBeFocused({ timeout: 3000 });
     const state = await page.evaluate(() => window.__FIXTURE_STATE);

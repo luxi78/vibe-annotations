@@ -3,14 +3,14 @@ import assert from 'node:assert';
 
 // Mock storage
 const mockStorage = {
-  annotations: []
+  pinveltoFeedback: []
 };
 
 const storageListeners = new Set();
-function notifyAnnotationsChanged() {
+function notifyFeedbackChanged() {
   for (const listener of storageListeners) {
     try {
-      listener({ annotations: { newValue: mockStorage.annotations } }, 'local');
+      listener({ pinveltoFeedback: { newValue: mockStorage.pinveltoFeedback } }, 'local');
     } catch {}
   }
 }
@@ -36,7 +36,7 @@ globalThis.chrome.storage = {
     },
     set: async (items) => {
       Object.assign(mockStorage, items);
-      notifyAnnotationsChanged();
+      notifyFeedbackChanged();
     }
   }
 };
@@ -280,21 +280,21 @@ globalThis.ResizeObserver = class {
 };
 
 // Import modules
-const { default: VibeEvents } = await import('../lib/content/event-bus.js');
-const { default: VibeShadowHost } = await import('../lib/content/shadow-host.js');
-const { default: VibeBadgeManager } = await import('../lib/content/badge-manager.js');
-const { default: VibePinDiscovery } = await import('../lib/content/pin-discovery.js');
+const { default: PinveltoEvents } = await import('../lib/content/event-bus.js');
+const { default: PinveltoShadowHost } = await import('../lib/content/shadow-host.js');
+const { default: PinveltoBadgeManager } = await import('../lib/content/badge-manager.js');
+const { default: PinveltoPinDiscovery } = await import('../lib/content/pin-discovery.js');
 
 test('Slice 1 - Seam 1: Badge Render Completion Contract', async (t) => {
   t.beforeEach(() => {
     mockHead.children = [];
     mockBody.children = [];
-    mockStorage.annotations = [];
+    mockStorage.pinveltoFeedback = [];
     MockMutationObserver.instances = [];
-    VibeShadowHost.destroy();
-    VibeShadowHost.init();
-    VibeBadgeManager.clearAll();
-    VibeBadgeManager.init();
+    PinveltoShadowHost.destroy();
+    PinveltoShadowHost.init();
+    PinveltoBadgeManager.clearAll();
+    PinveltoBadgeManager.init();
   });
 
   await t.test('render() returns completed metrics and distinguishes rendered vs unresolved eligible targets', async () => {
@@ -332,14 +332,14 @@ test('Slice 1 - Seam 1: Badge Render Completion Contract', async (t) => {
       created_at: '2026-01-01T00:03:00.000Z'
     };
 
-    mockStorage.annotations = [annFound, annMissing, annStylesheet, annResolved];
+    mockStorage.pinveltoFeedback = [annFound, annMissing, annStylesheet, annResolved];
 
     let emittedEvent = null;
     const eventHandler = (data) => { emittedEvent = data; };
-    VibeEvents.on('badges:rendered', eventHandler);
+    PinveltoEvents.on('badges:rendered', eventHandler);
 
     try {
-      const renderResult = await VibeBadgeManager.render([annFound, annMissing, annStylesheet, annResolved]);
+      const renderResult = await PinveltoBadgeManager.render([annFound, annMissing, annStylesheet, annResolved]);
 
       // 1. Return value contract
       assert.ok(renderResult, 'render() must return a completed result object');
@@ -355,11 +355,11 @@ test('Slice 1 - Seam 1: Badge Render Completion Contract', async (t) => {
       assert.deepStrictEqual(emittedEvent.unresolvedIds, ['ann-2']);
 
       // 3. Helper inspection contract
-      assert.strictEqual(VibeBadgeManager.hasBadge('ann-1'), true);
-      assert.strictEqual(VibeBadgeManager.hasBadge('ann-2'), false);
-      assert.deepStrictEqual(VibeBadgeManager.getRenderedBadgeIds(), ['ann-1']);
+      assert.strictEqual(PinveltoBadgeManager.hasBadge('ann-1'), true);
+      assert.strictEqual(PinveltoBadgeManager.hasBadge('ann-2'), false);
+      assert.deepStrictEqual(PinveltoBadgeManager.getRenderedBadgeIds(), ['ann-1']);
     } finally {
-      VibeEvents.off('badges:rendered', eventHandler);
+      PinveltoEvents.off('badges:rendered', eventHandler);
     }
   });
 });
@@ -368,13 +368,13 @@ test('Slice 2 - Seam 2: Non-overlapping async await & zero retries when all targ
   t.beforeEach(() => {
     mockHead.children = [];
     mockBody.children = [];
-    mockStorage.annotations = [];
+    mockStorage.pinveltoFeedback = [];
     MockMutationObserver.instances = [];
-    VibeShadowHost.destroy();
-    VibeShadowHost.init();
-    VibeBadgeManager.clearAll();
-    VibeBadgeManager.init();
-    VibePinDiscovery.cancelDiscovery('test-reset');
+    PinveltoShadowHost.destroy();
+    PinveltoShadowHost.init();
+    PinveltoBadgeManager.clearAll();
+    PinveltoBadgeManager.init();
+    PinveltoPinDiscovery.cancelDiscovery('test-reset');
   });
 
   await t.test('awaits async render completion and executes exactly 1 attempt when all eligible targets are found', async () => {
@@ -414,19 +414,19 @@ test('Slice 2 - Seam 2: Non-overlapping async await & zero retries when all targ
       created_at: '2026-01-01T00:03:00.000Z'
     };
 
-    const annotations = [ann1, ann2, sheetAnn, resolvedAnn];
-    mockStorage.annotations = annotations;
+    const pinveltoFeedback = [ann1, ann2, sheetAnn, resolvedAnn];
+    mockStorage.pinveltoFeedback = pinveltoFeedback;
 
     let renderCallCount = 0;
     const customRender = async (anns) => {
       renderCallCount++;
       // Simulate asynchronous rendering work
       await new Promise(r => setTimeout(r, 10));
-      return await VibeBadgeManager.render(anns);
+      return await PinveltoBadgeManager.render(anns);
     };
 
-    const discoveryPromise = VibePinDiscovery.startDiscovery({
-      annotations,
+    const discoveryPromise = PinveltoPinDiscovery.startDiscovery({
+      pinveltoFeedback,
       maxAttempts: 5,
       delay: 50,
       renderFn: customRender
@@ -438,7 +438,7 @@ test('Slice 2 - Seam 2: Non-overlapping async await & zero retries when all targ
     assert.strictEqual(renderCallCount, 1, 'Render must be called exactly once when all eligible targets are found');
     assert.strictEqual(result.attempts, 1, 'Only 1 attempt must be made');
     assert.strictEqual(result.unresolvedIds.length, 0, 'No unresolved targets');
-    assert.strictEqual(VibePinDiscovery.isObserverActive(), false, 'Mutation observer must NOT be started');
+    assert.strictEqual(PinveltoPinDiscovery.isObserverActive(), false, 'Mutation observer must NOT be started');
 
     // Wait a little longer to ensure no delayed retry was scheduled
     await new Promise(r => setTimeout(r, 100));
@@ -465,8 +465,8 @@ test('Slice 2 - Seam 2: Non-overlapping async await & zero retries when all targ
       created_at: '2026-01-01T00:01:00.000Z'
     };
 
-    const annotations = [annFound, annMissing];
-    mockStorage.annotations = annotations;
+    const pinveltoFeedback = [annFound, annMissing];
+    mockStorage.pinveltoFeedback = pinveltoFeedback;
 
     const attemptTimestamps = [];
     let concurrentCalls = 0;
@@ -477,13 +477,13 @@ test('Slice 2 - Seam 2: Non-overlapping async await & zero retries when all targ
       maxConcurrency = Math.max(maxConcurrency, concurrentCalls);
       attemptTimestamps.push(Date.now());
       await new Promise(r => setTimeout(r, 20));
-      const res = await VibeBadgeManager.render(anns);
+      const res = await PinveltoBadgeManager.render(anns);
       concurrentCalls--;
       return res;
     };
 
-    const result = await VibePinDiscovery.startDiscovery({
-      annotations,
+    const result = await PinveltoPinDiscovery.startDiscovery({
+      pinveltoFeedback,
       maxAttempts: 3,
       delay: 40,
       renderFn: customRender
@@ -498,11 +498,11 @@ test('Slice 2 - Seam 2: Non-overlapping async await & zero retries when all targ
     assert.strictEqual(attemptTimestamps.length, 3, 'Must have 3 sequential attempt timestamps');
 
     // 3. Existing pin for ann-found was preserved throughout all retries
-    assert.strictEqual(VibeBadgeManager.hasBadge('ann-found'), true, 'Existing pin remains rendered');
-    assert.strictEqual(VibeBadgeManager.hasBadge('ann-missing'), false, 'Missing pin is not rendered');
+    assert.strictEqual(PinveltoBadgeManager.hasBadge('ann-found'), true, 'Existing pin remains rendered');
+    assert.strictEqual(PinveltoBadgeManager.hasBadge('ann-missing'), false, 'Missing pin is not rendered');
 
     // 4. Lazy observer was started because attempts exhausted with unresolved targets
-    assert.strictEqual(VibePinDiscovery.isObserverActive(), true, 'Lazy observer must be active');
+    assert.strictEqual(PinveltoPinDiscovery.isObserverActive(), true, 'Lazy observer must be active');
   });
 
   await t.test('late-element discovery detects newly added DOM element, renders missing pin, and disconnects', async () => {
@@ -523,18 +523,18 @@ test('Slice 2 - Seam 2: Non-overlapping async await & zero retries when all targ
       created_at: '2026-01-01T00:01:00.000Z'
     };
 
-    const annotations = [ann1, annLate];
-    mockStorage.annotations = annotations;
+    const pinveltoFeedback = [ann1, annLate];
+    mockStorage.pinveltoFeedback = pinveltoFeedback;
 
     // Start with 1 retry attempt to quickly enter lazy observer
-    await VibePinDiscovery.startDiscovery({
-      annotations,
+    await PinveltoPinDiscovery.startDiscovery({
+      pinveltoFeedback,
       maxAttempts: 1,
       delay: 10
     });
 
-    assert.strictEqual(VibePinDiscovery.isObserverActive(), true, 'Lazy observer is waiting for late element');
-    const existingBadgeBefore = VibeShadowHost.getRoot().querySelector('[data-annotation-id="ann-1"]');
+    assert.strictEqual(PinveltoPinDiscovery.isObserverActive(), true, 'Lazy observer is waiting for late element');
+    const existingBadgeBefore = PinveltoShadowHost.getRoot().querySelector('[data-annotation-id="ann-1"]');
     assert.ok(existingBadgeBefore, 'Badge for ann-1 is rendered');
 
     // Late arrival of element in DOM
@@ -551,15 +551,15 @@ test('Slice 2 - Seam 2: Non-overlapping async await & zero retries when all targ
     await new Promise(r => setTimeout(r, 350));
 
     // Both badges are now rendered
-    assert.strictEqual(VibeBadgeManager.hasBadge('ann-1'), true, 'ann-1 pin remains rendered');
-    assert.strictEqual(VibeBadgeManager.hasBadge('ann-late'), true, 'ann-late pin is rendered');
+    assert.strictEqual(PinveltoBadgeManager.hasBadge('ann-1'), true, 'ann-1 pin remains rendered');
+    assert.strictEqual(PinveltoBadgeManager.hasBadge('ann-late'), true, 'ann-late pin is rendered');
 
     // Node identity of existing badge is preserved
-    const existingBadgeAfter = VibeShadowHost.getRoot().querySelector('[data-annotation-id="ann-1"]');
+    const existingBadgeAfter = PinveltoShadowHost.getRoot().querySelector('[data-annotation-id="ann-1"]');
     assert.strictEqual(existingBadgeAfter, existingBadgeBefore, 'Existing badge DOM node is preserved without recreation');
 
     // Observer disconnected once all targets resolved
-    assert.strictEqual(VibePinDiscovery.isObserverActive(), false, 'Observer must disconnect once all targets are resolved');
+    assert.strictEqual(PinveltoPinDiscovery.isObserverActive(), false, 'Observer must disconnect once all targets are resolved');
   });
 });
 
@@ -567,13 +567,13 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
   t.beforeEach(() => {
     mockHead.children = [];
     mockBody.children = [];
-    mockStorage.annotations = [];
+    mockStorage.pinveltoFeedback = [];
     MockMutationObserver.instances = [];
-    VibeShadowHost.destroy();
-    VibeShadowHost.init();
-    VibeBadgeManager.clearAll();
-    VibeBadgeManager.init();
-    VibePinDiscovery.cancelDiscovery('test-reset');
+    PinveltoShadowHost.destroy();
+    PinveltoShadowHost.init();
+    PinveltoBadgeManager.clearAll();
+    PinveltoBadgeManager.init();
+    PinveltoPinDiscovery.cancelDiscovery('test-reset');
   });
 
   await t.test('old observer timeout cannot disconnect newer discovery cycle observer', async () => {
@@ -583,15 +583,15 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
       selector: '#never-here-1',
       created_at: '2026-01-01T00:00:00.000Z'
     };
-    mockStorage.annotations = [ann1];
+    mockStorage.pinveltoFeedback = [ann1];
 
     // Cycle 1: exhaust attempts to enter lazy observer
-    await VibePinDiscovery.startDiscovery({
-      annotations: [ann1],
+    await PinveltoPinDiscovery.startDiscovery({
+      pinveltoFeedback: [ann1],
       maxAttempts: 1,
       delay: 10
     });
-    assert.strictEqual(VibePinDiscovery.isObserverActive(), true, 'Cycle 1 observer is active');
+    assert.strictEqual(PinveltoPinDiscovery.isObserverActive(), true, 'Cycle 1 observer is active');
 
     const ann2 = {
       id: 'ann-missing-2',
@@ -599,20 +599,20 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
       selector: '#never-here-2',
       created_at: '2026-01-01T00:00:00.000Z'
     };
-    mockStorage.annotations = [ann2];
+    mockStorage.pinveltoFeedback = [ann2];
 
     // Cycle 2: supersedes Cycle 1
-    await VibePinDiscovery.startDiscovery({
-      annotations: [ann2],
+    await PinveltoPinDiscovery.startDiscovery({
+      pinveltoFeedback: [ann2],
       maxAttempts: 1,
       delay: 10
     });
-    assert.strictEqual(VibePinDiscovery.isObserverActive(), true, 'Cycle 2 observer is active');
+    assert.strictEqual(PinveltoPinDiscovery.isObserverActive(), true, 'Cycle 2 observer is active');
 
     // Simulate an old timer callback attempting to fire with an obsolete cycle ID
     // (In our implementation, startLazyObserver guards: if (thisObsCycle === currentCycleId))
     // Even after resetting/advancing timers, Cycle 2's observer remains active.
-    assert.strictEqual(VibePinDiscovery.isObserverActive(), true, 'Cycle 2 observer remains active despite prior cycle timeout');
+    assert.strictEqual(PinveltoPinDiscovery.isObserverActive(), true, 'Cycle 2 observer remains active despite prior cycle timeout');
   });
 
   await t.test('cancelDiscovery invalidates in-flight attempts, timers, and disconnects observer', async () => {
@@ -620,7 +620,7 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
     const customRender = async (anns) => {
       renderCount++;
       await new Promise(r => setTimeout(r, 30));
-      return await VibeBadgeManager.render(anns);
+      return await PinveltoBadgeManager.render(anns);
     };
 
     const ann = {
@@ -631,8 +631,8 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
     };
 
     // Start discovery with long delay and retries
-    const promise = VibePinDiscovery.startDiscovery({
-      annotations: [ann],
+    const promise = PinveltoPinDiscovery.startDiscovery({
+      pinveltoFeedback: [ann],
       maxAttempts: 5,
       delay: 100,
       renderFn: customRender
@@ -640,7 +640,7 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
 
     // Cancel while attempt 1 is in-flight or before retry 2
     await new Promise(r => setTimeout(r, 10));
-    VibePinDiscovery.cancelDiscovery('overlay-closed');
+    PinveltoPinDiscovery.cancelDiscovery('overlay-closed');
 
     const result = await promise;
     assert.strictEqual(result.superseded, true, 'Promise resolves as superseded/cancelled');
@@ -648,7 +648,7 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
     // Wait past the delay for attempt 2
     await new Promise(r => setTimeout(r, 150));
     assert.strictEqual(renderCount, 1, 'No subsequent retry attempts ran after cancellation');
-    assert.strictEqual(VibePinDiscovery.isObserverActive(), false, 'No observer left active');
+    assert.strictEqual(PinveltoPinDiscovery.isObserverActive(), false, 'No observer left active');
   });
 
   await t.test('duplicate rapid triggers are coalesced without launching redundant concurrent cycles', async () => {
@@ -656,7 +656,7 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
     const customRender = async (anns) => {
       renderCount++;
       await new Promise(r => setTimeout(r, 20));
-      return await VibeBadgeManager.render(anns);
+      return await PinveltoBadgeManager.render(anns);
     };
 
     const ann = {
@@ -667,14 +667,14 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
     };
 
     // Trigger multiple calls rapidly
-    const p1 = VibePinDiscovery.startDiscovery({
-      annotations: [ann],
+    const p1 = PinveltoPinDiscovery.startDiscovery({
+      pinveltoFeedback: [ann],
       maxAttempts: 1,
       renderFn: customRender,
       coalesce: true
     });
-    const p2 = VibePinDiscovery.startDiscovery({
-      annotations: [ann],
+    const p2 = PinveltoPinDiscovery.startDiscovery({
+      pinveltoFeedback: [ann],
       maxAttempts: 1,
       renderFn: customRender,
       coalesce: true
@@ -704,20 +704,20 @@ test('Slice 4 - Seam 3: Lifecycle Invalidation, Generation Tokens & Teardown', a
     };
 
     // Start discovery with delayed render
-    const discoveryPromise = VibePinDiscovery.startDiscovery({
-      annotations: [ann],
+    const discoveryPromise = PinveltoPinDiscovery.startDiscovery({
+      pinveltoFeedback: [ann],
       renderFn: delayedRender
     });
 
     // Simulate route navigation or overlay closure while render is suspended
-    VibePinDiscovery.cancelDiscovery('route-change');
-    VibeBadgeManager.clearAll();
+    PinveltoPinDiscovery.cancelDiscovery('route-change');
+    PinveltoBadgeManager.clearAll();
 
     // Late completion resolves
     lateResolve({ count: 1, renderedIds: ['ann-delayed'], unresolvedIds: [] });
     const res = await discoveryPromise;
 
     assert.strictEqual(res.superseded, true, 'Result is marked superseded');
-    assert.strictEqual(VibeBadgeManager.hasBadge('ann-delayed'), false, 'Late completion does not restore pin after route teardown');
+    assert.strictEqual(PinveltoBadgeManager.hasBadge('ann-delayed'), false, 'Late completion does not restore pin after route teardown');
   });
 });
