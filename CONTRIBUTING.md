@@ -1,114 +1,55 @@
-# Contributing to Vibe Annotations
+# Contributing to Pinvelto
 
-First off, thank you for considering contributing to Vibe Annotations! It's people like you that make Vibe Annotations such a great tool.
+Pinvelto is an independently maintained, internal-use visual Feedback product.
+Report bugs, propose changes, and submit project contributions to
+[luxi78/vibe-annotations](https://github.com/luxi78/vibe-annotations).
+Follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## Code of Conduct
+## Report and implement changes
 
-This project and everyone participating in it is governed by the [Vibe Annotations Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+Check existing project issues first. Describe the observed and expected behavior,
+reproduction steps, environment, and useful screenshots. For proposals, explain
+the problem and intended result before implementation.
 
-## How Can I Contribute?
+Create an `issue/<number>` branch from the current project integration branch or
+`main`, as directed by the issue. Use test-driven slices at the agreed public
+boundaries and run relevant regression tests. Document acceptance evidence and
+remaining gaps. Project pull requests, when used, target this repository.
 
-### Reporting Bugs
+## Development
 
-Before creating bug reports, please check existing issues as you might find out that you don't need to create one. When you are creating a bug report, please include as many details as possible:
+This is a pnpm workspace: run `pnpm install` at the root to install dependencies.
+The extension uses WXT; run `pnpm dev` in `packages/extension`, then load
+`packages/extension/.output/chrome-mv3` through Chrome's **Load unpacked** action
+with Developer mode enabled. The local MCP service is in `packages/server` and
+the internal documentation website is in `packages/website`.
 
-* Use a clear and descriptive title
-* Describe the exact steps which reproduce the problem
-* Provide specific examples to demonstrate the steps
-* Describe the behavior you observed after following the steps
-* Explain which behavior you expected to see instead and why
-* Include screenshots if possible
-* Include your environment details (OS, browser version, etc.)
+Use [the installation guidance](README.md) for local service setup and commands.
+Use package-specific `CLAUDE.md` files where present for architecture details.
+All packages are intended for internal installation from repository artifacts;
+public npm and browser-store publication are outside this project's scope.
 
-### Suggesting Enhancements
+Use 2 spaces for indentation, meaningful names, and the surrounding code style.
+Write engineering documentation and commits in English. Use imperative commit
+subjects of at most 72 characters and reference the originating issue. Include
+`Closes #<number>` or `Fixes #<number>` when resolving a verified issue, following
+[the tracker workflow](docs/agents/issue-tracker.md).
 
-Enhancement suggestions are tracked as GitHub issues. When creating an enhancement suggestion, please include:
+## Upstream relationship
 
-* Use a clear and descriptive title
-* Provide a step-by-step description of the suggested enhancement
-* Provide specific examples to demonstrate the steps
-* Describe the current behavior and explain which behavior you expected to see instead
-* Explain why this enhancement would be useful
+Run `node scripts/setup-upstream-guard.mjs` after setting up the upstream read
+remote in each clone. Follow [upstream maintenance](docs/upstream-maintenance.md)
+for setup, local-only verification, and the required adoption assessment.
+Upstream is a read source. Do not submit Pinvelto work there, automatically merge
+upstream, or adopt changes before the maintainer confirms the assessment.
 
-### Your First Code Contribution
+The repository rename and local-directory relocation are deferred to separate
+operations after implementation acceptance.
 
-Unsure where to begin contributing? You can start by looking through these issues:
+## Licensing and attribution
 
-* Issues labeled `good first issue` - issues which should only require a few lines of code
-* Issues labeled `help wanted` - issues which should be a bit more involved than beginner issues
-
-### Pull Requests
-
-1. Fork the repo and create your branch from `main`
-2. If you've added code that should be tested, add tests
-3. Ensure the test suite passes
-4. Make sure your code follows the existing code style
-5. Issue that pull request!
-
-## Development Process
-
-### Project Structure
-
-This is a **pnpm workspace** — one `pnpm install` at the root resolves everything.
-
-```
-vibe-annotations/
-├── packages/
-│   ├── extension/   # Chrome extension (WXT build)
-│   ├── server/      # MCP server (npm package: vibe-annotations-server)
-│   └── website/     # Marketing site & docs (Next.js)
-└── README.md
-```
-
-Each package has its own `CLAUDE.md` with detailed architecture and dev notes.
-
-### Extension Development
-
-The extension is built with [WXT](https://wxt.dev/).
-
-1. From `packages/extension/`, run `pnpm dev` — WXT serves a live-reloading dev build.
-2. Load it in Chrome the first time:
-   - Open `chrome://extensions/`
-   - Enable Developer mode
-   - Click "Load unpacked" and select `packages/extension/.output/chrome-mv3`
-3. Make your changes — WXT hot-reloads the content scripts.
-
-### Server Development
-
-1. From `packages/server/`, install deps: `pnpm install` (or `npm install`)
-2. Run it: `node lib/server.js` (or `node bin/cli.js start`)
-3. Test your changes against `http://127.0.0.1:3846`
-
-### Code Style
-
-* Use 2 spaces for indentation
-* Use meaningful variable names
-* Comment your code where necessary
-* Follow the existing code style
-
-### Commit Messages
-
-* Use the present tense ("Add feature" not "Added feature")
-* Use the imperative mood ("Move cursor to..." not "Moves cursor to...")
-* Limit the first line to 72 characters or less
-* Reference issues and pull requests liberally after the first line
-
-## Publishing
-
-### Extension Publishing
-
-The Chrome extension is published to the Chrome Web Store by maintainers only.
-
-### Server Publishing
-
-The server (`packages/server`) lives in this monorepo and is published to npm automatically by a GitHub Action (`.github/workflows/publish-npm.yml`) when changes to `packages/server/**` land on `main`. Bump `packages/server/package.json`'s version for an intentional release; otherwise the action patches from the latest npm version.
-
-## Licensing
-
-Vibe Annotations is **source-available** under the [PolyForm Shield License 1.0.0](LICENSE) — not an OSI open-source license. You're welcome to read the code and contribute; by submitting a contribution you agree it's licensed under those same terms.
-
-## Questions?
-
-Feel free to open an issue with your question or reach out to the maintainers.
-
-Thank you for contributing! 🎉
+Pinvelto derives from Vibe Annotations. Preserve the inherited
+[PolyForm Shield License 1.0.0](LICENSE), [NOTICE](NOTICE), source attribution,
+and Git history. Contributions use the applicable project license terms.
+Internal use and a new brand do not establish legal clearance or relicense
+inherited code. Assess license and notice changes before any upstream adoption.
