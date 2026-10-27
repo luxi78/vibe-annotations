@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 const cli = fileURLToPath(new URL('../bin/cli.js', import.meta.url));
 export function run(args, env) {
   return new Promise((resolve, reject) => {
@@ -41,6 +41,25 @@ async function freePort() {
   await new Promise((resolve) => server.close(resolve));
   return port;
 }
+
+test('fresh init waits for a slow owned service to become ready before reporting success', { timeout: 30000 }, async t => {
+  const home = await mkdtemp(path.join(tmpdir(), 'pinvelto-slow-install-'));
+  const port = await freePort();
+  const preload = path.join(home, 'cold-start.mjs');
+  await writeFile(preload, `if (process.argv[1]?.replaceAll('\\\\', '/').endsWith('/lib/server.js')) await new Promise(resolve => setTimeout(resolve, 5500));\n`);
+  const env = { PINVELTO_HOME: home, PINVELTO_PORT: String(port), NODE_OPTIONS: `--import="${pathToFileURL(preload).href}"` };
+  const invoke = (...args) => run(args, env);
+  t.after(async () => {
+    await invoke('stop');
+    await rm(home, { recursive: true, force: true });
+  });
+  const initialized = await invoke('init', '--agent', 'codex', '--non-interactive', '--skip-extension');
+  assert.equal(initialized.code, 0, initialized.output);
+  const health = await (await fetch(`http://127.0.0.1:${port}/health`)).json();
+  assert.equal(health.product, 'pinvelto');
+  assert.match((await invoke('status')).output, /Pinvelto is running/);
+  assert.equal((await invoke('stop')).code, 0);
+});
 test(
   'CLI starts fresh isolated Feedback, persists it across restart, and stops its own service',
   { timeout: 30000 },
