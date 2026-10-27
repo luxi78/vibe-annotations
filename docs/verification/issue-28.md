@@ -97,7 +97,7 @@ built separately with default 3847; controlled acceptance used `.output-e2e`,
 owned temporary homes/profiles and ephemeral services. No maintainer default
 service or normal browser profile was probed or modified.
 
-The verifier observed **131** Node fetch events and **43** combined browser/Node
+The verifier observed **192** Node fetch events and **43** combined browser/Node
 events, all HTTP origins loopback, with local data resources. No observed runtime
 request reached an upstream product package, store, release/version, or hosted
 product endpoint. The local server installation and publish dry runs were
@@ -105,6 +105,10 @@ offline. Normal workspace dependency installation was network-enabled and used
 an existing content store; it was not an empty-machine or packet-capture claim.
 The [full independent report](issue-28-install-update.md) records exact commands,
 revisions, raw evidence location, first failure, correction, and scoped limits.
+Bounded durable evidence is retained as [service requests](issue-28-service-network.jsonl),
+[browser/Node requests](issue-28-browser-network.jsonl), and
+[measured delayed startup](issue-28-startup-delay.jsonl), which records 5507 ms
+elapsed for the requested 5500 ms service-entry delay.
 
 An offline dependency attempt initially lacked pnpm metadata; normal
 frozen-lockfile installation succeeded. Dependency-registry access is allowed;

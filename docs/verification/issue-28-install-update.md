@@ -47,11 +47,11 @@ pinvelto --version
 pinvelto stop
 ```
 
-**Passed**. The same isolated home retained the original Feedback comment and exact PNG bytes across revision switch/rebuild/local reinstall/restart. The actual MCP server identifies `pinvelto`, exposes exactly the seven expected `pinvelto_` tools, reads the persisted Feedback and usable local attachment path, and rejects `read_annotations`. Existing upstream-like data and the old Codex MCP entry remain byte-for-byte/prefix unchanged; only the new Pinvelto entry is added. Shutdown is confirmed by the endpoint no longer accepting HTTP. All lifecycle service ports were ephemeral (58255 for the failed first attempt, then 53051 for initial install/update, 62764 and 56297 for final fresh/cold checks); neither 3846 nor 3847 was probed.
+**Passed**. The same isolated home retained the original Feedback comment and exact PNG bytes across revision switch/rebuild/local reinstall/restart. The actual MCP server identifies `pinvelto`, exposes exactly the seven expected `pinvelto_` tools, reads the persisted Feedback and usable local attachment path, and rejects `read_annotations`. Existing upstream-like data and the old Codex MCP entry remain byte-for-byte/prefix unchanged; only the new Pinvelto entry is added. Shutdown is confirmed by the endpoint no longer accepting HTTP. All lifecycle service ports were ephemeral (58255 for the failed first attempt, then 53051 for initial install/update, 62764, 56297, and 62112 for final fresh/cold checks); neither 3846 nor 3847 was probed.
 
-On the final revision, **fresh-home init/status/MCP/stop passes**. A second independent fresh-home run used an external Node preload delaying only the spawned `/lib/server.js` entry by **5500 ms**, leaving the CLI itself undelayed. The installed CLI still initialized, reported running, completed the real MCP/image/configuration checks, and stopped successfully. The preload and all test helpers live outside the repository. The actual installed Windows shim sequence subsequently passed too.
+On the final revision, **fresh-home init/status/MCP/stop passes**. A second independent fresh-home run used an external Node preload delaying only the spawned `/lib/server.js` entry by **5500 ms**, leaving the CLI itself undelayed. The installed CLI still initialized, reported running, completed the real MCP/image/configuration checks, and stopped successfully. A repeated controlled check records the actual delayed server entry and **5507 ms elapsed** for the requested 5500 ms in `startup-delay-evidence.jsonl`; its init/status/real-MCP/image/stop sequence also passes. The preload and all test helpers live outside the repository. The actual installed Windows shim sequence subsequently passed too.
 
-Raw evidence: `install-lifecycle-retry.log`, `update-lifecycle-result.log`, `final-fresh-lifecycle-result.log`, `final-cold-start-result.log`, `cli-lifecycle.log`, and `mcp-verification.log`.
+Raw evidence: `install-lifecycle-retry.log`, `update-lifecycle-result.log`, `final-fresh-lifecycle-result.log`, `final-cold-start-result.log`, `final-cold-start-confirmed.log`, `startup-delay-evidence.jsonl`, `cli-lifecycle.log`, and `mcp-verification.log`.
 
 ## Fresh-clone browser workflow
 
@@ -71,7 +71,7 @@ Raw evidence: `fresh-clone-browser-workflow.log`, the clone's Playwright JSON/tr
 
 An external preload observed Node `fetch` URLs and attached Chromium request-event observers without rewriting requests, intercepting protocol payloads, or changing repository code.
 
-- `runtime-network.jsonl`: **131** Node fetch events, all to the verifier's ephemeral loopback service ports.
+- `runtime-network.jsonl`: **192** Node fetch events, all to the verifier's ephemeral loopback service ports.
 - `browser-runtime-network.jsonl`: **43** Node-fetch/Chromium request events, all HTTP origins loopback (actual service, controlled fixture, or deliberate foreign fixture), plus local data resources.
 - **No observed upstream product npm, browser-store, release/version, or hosted-product endpoint** in those runtime observations.
 - The global local-server install and all publish dry runs used npm `--offline`. The workspace frozen dependency install was normal network-enabled operation; its complete network traffic was not captured. Source/manifest audit found no active upstream-product package installation, store-opening, or version polling path. This is scoped evidence, not a claim that all browser telemetry/dependency installer traffic was packet-captured. Chromium observers attach after context creation; the harness's controlled compile-time endpoint supplies the startup-isolation guarantee.
