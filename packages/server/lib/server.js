@@ -397,7 +397,7 @@ class LocalAnnotationsServer {
 
         const html = await this.renderExportHtml(items, meta);
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="vibe-annotations-${safeName}.html"`);
+        res.setHeader('Content-Disposition', `attachment; filename="pinvelto-feedback-${safeName}.html"`);
         res.send(html);
       } catch (error) {
         console.error('Export error:', error);
@@ -767,15 +767,15 @@ class LocalAnnotationsServer {
                   type: 'object',
                   description: 'The scaffolding map the extension and finalization pass rely on.',
                   properties: {
-                    container: { type: 'string', description: 'CSS selector of the stable wrapper you added (e.g. ".vibe-var-<id>")' },
-                    attribute: { type: 'string', description: 'The toggled attribute, "data-vibe-active"' },
+                    container: { type: 'string', description: 'CSS selector of the stable wrapper you added (e.g. ".pinvelto-var-<id>")' },
+                    attribute: { type: 'string', description: 'The toggled attribute, "data-pinvelto-active"' },
                     variants: {
                       type: 'array',
                       description: '>=2 items, unique values, non-empty names',
                       items: {
                         type: 'object',
                         properties: {
-                          value: { type: 'string', description: 'data-vibe-active value, e.g. "1"' },
+                          value: { type: 'string', description: 'data-pinvelto-active value, e.g. "1"' },
                           name: { type: 'string', description: 'Human name shown in the radio, e.g. "Material card"' }
                         }
                       }
@@ -1253,9 +1253,9 @@ class LocalAnnotationsServer {
         url_path: a.url_path || a.url || '',
         component: componentHint ? componentHint.replace('Component:', '').trim() : null,
         source_file_path: a.source_file_path || null,
-        // A data-vibe-id is injected live by the extension and is NOT in the source —
+        // A data-pinvelto-id is injected live by the extension and is NOT in the source —
         // useless to an agent/reader. Fall back to the readable DOM path instead.
-        selector: (a.selector && a.selector.includes('data-vibe-id'))
+        selector: (a.selector && a.selector.includes('data-pinvelto-id'))
           ? (a.element_context?.path || null)
           : (a.selector || null),
         tag: a.element_context?.tag || null,
@@ -1298,7 +1298,7 @@ class LocalAnnotationsServer {
       cards.push(`<article class="card"><h2><span class="n">${it.num}</span>${esc(it.comment || '(no comment)')}</h2><dl>${rows}</dl>${changesHtml}${cssHtml}${figs.length ? `<div class="shots">${figs.join('')}</div>` : ''}</article>`);
     }
 
-    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vibe Annotations — ${esc(meta.hostname)}</title><style>
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pinvelto Feedback — ${esc(meta.hostname)}</title><style>
 :root{color-scheme:light}
 *{box-sizing:border-box}
 body{margin:0;background:#f6f7f9;color:#1a1d21;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
@@ -1308,7 +1308,7 @@ header p{margin:0;color:#6b7280;font-size:13px}
 main{max-width:820px;margin:0 auto;padding:8px 24px 48px}
 .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
 .card h2{margin:0 0 12px;font-size:16px;display:flex;align-items:center;gap:10px}
-.card h2 .n{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:linear-gradient(90deg,#E85B5C,#D03D68);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+.card h2 .n{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:#0754FF;color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
 dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0 0 14px;font-size:13px}
 dt{color:#6b7280}
 dd{margin:0}
@@ -1325,7 +1325,7 @@ pre.css code{background:none;color:inherit;padding:0}
 figure{margin:0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;max-width:360px}
 figure img{display:block;width:100%;height:auto}
 figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
-</style></head><body><header><h1>Vibe Annotations</h1><p>${esc(meta.hostname)} · Exported ${meta.date} · ${items.length} annotation${items.length === 1 ? '' : 's'}</p></header><main>${cards.join('') || '<p style="color:#6b7280">No annotations.</p>'}</main></body></html>`;
+</style></head><body><header><h1>Pinvelto Feedback</h1><p>${esc(meta.hostname)} · Exported ${meta.date} · ${items.length} Feedback</p></header><main>${cards.join('') || '<p style="color:#6b7280">No Feedback.</p>'}</main></body></html>`;
   }
 
   // --- Variant generation (Feature 1) ---
@@ -1334,40 +1334,40 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
 
   variantGenerateInstructions(id) {
     return [
-      `This is a VARIANTS annotation (mode "variants"): the user wants several coexisting design variants of the target element, previewable in place. Follow this contract exactly — do NOT implement a single design, and do NOT delete THIS annotation (it runs through its own pick/finalize lifecycle). This "don't delete" applies to THIS annotation ONLY — keep implementing and then deleting every OTHER (non-variants) annotation in the batch exactly as normal.`,
+      `This is Pinvelto VARIANTS Feedback (mode "variants"): the user wants several coexisting design variants of the target element, previewable in place. Follow this contract exactly — do NOT implement a single design, and do NOT delete THIS Feedback (it runs through its own pick/finalize lifecycle). This "don't delete" applies to THIS Feedback ONLY — keep implementing and then deleting every OTHER (non-variants) Feedback in the batch exactly as normal.`,
       ``,
       `1. Wrap the target element in a stable container, each variant a sibling (idiomatic JSX/Vue/etc):`,
-      `   <div class="vibe-var-${id}" data-vibe-active="1">`,
-      `     <div class="vibe-variant" data-variant="1">…variant 1 (or the original)…</div>`,
-      `     <div class="vibe-variant" data-variant="2">…variant 2…</div>`,
+      `   <div class="pinvelto-var-${id}" data-pinvelto-active="1">`,
+      `     <div class="pinvelto-variant" data-variant="1">…variant 1 (or the original)…</div>`,
+      `     <div class="pinvelto-variant" data-variant="2">…variant 2…</div>`,
       `     … one per variant …`,
       `   </div>`,
       `   If the target is a flex/grid child, add \`display: contents\` to the container so the wrapper doesn't break the parent layout.`,
       `2. Add ONE scaffold CSS block (dedicated file or the global stylesheet) showing only the active variant:`,
-      `   /* vibe-annotations:scaffold ${id} — DO NOT EDIT, removed on finalize */`,
-      `   .vibe-var-${id} > .vibe-variant { display: none; }`,
-      `   .vibe-var-${id}[data-vibe-active="1"] > [data-variant="1"] { display: block; }  /* … one rule per variant … */`,
-      `3. Hardcode data-vibe-active="1" in the code so the preview survives reloads/HMR/re-renders. The extension only ever flips this one attribute.`,
-      `4. Mark EVERY file you touch with a greppable sentinel comment \`vibe-annotations:scaffold ${id}\` (JSX {/* … */}, CSS /* … */, Vue <!-- … -->) — this is the finalization cleanup map.`,
-      `5. Then call pinvelto_update_feedback with variantsPayload { container: ".vibe-var-${id}", attribute: "data-vibe-active", variants: [{ value: "1", name: "…" }, …], files: [every file you touched] }. This moves it to "variants-ready". Tell the user in chat to reopen the extension to preview and choose.`,
+      `   /* pinvelto:scaffold ${id} — DO NOT EDIT, removed on finalize */`,
+      `   .pinvelto-var-${id} > .pinvelto-variant { display: none; }`,
+      `   .pinvelto-var-${id}[data-pinvelto-active="1"] > [data-variant="1"] { display: block; }  /* … one rule per variant … */`,
+      `3. Hardcode data-pinvelto-active="1" in the code so the preview survives reloads/HMR/re-renders. The extension only ever flips this one attribute.`,
+      `4. Mark EVERY file you touch with a greppable sentinel comment \`pinvelto:scaffold ${id}\` (JSX {/* … */}, CSS /* … */, Vue <!-- … -->) — this is the finalization cleanup map.`,
+      `5. Then call pinvelto_update_feedback with variantsPayload { container: ".pinvelto-var-${id}", attribute: "data-pinvelto-active", variants: [{ value: "1", name: "…" }, …], files: [every file you touched] }. This moves it to "variants-ready". Tell the user in chat to reopen the extension to preview and choose.`,
     ].join('\n');
   }
 
   variantFinalizeInstructions(id, chosen) {
     return [
-      `This VARIANTS annotation was CHOSEN (variant "${chosen}"). Finalize:`,
-      `1. Grep the codebase for \`vibe-annotations:scaffold ${id}\` to locate all scaffolding.`,
-      `2. Replace the wrapper with the chosen variant's content, idiomatically — no wrapper, no data-vibe-* attributes, no vibe-* classes.`,
+      `This Pinvelto VARIANTS Feedback was CHOSEN (variant "${chosen}"). Finalize:`,
+      `1. Grep the codebase for \`pinvelto:scaffold ${id}\` to locate all scaffolding.`,
+      `2. Replace the wrapper with the chosen variant's content, idiomatically — no wrapper, no data-pinvelto-* attributes, no pinvelto-* classes.`,
       `3. Remove the scaffold CSS rules and every sentinel comment for this id.`,
-      `4. Call pinvelto_update_feedback with status "resolved". The final diff must contain zero \`vibe-*\` traces.`,
+      `4. Call pinvelto_update_feedback with status "resolved". Remove only this Feedback's scaffold; leave other generated artifacts and upstream markers untouched.`,
     ].join('\n');
   }
 
   variantDiscardInstructions(id) {
     return [
-      `This VARIANTS annotation was DISCARDED. Clean up:`,
-      `1. Grep for \`vibe-annotations:scaffold ${id}\`.`,
-      `2. Restore the ORIGINAL element (variant "1") in place, removing the wrapper, data-vibe-* attributes and vibe-* classes.`,
+      `This Pinvelto VARIANTS Feedback was DISCARDED. Clean up:`,
+      `1. Grep for \`pinvelto:scaffold ${id}\`.`,
+      `2. Restore the ORIGINAL element (variant "1") in place, removing this Feedback's wrapper, generated data-pinvelto-* attributes and pinvelto-* classes.`,
       `3. Remove the scaffold CSS rules and every sentinel comment for this id.`,
       `4. Call pinvelto_update_feedback with status "resolved".`,
     ].join('\n');

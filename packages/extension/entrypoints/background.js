@@ -165,7 +165,7 @@ class PinveltoFeedbackBackground {
             .then(granted => sendResponse({ success: true, granted }))
             .catch(error => sendResponse({ success: false, error: error.message }));
           break;
-        case 'exportFeedback':
+        case 'pinvelto:exportFeedback':
           formatExport(request.format)
             .then(data => sendResponse({ success: true, data }))
             .catch(error => sendResponse({ success: false, error: error.message }));
