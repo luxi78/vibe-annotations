@@ -44,6 +44,12 @@ test('internal documentation leads from a reviewed local installation to daily u
   await expect(page.locator('article')).toContainText('PINVELTO_REF');
   await expect(page.locator('article')).toContainText('.output/chrome-mv3');
   await expect(page.locator('article')).toContainText('npm install --global ./packages/server');
+  const codeBlock = page.locator('article pre').first();
+  const copy = codeBlock.locator('..').getByRole('button', { name: 'Copy to clipboard' });
+  const blockBounds = await codeBlock.boundingBox();
+  const copyBounds = await copy.boundingBox();
+  expect(copyBounds.y).toBeGreaterThanOrEqual(blockBounds.y);
+  expect(copyBounds.y + copyBounds.height).toBeLessThanOrEqual(blockBounds.y + blockBounds.height);
   await page.screenshot({ path: fileURLToPath(new URL('../../../../docs/verification/issue-28-installation.png', import.meta.url)), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: fileURLToPath(new URL('../../../../docs/verification/issue-28-docs-mobile.png', import.meta.url)), fullPage: true });

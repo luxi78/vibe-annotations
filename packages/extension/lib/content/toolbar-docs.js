@@ -405,7 +405,7 @@
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Explore options in your real codebase</div>
             <p class="pinvelto-guide-text">Ask your agent for several variants of a component, preview them right on the page, and pick the winner. The agent builds them in your actual code — not a mockup — so the one you choose is already implemented.</p>
-            <p class="pinvelto-guide-text" style="margin-top:8px;color:var(--v-text-secondary);"><strong>Requires the MCP server.</strong> The Variants tab is disabled until a coding agent is connected over MCP.</p>
+            <p class="pinvelto-guide-text" style="margin-top:8px;color:var(--v-text-secondary);"><strong>Requires the MCP server.</strong> The Variants tab is enabled when the Pinvelto service is connected. A coding agent must then read and implement the request over MCP.</p>
           </div>
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Workflow</div>
@@ -444,7 +444,7 @@
             <div class="pinvelto-guide-label">Workflow</div>
             <p class="pinvelto-guide-text">1. Open the popover on the element you want to annotate</p>
             <p class="pinvelto-guide-text">2. Use the <strong>+</strong> menu to <em>Attach file</em> or <em>Take a screenshot</em>, or paste an image straight into the comment field</p>
-            <p class="pinvelto-guide-text">3. Save — images travel with the Feedback to your agent (as local file paths over MCP) and into <code>.md</code> / <code>.html</code> exports</p>
+            <p class="pinvelto-guide-text">3. Save — MCP verifies available image files for your agent. HTML embeds available images; Markdown carries attachment references only, not image bytes or verified file paths.</p>
           </div>
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Enabling auto-screenshots</div>
@@ -466,14 +466,14 @@
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Three formats</div>
             <p class="pinvelto-guide-text"><strong>.md</strong> — <em>personal use.</em> A plain-markdown rundown of every Feedback. Rendered client-side, works with <strong>no server running</strong>. Same format as the Copy button, saved to a file.</p>
-            <p class="pinvelto-guide-text"><strong>.html</strong> — <em>share externally.</em> One self-contained page with every image embedded as base64 — opens in any browser. Building it reads the image files, so it <strong>requires the local server</strong>.</p>
-            <p class="pinvelto-guide-text"><strong>.json</strong> — <em>re-import later.</em> The raw Feedback objects for this site. Feed it into another localhost via <strong>Import</strong> to recreate Feedback, badges and previews. Client-side, no server.</p>
+            <p class="pinvelto-guide-text"><strong>.html</strong> — <em>share externally.</em> One self-contained page with available images embedded as base64; unavailable files are omitted — opens in any browser. Building it reads the image files, so it <strong>requires the local server</strong>.</p>
+            <p class="pinvelto-guide-text"><strong>.json</strong> — <em>re-import later.</em> The raw Feedback objects for this site. Feed it into another localhost via <strong>Import</strong> to recreate Feedback, badges and previews. Client-side, no server. Image files are not bundled; verify availability or attach them again after import.</p>
           </div>
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Which one?</div>
             <p class="pinvelto-guide-text">Handing off to your own agent or working offline → <strong>.md</strong></p>
             <p class="pinvelto-guide-text">Sending to someone without the extension (design review, sign-off) → <strong>.html</strong>, so images come along</p>
-            <p class="pinvelto-guide-text">Moving live Feedback to another machine's localhost → <strong>.json</strong>, then Import them there</p>
+            <p class="pinvelto-guide-text">Moving live Feedback to another machine's localhost → <strong>.json</strong>, then Import them there and provide the separate image files</p>
           </div>
         `
       },
@@ -488,7 +488,7 @@
             <div class="pinvelto-guide-label">Workflow</div>
             <p class="pinvelto-guide-text">1. A reviewer annotates the live site (staging, production, or localhost)</p>
             <p class="pinvelto-guide-text">2. They click <strong>Export</strong> and share the .json file (Slack, email, etc.)</p>
-            <p class="pinvelto-guide-text">3. A developer clicks <strong>Import</strong> on their localhost. Feedback, badges, and style previews appear instantly.</p>
+            <p class="pinvelto-guide-text">3. A developer imports the new Pinvelto JSON on localhost. Check Feedback, previews, and image availability; separate attachment files must be provided or attached again.</p>
             <p class="pinvelto-guide-text">4. The developer copies or uses MCP to send the Feedback to their coding agent</p>
           </div>
           <div class="pinvelto-guide-section">

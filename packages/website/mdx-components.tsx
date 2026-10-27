@@ -18,7 +18,7 @@ export function useMDXComponents(components: MDXComponents): MDXComponents {
       return (
         <div className="relative group">
           <pre {...props}>{children}</pre>
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+          <div>
             <CopyButton text={text.trim()} />
           </div>
         </div>
