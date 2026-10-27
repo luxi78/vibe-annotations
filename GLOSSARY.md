@@ -1,8 +1,14 @@
-# Vibe Annotations
+# Pinvelto
 
-Vocabulary for visual annotations, their website scope, and the review experience.
+Vocabulary for visual feedback, its website scope, and the review experience.
 
 ## Language
+
+### Product identity
+
+**Pinvelto**:
+The independently maintained, internal-use visual feedback product derived from Vibe Annotations. It has its own product direction and identity.
+_Avoid_: Vibe Annotations when referring to this product.
 
 ### Website scope
 
@@ -18,8 +24,9 @@ The page open in the browser tab hosting the annotation toolbar, identified by i
 
 ### Annotations and their representations
 
-**Annotation**:
+**Feedback**:
 A feedback record associated with a page, containing an instruction, design changes, image attachments, or a request for Variants. The record is distinct from its visible annotation pin or annotation card.
+_Avoid_: Annotation as the user-facing or agent-facing name for a feedback record.
 
 **Annotation pin**:
 The on-page marker associated with an annotation's target element. Not every annotation has a visible pin.
