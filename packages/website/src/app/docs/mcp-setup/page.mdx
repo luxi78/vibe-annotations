@@ -1,99 +1,37 @@
-export const metadata = { title: 'MCP Setup' }
+# MCP setup
 
-# MCP Setup
+Start the locally installed service and configure a fresh **pinvelto** entry. The server identifies itself as **pinvelto** and exposes only the seven Pinvelto tools below.
 
-Connect your AI coding agent to the Vibe Annotations server so it can read, watch, and resolve annotations automatically.
+~~~sh
+pinvelto init --agent codex --non-interactive
+pinvelto status
+~~~
 
-**Shortcut:** `npx vibe-annotations-server init` configures the agents below interactively in one step. Keep reading if you'd rather set it up manually.
+Init preserves other agent entries. It does not remove upstream configuration. For project scope, use --project with a supported agent. For configuration without startup, use --skip-server. Reconnect your agent after setup.
 
-**Prerequisite (manual setup):** The server must be running. Run `vibe-annotations-server start` first.
+The default HTTP URL is **http://127.0.0.1:3847/mcp**. SSE clients may use /sse. For manual Codex configuration:
 
-## Claude Code
+~~~toml
+[mcp_servers.pinvelto]
+url = "http://127.0.0.1:3847/mcp"
+~~~
 
-Run once from any directory — `--scope user` configures it globally across all projects.
+For clients using JSON MCP configuration:
 
-```bash
-claude mcp add --scope user --transport http vibe-annotations http://127.0.0.1:3846/mcp
-```
+~~~json
+{"mcpServers":{"pinvelto":{"url":"http://127.0.0.1:3847/mcp"}}}
+~~~
 
-## Cursor
+## Tools and workflow
 
-Open Cursor Settings, go to Tools & Integrations, click "+ Add new global MCP server", and add:
+| Tool | Purpose |
+| --- | --- |
+| pinvelto_list_feedback | Read Feedback for the intended project/page scope |
+| pinvelto_get_project_context | Read project context and instructions |
+| pinvelto_get_screenshot | Retrieve image context for Feedback |
+| pinvelto_watch_feedback | Wait for new Feedback |
+| pinvelto_delete_feedback | Remove completed ordinary Feedback |
+| pinvelto_delete_project_feedback | Remove Feedback in the requested project scope |
+| pinvelto_update_feedback | Advance Variants lifecycle state |
 
-```json
-{
-  "mcpServers": {
-    "vibe-annotations": {
-      "url": "http://127.0.0.1:3846/mcp"
-    }
-  }
-}
-```
-
-## Windsurf
-
-Navigate to Settings, then Advanced Settings, scroll to the Cascade section, and add:
-
-```json
-{
-  "mcpServers": {
-    "vibe-annotations": {
-      "serverUrl": "http://127.0.0.1:3846/mcp"
-    }
-  }
-}
-```
-
-## Codex
-
-Add to `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.vibe-annotations]
-url = "http://127.0.0.1:3846/mcp"
-```
-
-## OpenClaw
-
-Add to `~/.openclaw/openclaw.json`:
-
-```json
-{
-  "mcpServers": {
-    "vibe-annotations": {
-      "url": "http://127.0.0.1:3846/mcp"
-    }
-  }
-}
-```
-
-## VS Code
-
-Install an AI extension that supports MCP, then add to your MCP settings:
-
-```json
-{
-  "mcpServers": {
-    "vibe-annotations": {
-      "url": "http://127.0.0.1:3846/mcp"
-    }
-  }
-}
-```
-
-## MCP Tools
-
-The server exposes these tools to connected agents:
-
-| Tool | Description |
-|------|-------------|
-| `read_annotations` | Retrieve pending annotations with URL filtering and pagination |
-| `watch_annotations` | Long-poll for new annotations (watch mode loops) |
-| `delete_annotation` | Remove an annotation after implementing the fix |
-| `delete_project_annotations` | Batch delete all annotations for a project URL |
-| `get_project_context` | Infer framework and tech stack from a localhost URL |
-| `get_annotation_screenshot` | Get screenshot data for visual context |
-
-## SSE Transport (legacy)
-
-If you experience connection issues with the HTTP transport, you can use the SSE endpoint instead. Replace `/mcp` with `/sse` in any of the configurations above.
+Ask the agent to read Feedback for your project's URL. Inspect screenshots where relevant, apply the source change, verify it, and remove completed ordinary Feedback. Variants use their [specific lifecycle](/docs/workflows/variants); pinvelto_update_feedback is not a general comment editor. Old tool aliases are absent.

@@ -6,9 +6,9 @@ import path from 'node:path';
 export function serializeAnnotationMutation(owner, load, save, transform) {
   const run = async () => {
     const current = await load();
-    if (!Array.isArray(current)) throw new Error('Invalid annotation store');
+    if (!Array.isArray(current)) throw new Error('Invalid Feedback store');
     const result = await transform(current);
-    if (!Array.isArray(result.annotations)) throw new Error('Invalid annotation mutation');
+    if (!Array.isArray(result.annotations)) throw new Error('Invalid Feedback mutation');
     await save(result.annotations);
     if (result.afterSave) await result.afterSave();
     return result;
@@ -24,7 +24,7 @@ export function installAnnotationPurge(app, { mutateAnnotations, removeAttachmen
   app.post('/api/annotations/purge', async (req, res) => {
     const { ids, confirm } = req.body || {};
     if (confirm !== true || !Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id)) {
-      return res.status(400).json({ error: 'Confirmed annotation ids are required' });
+      return res.status(400).json({ error: 'Confirmed Feedback ids are required' });
     }
     const selected = new Set(ids);
     if (!selected.size) return res.json({ success: true, count: 0, purged_ids: [] });
@@ -51,7 +51,7 @@ export function installAnnotationPurge(app, { mutateAnnotations, removeAttachmen
       });
       return res.json({ success: true, count: result.count, purged_ids: [...selected] });
     } catch {
-      return res.status(500).json({ error: 'Failed to purge confirmed annotations' });
+      return res.status(500).json({ error: 'Failed to purge confirmed Feedback' });
     }
   });
 }

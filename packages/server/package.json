@@ -15,7 +15,8 @@
   "scripts": {
     "start": "node lib/server.js",
     "dev": "node --watch lib/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "prepublishOnly": "node -e \"throw new Error('Pinvelto packages are internal-only; public publishing is disabled')\""
   },
   "keywords": [
     "pinvelto",
@@ -23,7 +24,7 @@
     "feedback",
     "localhost"
   ],
-  "author": "Rapha\u00ebl R\u00e9gnier",
+  "author": "Raphaël Régnier",
   "license": "LicenseRef-PolyForm-Shield-1.0.0",
   "engines": {
     "node": ">=18.0.0"

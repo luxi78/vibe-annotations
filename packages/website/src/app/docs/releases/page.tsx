@@ -1,97 +1,47 @@
-import type { Metadata } from 'next'
-import LazyVideo from '@/components/LazyVideo'
-
-export const metadata: Metadata = { title: 'Release Notes' }
-
-type Release = {
-  tag_name: string
-  name: string
-  body: string
-  published_at: string
-  html_url: string
-}
-
-async function getReleases(): Promise<Release[]> {
-  try {
-    const res = await fetch(
-      'https://api.github.com/repos/RaphaelRegnier/vibe-annotations/releases?per_page=10',
-      { next: { revalidate: 3600 } }
-    )
-    if (!res.ok) return []
-    return res.json()
-  } catch {
-    return []
-  }
-}
-
-function formatBody(body: string): string {
-  // Basic markdown-to-HTML: headers, bold, lists, code, images, links
-  return body
-    .replace(/^### (.+)$/gm, '<h4 class="font-semibold text-white mt-4 mb-1">$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3 class="font-semibold text-white mt-4 mb-1">$1</h3>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`(.+?)`/g, '<code class="bg-white/10 px-1 py-0.5 rounded text-sm">$1</code>')
-    .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
-    // Images before links — otherwise ![alt](url) falls through to the link rule
-    // and renders as a stray "!alt" text link instead of an <img>.
-    .replace(/!\[(.*?)\]\((.+?)\)/g, '<img src="$2" alt="$1" class="rounded-lg border border-white/10 my-4 max-w-full h-auto" loading="lazy" />')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-[#9191FD] hover:underline" target="_blank" rel="noopener">$1</a>')
-    // Strip video URLs (rendered separately as LazyVideo components)
-    .replace(/(?:^|\n)https:\/\/github\.com\/user-attachments\/assets\/[\w-]+/g, '')
-    .replace(/\n\n/g, '<br/>')
-}
-
-export default async function ReleasesPage() {
-  const releases = await getReleases()
-
-  if (releases.length === 0) {
-    return (
-      <div>
-        <h1 className="text-xl font-semibold mb-4">Release Notes</h1>
-        <p className="text-white/60">
-          Unable to load releases. View them on{' '}
-          <a href="https://github.com/RaphaelRegnier/vibe-annotations/releases" className="text-[#9191FD] hover:underline" target="_blank" rel="noopener">
-            GitHub
-          </a>.
-        </p>
-      </div>
-    )
-  }
-
+import Link from 'next/link'
+import extension from '../../../../../extension/package.json'
+import server from '../../../../../server/package.json'
+export const metadata = { title: 'Local updates' }
+export default function Updates() {
   return (
-    <div>
-      <h1 className="text-xl font-semibold mb-6">Release Notes</h1>
-      <div className="space-y-8">
-        {releases.map((release) => (
-          <div key={release.tag_name} className="border-b border-white/10 pb-6 last:border-0">
-            <div className="flex items-baseline gap-3 mb-2">
-              <a
-                href={release.html_url}
-                target="_blank"
-                rel="noopener"
-                className="text-base font-semibold text-white hover:text-[#9191FD] transition-colors"
-              >
-                {release.name || release.tag_name}
-              </a>
-              <time className="text-xs text-white/40">
-                {new Date(release.published_at).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </time>
-            </div>
-            {release.body && (
-              <div className="text-sm text-[#C7C7F2] leading-relaxed">
-                <div dangerouslySetInnerHTML={{ __html: formatBody(release.body) }} />
-                {(release.body.match(/https:\/\/github\.com\/user-attachments\/assets\/[\w-]+/g) || []).map((url, i) => (
-                  <LazyVideo key={i} src={url} releaseUrl={release.html_url} />
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
+    <>
+      <h1>Local updates</h1>
+      <p>
+        Installed source versions: extension v{extension.version}; service v
+        {server.version}. Record the Git commit too: equal package versions may
+        contain different reviewed changes.
+      </p>
+      <h2>Choose a reviewed revision</h2>
+      <p>
+        Obtain the next maintainer-reviewed PINVELTO_REF. The issue/23
+        integration branch is not automatically merged into main. Save work and
+        record <code>git rev-parse HEAD</code>. Back up your Pinvelto state
+        where needed; leave other installations and configuration untouched.
+      </p>
+      <pre>
+        <code>
+          {
+            'pinvelto stop\ngit fetch origin\ngit checkout PINVELTO_REF\npnpm install --frozen-lockfile\npnpm --filter pinvelto-extension build\nnpm install --global ./packages/server\npinvelto start --daemon\npinvelto status\npinvelto --version'
+          }
+        </code>
+      </pre>
+      <p>
+        Local installation links to this checkout. Retain it and stop the
+        service before changing source. Reload the production unpacked extension
+        in chrome://extensions, reload target pages, and reconnect the agent.
+        Check Feedback and attachments before resuming. No upstream release feed
+        or registry polling drives updates.
+      </p>
+      <h2>Return to the previous revision</h2>
+      <p>
+        Stop Pinvelto and repeat with the recorded previous revision and its
+        matching extension. Do not import upstream data or remove old agent
+        entries.
+      </p>
+      <p>
+        <Link href="/docs/troubleshooting">Troubleshooting</Link> ·{' '}
+        <a href="https://github.com/luxi78/vibe-annotations">Project source</a>
+      </p>
+    </>
   )
 }

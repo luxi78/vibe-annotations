@@ -10,7 +10,7 @@ The integrated test creates Feedback through the actual editor, uploads a screen
 
 # Extension E2E Test Harness & Keyboard Conflict Baselines
 
-This document covers the Playwright E2E test harness for the Vibe Annotations Chrome extension, environment requirements, browser/headless configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, the automated IME composition coverage for A7, the A12/A13 session-recovery and focus-restoration coverage for ticket #10, the A16 injection-path coverage (static, dynamic, late) for ticket #11, and the A15 cross-frame session coverage for ticket #12.
+This document covers the Playwright E2E test harness for the Pinvelto Chrome extension, environment requirements, browser/headless configuration, failure artifact inspection, baseline conflict documentation against extension build `2.0.2`, the automated IME composition coverage for A7, the A12/A13 session-recovery and focus-restoration coverage for ticket #10, the A16 injection-path coverage (static, dynamic, late) for ticket #11, and the A15 cross-frame session coverage for ticket #12.
 
 Section 11 is the acceptance-coverage index: which committed spec automates each of A1–A16.
 
@@ -27,14 +27,14 @@ Section 11 is the acceptance-coverage index: which committed spec automates each
 
 2. **Install Playwright Chromium browser**:
    ```bash
-   pnpm --filter vibe-annotations-extension exec playwright install chromium
+   pnpm --filter pinvelto-extension exec playwright install chromium
    ```
 
 ---
 
 ## 2. Running E2E Tests
 
-The E2E suite automatically builds the Chrome MV3 extension artifact (`wxt build`) into `packages/extension/.output/chrome-mv3`, starts a local fixture server on `http://127.0.0.1:3005`, launches an isolated Chromium browser profile with the extension loaded, executes assertions, and cleanly tears down temporary resources.
+The E2E suite automatically builds the Chrome MV3 extension artifact (`wxt build`) into `packages/extension/.output-e2e/chrome-mv3`, starts a local fixture server on `http://127.0.0.1:3005`, launches an isolated Chromium browser profile with the extension loaded, executes assertions, and cleanly tears down temporary resources.
 
 ### Standard Commands
 
@@ -94,7 +94,7 @@ New headless mode needs no display server; the `xvfb-run` wrapper is only requir
 
 ```yaml
 - name: Install Playwright Browsers
-  run: pnpm --filter vibe-annotations-extension exec playwright install --with-deps chromium
+  run: pnpm --filter pinvelto-extension exec playwright install --with-deps chromium
 
 - name: Run Extension E2E Tests
   run: pnpm test:extension:e2e
@@ -109,7 +109,7 @@ Playwright is configured (`packages/extension/playwright.config.js`) to retain d
 - **Traces**: Saved to `packages/extension/test-results/<test-folder>/trace.zip`.
   Inspect with:
   ```bash
-  pnpm --filter vibe-annotations-extension exec playwright show-trace test-results/<test-folder>/trace.zip
+  pnpm --filter pinvelto-extension exec playwright show-trace test-results/<test-folder>/trace.zip
   ```
 - **Screenshots**: Saved to `test-results/<test-folder>/test-failed-1.png`.
 - **Error Context & Logs**: Saved in `test-results/<test-folder>/error-context.md`.
@@ -147,7 +147,7 @@ In accordance with ticket criteria, baselines are executed against the productio
 ### How to Run Baselines While Implementation is Pending
 Run the dedicated baseline command:
 ```bash
-pnpm --filter vibe-annotations-extension test:baseline
+pnpm --filter pinvelto-extension test:baseline
 ```
 Because implementation tickets #6 and #7 are pending, the conflict tests assert the target regression behavior and fail on the existing bugs, generating inspectable traces, screenshots, and event logs in `test-results/`.
 
@@ -198,7 +198,7 @@ Status: **not executed / untested.** No operating-system IME or candidate window
 
 Reproducible steps for a human with a system IME (e.g. Microsoft Pinyin, Japanese IME, Korean IME):
 
-1. `pnpm test:extension:e2e` prerequisites are not required for this check; build and load the extension with `pnpm --filter vibe-annotations-extension build` and load `packages/extension/.output/chrome-mv3` as an unpacked extension in desktop Chrome.
+1. `pnpm test:extension:e2e` prerequisites are not required for this check; build and load the extension with `pnpm --filter pinvelto-extension build` and load `packages/extension/.output/chrome-mv3` as an unpacked extension in desktop Chrome.
 2. Open the fixture page (`node packages/extension/tests/fixtures/server.js`, then `http://127.0.0.1:3005/selected-rectangle.html`).
 3. Enable the system IME, click **Annotate**, click the rectangle to open the editor.
 4. Type a pinyin/kana/hangul sequence so the composition string appears in the annotation textarea, and leave the candidate window open. Check that the underlined composition keeps updating as you type (the extension's key handling must not freeze the IME).
@@ -224,7 +224,7 @@ Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, head
 - After the fix (current source):
   ```bash
   pnpm test:extension:e2e          # 30 passed, includes the 4 A7 tests and A1-A6, A8-A11, A14 regressions
-  pnpm --filter vibe-annotations-extension test:baseline   # 6 passed
+  pnpm --filter pinvelto-extension test:baseline   # 6 passed
   pnpm test:extension              # 41 passed (unit)
   ```
 
@@ -273,7 +273,7 @@ Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, new 
   ```bash
   pnpm test:extension:e2e                                    # 42 passed
   npx playwright test tests/e2e/session-recovery.spec.js tests/e2e/focus-restore.spec.js   # 12 passed
-  pnpm --filter vibe-annotations-extension test:baseline      # 6 passed
+  pnpm --filter pinvelto-extension test:baseline      # 6 passed
   pnpm test:extension                                        # 55 passed (unit)
   ```
   Raw output: `.scratch/annotate-keyboard-isolation/a10-after-fix.txt`.
@@ -312,7 +312,7 @@ Spec file: `tests/e2e/injection-paths.spec.js` (part of the standard `pnpm test:
 
 ### 9.4 Controlled origin and coverage boundaries
 
-The controlled origin is `http://vibe-injection.test:3005`, route-fulfilled by the test runner (no DNS, no shared server state) inside a per-test browser profile. The boundaries below are deliberate and were verified in this environment (Windows 10.0.26200, Chromium 153.0.8010.12, Playwright 1.63.0, new headless mode):
+The controlled origin is `http://pinvelto-injection.test:3005`, route-fulfilled by the test runner (no DNS, no shared server state) inside a per-test browser profile. The boundaries below are deliberate and were verified in this environment (Windows 10.0.26200, Chromium 153.0.8010.12, Playwright 1.63.0, new headless mode):
 
 - **The native host-permission bubble cannot be answered by the runner.** `chrome.permissions.request` for an origin outside the declared `host_permissions` opens a browser prompt; in headless mode it never resolves (verified: the modal stays on "Requesting permission…"), and `chrome.permissions.contains({ origins: ['*://*/*'] })` is false in a freshly loaded unpacked profile. A *fresh* origin therefore cannot be enabled, injected into, or protected automatically at all — reaching one requires the user to answer that prompt. The dynamic-registration test therefore enables a controlled origin the profile already permits and drives the extension's own grant handling, registration and persistence; the browser-side grant is the documented gap.
 - **The toolbar-icon click is browser UI.** Tests perform the injection that `chrome.action.onClicked` performs — seed the boot intent, mark the runtime injection, inject the production content scripts, then let the production modal and message handlers run. The extension's keyboard command does not fire from synthetic key input in this harness (verified), so `activeTab` cannot be obtained either; this is why the tests inject explicitly rather than clicking the icon.
@@ -333,7 +333,7 @@ Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, new 
 - After the fix (current source):
   ```bash
   pnpm test:extension:e2e                              # 45 passed, includes the 3 A16 tests and A1-A14 regressions
-  pnpm --filter vibe-annotations-extension test:baseline   # 6 passed
+  pnpm --filter pinvelto-extension test:baseline   # 6 passed
   pnpm test:extension                                  # 61 passed (unit)
   ```
   Raw output: `.scratch/annotate-keyboard-isolation/a11-after-fix.txt`.
@@ -350,11 +350,11 @@ One Annotate session per tab, shared by every frame the extension is authorized 
 
 - **Joining.** Each frame's keyboard router asks the coordinator which session the tab is in when it boots (`vibeSessionHello` plus a per-document nonce), so a frame that loads mid-session — a new iframe, or a frame that navigated — joins the session instead of leaking host shortcuts. Isolation starts at that moment: the frame consumes keys from `document_start`, and activates its own overlay (cursor, hover, click-to-annotate) once its UI exists (`VibeKeyboardRouter.onUiReady()`, called from `entrypoints/content/index.js` after `bootNormal()`), so annotating from a frame is the same action as annotating from the top page.
 - **Publication.** A frame's local transition is reported (`vibeSessionState`) with its nonce; the coordinator records that frame as the owner and relays the state (`vibeSessionRemoteState`) with `chrome.tabs.sendMessage`, which reaches exactly the frames that have a content script — unauthorized, restricted and non-injectable frames are never told they are protected. The owner's nonce travels with the broadcast, so the frame that produced a transition ignores its own echo.
-- **Ownership and transient state.** What is shared tab-wide is the existence of the session, not one frame's transient state. A frame running its own state machine keeps it: an editor open in one frame is not another frame's editor, and a frame that mirrored `editing` would consume keys with no editor of its own to route them to. A mirror is therefore in `selection` and owns the keyboard there; selecting an element in it opens *that frame's* editor and makes it the owner. `data-vibe-session-state` is each frame's own state on purpose — the evidence a frame publishes is a claim about that frame.
+- **Ownership and transient state.** What is shared tab-wide is the existence of the session, not one frame's transient state. A frame running its own state machine keeps it: an editor open in one frame is not another frame's editor, and a frame that mirrored `editing` would consume keys with no editor of its own to route them to. A mirror is therefore in `selection` and owns the keyboard there; selecting an element in it opens *that frame's* editor and makes it the owner. `data-pinvelto-session-state` is each frame's own state on purpose — the evidence a frame publishes is a claim about that frame.
 - **Release.** Any frame can exit; the release is published, the coordinator ends the tab session and every frame hands its keyboard back. The release broadcast is stamped with the reporting frame's nonce, because that frame has already released locally and may start a new session while the broadcast it caused is still in flight.
 - **Frame lifecycle.** A frame whose document merely mirrors the session drops its own copy silently when that document goes away (subframe navigation or removal), so it cannot end the session the rest of the tab is using. The frame that *owns* the session reports the release when its document is replaced or removed, because nothing else can observe that the state machine driving the session is gone. A new top-level document always resets the tab (`frameId === 0`); subframe navigation never does.
 - **Registration.** Both permitted injection paths cover frames: the manifest content script declares `all_frames: true`, and `enableSite` registers the dynamic copy with `allFrames: true`. No site permission was added for this feature.
-- **Evidence.** Each frame publishes `data-vibe-session-state` (`idle`/`selection`/`waiting`/`editing`) and `data-vibe-session-mirror` (`true` when another frame drives the session) on its own shadow host. A frame without a shadow host publishes nothing, which is the honest record that it is not represented as protected.
+- **Evidence.** Each frame publishes `data-pinvelto-session-state` (`idle`/`selection`/`waiting`/`editing`) and `data-pinvelto-session-mirror` (`true` when another frame drives the session) on its own shadow host. A frame without a shadow host publishes nothing, which is the honest record that it is not represented as protected.
 
 ### 10.2 Automated scenarios
 
@@ -374,7 +374,7 @@ The top page embeds three frames, all route-fulfilled by the test runner and con
 | :--- | :--- | :--- |
 | `same-origin` | the top origin (`http://127.0.0.1:3005`, or the controlled origin) | same-origin frame |
 | `cross-origin` | `http://localhost:3005` | genuinely cross-origin (different host), inside the declared host permissions, injected at load |
-| `unlisted` | `http://vibe-unlisted.invalid:3005` | outside every declared host permission — never injectable |
+| `unlisted` | `http://pinvelto-unlisted.invalid:3005` | outside every declared host permission — never injectable |
 
 Boundaries, all verified in this environment (Windows 10.0.26200, Chromium 153.0.8010.12, Playwright 1.63.0, new headless mode):
 
@@ -401,7 +401,7 @@ Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, new 
 - After the fix (current source, three consecutive full runs):
   ```bash
   pnpm test:extension:e2e                                  # 50 passed, includes the 5 A15 tests and A1-A14, A16 regressions
-  pnpm --filter vibe-annotations-extension test:baseline    # 6 passed
+  pnpm --filter pinvelto-extension test:baseline    # 6 passed
   pnpm test:extension                                      # 87 passed (unit, includes 12 frame-half and 14 coordinator tests)
   ```
   Raw output: `.scratch/annotate-keyboard-isolation/a15-after-fix.txt`.
@@ -412,7 +412,7 @@ Environment: Windows 10.0.26200, Chromium 153.0.8010.12 (Playwright 1.63.0, new 
 
 ## 11. Acceptance Coverage Index (A1–A16)
 
-Every core acceptance scenario is an automated E2E regression run by the standard command (`pnpm test:extension:e2e`), except A7's operating-system candidate-window path, whose automated scope and manual status are documented in §7. The conflict baselines of §6 are the separate command `pnpm --filter vibe-annotations-extension test:baseline`.
+Every core acceptance scenario is an automated E2E regression run by the standard command (`pnpm test:extension:e2e`), except A7's operating-system candidate-window path, whose automated scope and manual status are documented in §7. The conflict baselines of §6 are the separate command `pnpm --filter pinvelto-extension test:baseline`.
 
 | ID | Automated in | Notes |
 | :--- | :--- | :--- |

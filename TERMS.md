@@ -1,3 +1,5 @@
+> Historical provenance: the inherited terms below describe upstream, including an older MIT statement inconsistent with the current LICENSE. They are retained verbatim as historical source material, not active Pinvelto license or installation guidance. Consult LICENSE, NOTICE, and packages/server/LICENSE. Rebranding/internal use do not establish legal clearance.
+
 # Terms and Conditions
 
 **Effective Date: August 11, 2025**

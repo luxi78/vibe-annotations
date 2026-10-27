@@ -197,7 +197,7 @@ class LocalAnnotationsServer {
         });
       } catch (error) {
         console.error('Error loading annotations:', error);
-        res.status(500).json({ error: 'Failed to load annotations' });
+        res.status(500).json({ error: 'Failed to load Feedback' });
       }
     });
 
@@ -230,7 +230,7 @@ class LocalAnnotationsServer {
         res.json({ success: true, annotation });
       } catch (error) {
         console.error('Error saving annotation:', error);
-        res.status(500).json({ error: 'Failed to save annotation' });
+        res.status(500).json({ error: 'Failed to save Feedback' });
       }
     });
 
@@ -275,7 +275,7 @@ class LocalAnnotationsServer {
         res.json({ success: true, count: annotations.length });
       } catch (error) {
         console.error('Error syncing annotations:', error);
-        res.status(500).json({ error: 'Failed to sync annotations' });
+        res.status(500).json({ error: 'Failed to sync Feedback' });
       }
     });
 
@@ -303,7 +303,7 @@ class LocalAnnotationsServer {
           const annotations = await this.loadAnnotations();
           const index = annotations.findIndex(a => a.id === id);
           if (index === -1) {
-            return res.status(404).json({ error: 'Annotation not found' });
+            return res.status(404).json({ error: 'Feedback not found' });
           }
 
           await mkdir(ATTACH_DIR, { recursive: true });
@@ -357,7 +357,7 @@ class LocalAnnotationsServer {
         const { id, attId } = req.params;
         const annotations = await this.loadAnnotations();
         const index = annotations.findIndex(a => a.id === id);
-        if (index === -1) return res.status(404).json({ error: 'Annotation not found' });
+        if (index === -1) return res.status(404).json({ error: 'Feedback not found' });
 
         const att = (annotations[index].attachments || []).find(a => a.id === attId);
         if (att) {
@@ -414,7 +414,7 @@ class LocalAnnotationsServer {
         const index = annotations.findIndex(a => a.id === id);
         
         if (index === -1) {
-          return res.status(404).json({ error: 'Annotation not found' });
+          return res.status(404).json({ error: 'Feedback not found' });
         }
         
         annotations[index] = {
@@ -427,7 +427,7 @@ class LocalAnnotationsServer {
         res.json({ success: true, annotation: annotations[index] });
       } catch (error) {
         console.error('Error updating annotation:', error);
-        res.status(500).json({ error: 'Failed to update annotation' });
+        res.status(500).json({ error: 'Failed to update Feedback' });
       }
     });
 
@@ -439,7 +439,7 @@ class LocalAnnotationsServer {
         const index = annotations.findIndex(a => a.id === id);
         
         if (index === -1) {
-          return res.status(404).json({ error: 'Annotation not found' });
+          return res.status(404).json({ error: 'Feedback not found' });
         }
 
         // Protected delete: a variants annotation mid-cycle becomes variants-discarded
@@ -458,12 +458,12 @@ class LocalAnnotationsServer {
         res.json({
           success: true,
           deleted: true,
-          message: `Annotation ${id} has been successfully deleted`,
+          message: `Feedback ${id} has been successfully deleted`,
           deletedAnnotation
         });
       } catch (error) {
         console.error('Error deleting annotation:', error);
-        res.status(500).json({ error: 'Failed to delete annotation' });
+        res.status(500).json({ error: 'Failed to delete Feedback' });
       }
     });
 
@@ -1121,13 +1121,13 @@ class LocalAnnotationsServer {
     if (projectCount > 1 && !url) {
       const projectSuggestions = Object.keys(groupedByProject).map(baseUrl => `"${baseUrl}/*"`).join(' or ');
       multiProjectWarning = {
-        warning: `MULTI-PROJECT DETECTED: Found annotations from ${projectCount} different projects. This may cause cross-project contamination.`,
-        recommendation: `Use the 'url' parameter to filter annotations for your current project.`,
+        warning: `MULTI-PROJECT DETECTED: Found Feedback from ${projectCount} different projects. This may cause cross-project contamination.`,
+        recommendation: `Use the 'url' parameter to filter Feedback for your current project.`,
         suggested_filters: Object.keys(groupedByProject).map(baseUrl => `${baseUrl}/*`),
         guidance: `Example: Use url: "${Object.keys(groupedByProject)[0]}/*" to filter for the first project.`,
         projects_detected: Object.keys(groupedByProject)
       };
-      console.warn(`MULTI-PROJECT WARNING: Found annotations from ${projectCount} different projects. Use url parameter: ${projectSuggestions}`);
+      console.warn(`MULTI-PROJECT WARNING: Found Feedback from ${projectCount} different projects. Use url parameter: ${projectSuggestions}`);
     }
 
     // Build project info for better context
@@ -1457,7 +1457,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
     if (!id || typeof id !== 'string') throw new Error('pinvelto_update_feedback requires "id" (string annotation id)');
     const annotations = await this.loadAnnotations();
     const idx = annotations.findIndex(a => a.id === id);
-    if (idx === -1) throw new Error(`Annotation ${id} not found`);
+    if (idx === -1) throw new Error(`Feedback ${id} not found`);
     const ann = annotations[idx];
     const updates = {};
 
@@ -1488,7 +1488,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
 
     annotations[idx] = { ...ann, ...updates, updated_at: new Date().toISOString() };
     await this.saveAnnotations(annotations);
-    return { id, status: annotations[idx].status, message: `Annotation ${id} updated` };
+    return { id, status: annotations[idx].status, message: `Feedback ${id} updated` };
   }
 
   /**
@@ -1613,7 +1613,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
             return optimized;
           });
 
-          return { annotations: cleaned, message: `Found ${cleaned.length} pending annotations` };
+          return { annotations: cleaned, message: `Found ${cleaned.length} pending Feedback` };
         }
 
         // Don't update lastSeenAt during idle polling — let the sweep detect abandoned watchers
@@ -1623,7 +1623,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
       // Timeout — no annotations found, fully remove watcher
       this.watchers.delete(watcherId);
       console.log(`Watcher ${watcherId}: timed out after ${timeout}s`);
-      return { timeout: true, annotations: [], message: `No new annotations for ${timeout} seconds, watch stopped. Call pinvelto_watch_feedback again to resume.` };
+      return { timeout: true, annotations: [], message: `No new Feedback for ${timeout} seconds, watch stopped. Call pinvelto_watch_feedback again to resume.` };
     } catch (error) {
       this.watchers.delete(watcherId);  // Fully remove on error
       if (error.message === 'aborted') {
@@ -1646,7 +1646,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
     
     if (index === -1) {
       // Already gone — treat as success (extension may have synced/removed it)
-      return { id, deleted: true, message: `Annotation ${id} already deleted or not found` };
+      return { id, deleted: true, message: `Feedback ${id} already deleted or not found` };
     }
     
     // Protected delete: a variants annotation with scaffolding in the codebase is
@@ -1658,7 +1658,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
         id,
         deleted: false,
         discarded: true,
-        message: `Annotation ${id} has generated scaffolding — marked variants-discarded so an agent can clean it up (read with include_variants:true to finalize). Not hard-deleted.`
+        message: `Feedback ${id} has generated scaffolding — marked variants-discarded so an agent can clean it up (read with include_variants:true to finalize). Not hard-deleted.`
       };
     }
 
@@ -1671,7 +1671,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
     return {
       id,
       deleted: true,
-      message: `Annotation ${id} has been successfully deleted`,
+      message: `Feedback ${id} has been successfully deleted`,
       deletedAnnotation
     };
   }
@@ -1704,7 +1704,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
         return {
           annotation_id: id,
           screenshot: null,
-          message: 'Annotation not found'
+          message: 'Feedback not found'
         };
       }
 
@@ -1717,7 +1717,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
         return {
           annotation_id: id,
           screenshot: null,
-          message: 'No screenshot available for this annotation'
+          message: 'No screenshot available for this Feedback'
         };
       }
       const file = attachmentFileFor(id, capture);
@@ -1726,7 +1726,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
           annotation_id: id,
           screenshot: null,
           screenshot_path: file,
-          message: 'Screenshot file is missing on disk (e.g. an imported annotation)'
+          message: 'Screenshot file is missing on disk (e.g. imported Feedback)'
         };
       }
 
@@ -1769,7 +1769,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
       return {
         url_pattern,
         count: 0,
-        message: 'No annotations found matching the URL pattern',
+        message: 'No Feedback found matching the URL pattern',
         deleted: false
       };
     }
@@ -1793,7 +1793,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
         url_pattern,
         count: matchingAnnotations.length,
         preview: projectInfo,
-        message: `Found ${matchingAnnotations.length} annotation(s) that would be deleted. Set confirm=true to proceed with deletion.`,
+        message: `Found ${matchingAnnotations.length} Feedback that would be deleted. Set confirm=true to proceed with deletion.`,
         deleted: false,
         urls_affected: Object.keys(projectInfo)
       };
@@ -1823,7 +1823,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
       count: matchingAnnotations.length,
       deleted: true,
       discarded_for_cleanup: toDiscard.length,
-      message: `Removed ${toRemove.length}; ${toDiscard.length} variants annotation(s) marked variants-discarded for agent cleanup (read with include_variants:true to finalize).`,
+      message: `Removed ${toRemove.length}; ${toDiscard.length} Variants Feedback marked variants-discarded for agent cleanup (read with include_variants:true to finalize).`,
       deleted_annotations: deletedInfo,
       remaining_total: remainingAnnotations.length
     };

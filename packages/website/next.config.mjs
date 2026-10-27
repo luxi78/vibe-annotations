@@ -1,8 +1,10 @@
 import createMDX from '@next/mdx'
 import remarkGfm from 'remark-gfm'
+import { fileURLToPath } from 'node:url'
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  outputFileTracingRoot: fileURLToPath(new URL('../..', import.meta.url)),
   pageExtensions: ['js', 'jsx', 'ts', 'tsx', 'md', 'mdx'],
   reactStrictMode: true,
   images: {

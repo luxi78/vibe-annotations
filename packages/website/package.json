@@ -1,5 +1,5 @@
 {
-  "name": "website",
+  "name": "pinvelto-docs",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -8,17 +8,15 @@
     "start": "next start",
     "lint": "next lint",
     "format": "prettier --write .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "node -e \"throw new Error('Pinvelto packages are internal-only; public publishing is disabled')\""
   },
   "dependencies": {
-    "@iconify/react": "^6.0.0",
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
     "@next/mdx": "^16.2.3",
     "@tailwindcss/typography": "^0.5.19",
     "@types/mdx": "^2.0.13",
-    "@vercel/analytics": "^1.5.0",
-    "framer-motion": "^11.18.2",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

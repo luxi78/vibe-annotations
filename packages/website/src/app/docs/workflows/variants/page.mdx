@@ -1,31 +1,14 @@
-export const metadata = { title: 'Variant generation' }
+# Variants
 
-# Variant Generation
+Variants let an agent generate alternatives in the actual project, preview them in the browser, and finalize a choice. A local service and connected coding agent are required.
 
-Ask your agent for several variants of a component, preview them right on the page, and pick the winner. Your agent builds the variants in your actual codebase — not a mockup — so the one you choose is already implemented.
+1. Select a component, open Variants, and describe alternatives. Ordinary Feedback explicitly requesting alternatives also yields generation guidance.
+2. The agent reads Pinvelto instructions, implements preview/selection scaffolding in the project, and marks the request variants-ready using pinvelto_update_feedback.
+3. Preview alternatives and choose one. The request becomes variant-chosen.
+4. The agent reads the choice, inlines the winning source, removes temporary scaffolding, and finalizes through pinvelto_update_feedback. Verify the project result.
 
-> **Requires the MCP server.** The Variants tab is disabled until a coding agent is connected over MCP. See [MCP Setup](/docs/mcp-setup).
+## Discard and cleanup
 
-## Workflow
+Discarding generated Variants marks metadata for agent cleanup. The agent removes Pinvelto-generated temporary artifacts, restores the intended project state, and completes the discarded lifecycle. Ordinary Feedback deletion and global Feedback deletion do not authorize deleting generated project code.
 
-1. Click the component you want to explore and switch to the **Variants** tab
-2. Describe what you want ("three headline layouts", "a denser and a roomier card")
-3. Hand the annotation to your agent. It reads the request over MCP and scaffolds each variant in your code behind a toggle, then reports back
-4. Reopen the extension to **preview** each variant live and select your favorite
-5. Your agent **finalizes** the choice — it inlines the winning variant and strips all the temporary scaffolding, leaving a clean diff
-
-## Lifecycle
-
-A variants annotation moves through states so the agent and extension stay in sync:
-
-- **pending** → you requested variants; the agent generates them
-- **variants-ready** → scaffolding is in place; preview and choose in the extension
-- **variant-chosen** → you picked one; the agent finalizes and cleans up
-- **variants-discarded** → you dismissed them; the agent removes the leftover scaffolding
-
-The agent follows the `variant_instructions` carried on the annotation exactly and writes progress back with the `update_annotation` MCP tool. You don't manage any of this by hand — just request, preview, and pick.
-
-## Tips
-
-- Keep the requested count small (2–4). Each variant is real code the agent has to build and later remove.
-- If you change your mind, discard the annotation — the agent will clean up the scaffolding on its next pass rather than leaving dead code behind.
+Only new Pinvelto markers and page integrations are recognized. Upstream-generated Variants artifacts are neither migrated nor cleaned. Review the source diff and run the project's normal checks after finalization or discard; a visible preview alone is not proof of correct source work.

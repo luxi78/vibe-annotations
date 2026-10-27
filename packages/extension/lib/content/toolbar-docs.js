@@ -107,9 +107,9 @@
         ${ICONS.github}
         <span>Contribute to Pinvelto</span>
       </a>
-      <a href="https://github.com/luxi78/vibe-annotations/releases/tag/v${escapeHTML(version)}" target="_blank" rel="noopener" class="pinvelto-settings-link">
+      <a href="https://github.com/luxi78/vibe-annotations/blob/issue/23/README.md" target="_blank" rel="noopener" class="pinvelto-settings-link">
         ${ICONS.newspaper}
-        <span>Release notes</span>
+        <span>Installation and local updates</span>
       </a>
     `;
 
@@ -156,24 +156,29 @@
 
         <div class="pinvelto-guide-section">
           <div class="pinvelto-guide-label">2. Send to your agent</div>
-          <p class="pinvelto-guide-text">Hit <strong>Copy</strong> in the toolbar and paste into any AI chat, or <strong>Export</strong> to share a file. No server needed.</p>
+          <p class="pinvelto-guide-text">Hit <strong>Copy</strong> and paste into your agent, or <strong>Export</strong> a file. Copy, Markdown and JSON work offline; HTML needs the local service.</p>
         </div>
 
         <div class="pinvelto-guide-section">
           <div class="pinvelto-guide-label">3. Install MCP server <span style="font-weight:400;color:var(--v-text-secondary);">(optional)</span></div>
-          <p class="pinvelto-guide-text">Let your coding agent fetch and resolve Feedback automatically. One command does it all:</p>
+          <p class="pinvelto-guide-text">Start from the reviewed Pinvelto revision of this repository with Node 24 and pnpm 11. Install dependencies and build the extension first:</p>
+          <div class="pinvelto-guide-cmd" data-cmd="pnpm install --frozen-lockfile &amp;&amp; pnpm --filter pinvelto-extension build">
+            <code>pnpm install --frozen-lockfile &amp;&amp; pnpm --filter pinvelto-extension build</code>
+            <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
+          </div>
+          <p class="pinvelto-guide-text">Load packages/extension/.output/chrome-mv3, then configure the local service:</p>
           <div class="pinvelto-guide-cmd" data-cmd="node packages/server/bin/cli.js init">
             <code>node packages/server/bin/cli.js init</code>
             <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
           </div>
-          <p class="pinvelto-guide-text" style="margin-top:6px;">Installs the server, starts it, and configures your AI agent interactively.</p>
+          <p class="pinvelto-guide-text" style="margin-top:6px;">Runs the local service and configures your agent. It does not install a registry package. Keep the checkout and dependencies.</p>
           <p class="pinvelto-guide-text" style="margin-top:12px;">Or set it up manually:</p>
           <div class="pinvelto-guide-cmd" data-cmd="npm install --global ./packages/server">
             <code>npm install --global ./packages/server</code>
             <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
           </div>
-          <div class="pinvelto-guide-cmd" data-cmd="pinvelto start">
-            <code>pinvelto start</code>
+          <div class="pinvelto-guide-cmd" data-cmd="pinvelto start --daemon">
+            <code>pinvelto start --daemon</code>
             <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
           </div>
           <p class="pinvelto-guide-text" style="margin-top:8px;">Then connect your agent:</p>
@@ -242,7 +247,7 @@
         content: `
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">1. Install and start the server</div>
-            <p class="pinvelto-guide-text">One command installs, starts, and configures your agent:</p>
+            <p class="pinvelto-guide-text">From the reviewed repository revision, first run pnpm install --frozen-lockfile. Then start the local service and configure your agent:</p>
             <div class="pinvelto-guide-cmd" data-cmd="node packages/server/bin/cli.js init">
               <code>node packages/server/bin/cli.js init</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
@@ -252,8 +257,8 @@
               <code>npm install --global ./packages/server</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
             </div>
-            <div class="pinvelto-guide-cmd" data-cmd="pinvelto start">
-              <code>pinvelto start</code>
+            <div class="pinvelto-guide-cmd" data-cmd="pinvelto start --daemon">
+              <code>pinvelto start --daemon</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
             </div>
           </div>
@@ -341,7 +346,7 @@
           </div>
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Setup</div>
-            <p class="pinvelto-guide-text">One command installs, starts, and configures your agent:</p>
+            <p class="pinvelto-guide-text">From the reviewed repository revision, first run pnpm install --frozen-lockfile. Then start the local service and configure your agent:</p>
             <div class="pinvelto-guide-cmd" data-cmd="node packages/server/bin/cli.js init">
               <code>node packages/server/bin/cli.js init</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
@@ -351,8 +356,8 @@
               <code>npm install --global ./packages/server</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
             </div>
-            <div class="pinvelto-guide-cmd" data-cmd="pinvelto start">
-              <code>pinvelto start</code>
+            <div class="pinvelto-guide-cmd" data-cmd="pinvelto start --daemon">
+              <code>pinvelto start --daemon</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
             </div>
             <p class="pinvelto-guide-text" style="margin-top:8px;">Then connect your agent (e.g. Claude Code):</p>
@@ -400,7 +405,7 @@
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Explore options in your real codebase</div>
             <p class="pinvelto-guide-text">Ask your agent for several variants of a component, preview them right on the page, and pick the winner. The agent builds them in your actual code — not a mockup — so the one you choose is already implemented.</p>
-            <p class="pinvelto-guide-text" style="margin-top:8px;color:var(--v-text-secondary);"><strong>Requires the MCP server.</strong> The Variants tab is disabled until a coding agent is connected over MCP.</p>
+            <p class="pinvelto-guide-text" style="margin-top:8px;color:var(--v-text-secondary);"><strong>Requires the MCP server.</strong> The Variants tab is enabled when the Pinvelto service is connected. A coding agent must then read and implement the request over MCP.</p>
           </div>
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Workflow</div>
@@ -439,7 +444,7 @@
             <div class="pinvelto-guide-label">Workflow</div>
             <p class="pinvelto-guide-text">1. Open the popover on the element you want to annotate</p>
             <p class="pinvelto-guide-text">2. Use the <strong>+</strong> menu to <em>Attach file</em> or <em>Take a screenshot</em>, or paste an image straight into the comment field</p>
-            <p class="pinvelto-guide-text">3. Save — images travel with the Feedback to your agent (as local file paths over MCP) and into <code>.md</code> / <code>.html</code> exports</p>
+            <p class="pinvelto-guide-text">3. Save — MCP verifies available image files for your agent. HTML embeds available images; Markdown carries attachment references only, not image bytes or verified file paths.</p>
           </div>
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Enabling auto-screenshots</div>
@@ -461,14 +466,14 @@
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Three formats</div>
             <p class="pinvelto-guide-text"><strong>.md</strong> — <em>personal use.</em> A plain-markdown rundown of every Feedback. Rendered client-side, works with <strong>no server running</strong>. Same format as the Copy button, saved to a file.</p>
-            <p class="pinvelto-guide-text"><strong>.html</strong> — <em>share externally.</em> One self-contained page with every image embedded as base64 — opens in any browser. Building it reads the image files, so it <strong>requires the local server</strong>.</p>
-            <p class="pinvelto-guide-text"><strong>.json</strong> — <em>re-import later.</em> The raw Feedback objects for this site. Feed it into another localhost via <strong>Import</strong> to recreate Feedback, badges and previews. Client-side, no server.</p>
+            <p class="pinvelto-guide-text"><strong>.html</strong> — <em>share externally.</em> One self-contained page with available images embedded as base64; unavailable files are omitted — opens in any browser. Building it reads the image files, so it <strong>requires the local server</strong>.</p>
+            <p class="pinvelto-guide-text"><strong>.json</strong> — <em>re-import later.</em> The raw Feedback objects for this site. Feed it into another localhost via <strong>Import</strong> to recreate Feedback, badges and previews. Client-side, no server. Image files are not bundled; verify availability or attach them again after import.</p>
           </div>
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Which one?</div>
             <p class="pinvelto-guide-text">Handing off to your own agent or working offline → <strong>.md</strong></p>
             <p class="pinvelto-guide-text">Sending to someone without the extension (design review, sign-off) → <strong>.html</strong>, so images come along</p>
-            <p class="pinvelto-guide-text">Moving live Feedback to another machine's localhost → <strong>.json</strong>, then Import them there</p>
+            <p class="pinvelto-guide-text">Moving live Feedback to another machine's localhost → <strong>.json</strong>, then Import them there and provide the separate image files</p>
           </div>
         `
       },
@@ -483,7 +488,7 @@
             <div class="pinvelto-guide-label">Workflow</div>
             <p class="pinvelto-guide-text">1. A reviewer annotates the live site (staging, production, or localhost)</p>
             <p class="pinvelto-guide-text">2. They click <strong>Export</strong> and share the .json file (Slack, email, etc.)</p>
-            <p class="pinvelto-guide-text">3. A developer clicks <strong>Import</strong> on their localhost. Feedback, badges, and style previews appear instantly.</p>
+            <p class="pinvelto-guide-text">3. A developer imports the new Pinvelto JSON on localhost. Check Feedback, previews, and image availability; separate attachment files must be provided or attached again.</p>
             <p class="pinvelto-guide-text">4. The developer copies or uses MCP to send the Feedback to their coding agent</p>
           </div>
           <div class="pinvelto-guide-section">

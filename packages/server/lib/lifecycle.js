@@ -96,7 +96,10 @@ export async function startService({ daemon = true } = {}) {
   const record = { product: 'pinvelto', pid: child.pid, instanceId, token };
   writeFileSync(RECORD_FILE, JSON.stringify(record), { mode: 0o600 });
   if (daemon) child.unref();
-  for (let i = 0; i < 40; i++) {
+  // Fresh local installs can spend several seconds loading cold dependencies.
+  // Keep startup bounded without treating a healthy, slower owned child as failure.
+  const startupDeadline = Date.now() + 20000;
+  while (Date.now() < startupDeadline) {
     const current = await inspectService();
     if (current.state === 'owned' && current.health.instanceId === instanceId)
       return { ok: true, pid: child.pid, child };
