@@ -24,11 +24,11 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
   let countRefreshSeq = 0;
   let clearOnCopy = false;
   let screenshotEnabled = false;
-  let badgeColor = '#D03D68';
+  let badgeColor = '#0754FF';
   let watcherActive = false;
   let isOverlayVisible = true;
 
-  const BADGE_COLORS = ['#D03D68', '#4b5563', '#3b82f6', '#22c55e', '#a855f7'];
+  const BADGE_COLORS = ['#0754FF', '#4b5563', '#3b82f6', '#22c55e', '#a855f7'];
 
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   // Embedded Chromium hosts (Electron, etc.) have no extension toolbar icon and no
@@ -179,7 +179,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
 
     // pi-lens-ignore: no-inner-html-js
     toolbarEl.innerHTML = `
-      <img class="vibe-toolbar-logo" src="${logoUrl}" />
+      <img class="vibe-toolbar-logo" src="${logoUrl}" alt="Pinvelto" />
       <div class="vibe-toolbar-separator"></div>
       <div class="vibe-toolbar-middle">
         <div class="vibe-toolbar-default">

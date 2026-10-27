@@ -301,9 +301,9 @@ function isServerOutdated(version) {
   async function getBadgeColor() {
     try {
       const r = await chrome.storage.local.get(['vibeBadgeColor']);
-      return r.vibeBadgeColor || '#D03D68';
+      return r.vibeBadgeColor || '#0754FF';
     } catch {
-      return '#D03D68';
+      return '#0754FF';
     }
   }
 

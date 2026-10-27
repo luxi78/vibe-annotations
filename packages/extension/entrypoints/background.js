@@ -105,7 +105,7 @@ class VibeAnnotationsBackground {
         }
       });
       chrome.action.setBadgeText({ text: 'NEW' });
-      chrome.action.setBadgeBackgroundColor({ color: '#D03D68' });
+      chrome.action.setBadgeBackgroundColor({ color: '#0754FF' });
 
       const result = await chrome.storage.local.get(['settings']);
       const settings = result.settings || {};
