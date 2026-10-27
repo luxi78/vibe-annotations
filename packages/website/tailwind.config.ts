@@ -11,13 +11,13 @@ const config: Config = {
       colors: {
         // Brand accent ramp (gradient stops, left → right)
         accent: {
-          orange: '#FF6A00',
-          red: '#FF4432',
-          pink: '#FF2D6B',
-          magenta: '#F500A4',
-          purple: '#A026DC',
-          violet: '#A82BFF',
-          DEFAULT: '#FF2D6B',
+          orange: '#0754FF',
+          red: '#0754FF',
+          pink: '#0754FF',
+          magenta: '#0754FF',
+          purple: '#0754FF',
+          violet: '#0754FF',
+          DEFAULT: '#0754FF',
         },
         // Dark marketing surfaces
         ink: {
@@ -34,16 +34,16 @@ const config: Config = {
       },
       backgroundImage: {
         'gradient-brand':
-          'linear-gradient(90deg, #FF4432 0%, #FF2D6B 39.51%, #F500A4 67.44%, #A026DC 100.01%)',
+          'linear-gradient(90deg, #0754FF 0%, #0754FF 39.51%, #0754FF 67.44%, #0754FF 100.01%)',
         'gradient-brand-135':
-          'linear-gradient(135deg, #FF4432 0%, #FF2D6B 39.51%, #F500A4 67.44%, #A026DC 100.01%)',
+          'linear-gradient(135deg, #0754FF 0%, #0754FF 39.51%, #0754FF 67.44%, #0754FF 100.01%)',
         'gradient-brand-hover':
-          'linear-gradient(90deg, #ED3422 0%, #ED1D5B 39.51%, #DC0094 67.44%, #8E16C8 100.01%)',
+          'linear-gradient(90deg, #0647D6 0%, #0647D6 39.51%, #0647D6 67.44%, #0647D6 100.01%)',
       },
       boxShadow: {
-        glow: '0 8px 28px rgba(255, 45, 107, 0.32)',
-        'glow-hover': '0 12px 36px rgba(255, 45, 107, 0.42)',
-        'glow-purple': '0 8px 28px rgba(160, 38, 220, 0.30)',
+        glow: '0 8px 28px rgba(7, 84, 255, 0.32)',
+        'glow-hover': '0 12px 36px rgba(7, 84, 255, 0.42)',
+        'glow-purple': '0 8px 28px rgba(7, 84, 255, 0.30)',
         'card-dark': '0 14px 34px rgba(0, 0, 0, 0.4)',
         'card-dark-hover': '0 20px 44px rgba(0, 0, 0, 0.55)',
       },

@@ -23,7 +23,7 @@ export const VIBE_STYLES = `
   --v-textarea-bg: #ffffff0d;
 
   /* Accent */
-  --v-accent: #d97757;
+  --v-accent: #75A2FF;
   --v-on-accent: #ffffff;
 
   /* Semantic */
@@ -34,7 +34,7 @@ export const VIBE_STYLES = `
   --v-danger: #dc2626;
   --v-danger-hover: #dc26261a;
   --v-highlight: #3b82f6;
-  --v-badge-bg: #D03D68;
+  --v-badge-bg: #0754FF;
   --v-tooltip-bg: #1f2937;
   --v-primary-btn: #4f5d75;
 
@@ -51,7 +51,7 @@ export const VIBE_STYLES = `
   --v-separator: rgba(255,255,255,0.08);
   --v-kbd-bg: rgba(255,255,255,0.08);
   --v-kbd-border: rgba(255,255,255,0.1);
-  --v-pill-gradient: linear-gradient(90deg, #E85B5C 0%, #D03D68 100%);
+  --v-pill-gradient: #0754FF;
   --v-instruction-text: #71717a;
   --v-dot-separator: #3f3f46;
   --v-close-icon: #52525b;
@@ -1436,7 +1436,7 @@ export const VIBE_STYLES = `
 }
 
 .vibe-viewall-site-select:focus-visible {
-  border-color: var(--v-accent, #d97757);
+  border-color: var(--v-accent, #75A2FF);
   box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.2);
 }
 
@@ -1518,7 +1518,7 @@ export const VIBE_STYLES = `
 
 .vibe-viewall-tab:focus-visible {
   outline: none;
-  border-color: var(--v-accent, #d97757);
+  border-color: var(--v-accent, #75A2FF);
   box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.2);
 }
 
@@ -2381,7 +2381,7 @@ export const VIBE_STYLES = `
   z-index: 3;
   transition: background 0.12s ease;
 }
-.vibe-att-remove:hover { background: var(--v-badge-bg, #D03D68); }
+.vibe-att-remove:hover { background: var(--v-badge-bg, #0754FF); }
 
 /* ===== Share / export dropdown (View all header) ===== */
 .vibe-viewall-share {
@@ -2473,6 +2473,6 @@ export const VIBE_STYLES = `
     linear-gradient(var(--v-surface-1), var(--v-surface-1)) padding-box,
     var(--v-pill-gradient) border-box;
 }
-.vibe-variant-row input { accent-color: var(--v-accent, #d97757); margin: 0; }
+.vibe-variant-row input { accent-color: var(--v-accent, #75A2FF); margin: 0; }
 
 `;

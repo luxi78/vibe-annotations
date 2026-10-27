@@ -21,13 +21,14 @@ export default function Navbar({ variant = 'light' }: { variant?: 'light' | 'dar
           <div className="flex items-center gap-1.5 justify-self-start">
             <Link href="/" className="flex items-center">
               <Image
-                src={dark ? '/logo-lockup-dark.png' : '/logo-lockup.png'}
-                alt="Vibe Annotations"
-                width={870}
-                height={329}
+                src={dark ? '/pinvelto-mark-dark.svg' : '/pinvelto-mark.svg'}
+                alt="Pinvelto"
+                width={136}
+                height={128}
                 priority
-                className="h-12 w-auto"
+                className="h-10 w-auto"
               />
+              <span className={`ml-2 font-display text-2xl font-bold ${dark ? 'text-white' : 'text-[#11151B]'}`}>Pinvelto</span>
             </Link>
           </div>
 
