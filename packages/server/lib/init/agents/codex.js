@@ -1,5 +1,5 @@
 import { join } from 'path';
-import { homedir } from 'os';
+import { HOME } from '../../config.js';
 import { existsSync } from 'fs';
 import {
   hasBinary,
@@ -12,7 +12,7 @@ import {
   tomlRemoveSection,
 } from './shared.js';
 
-const USER_PATH = join(homedir(), '.codex', 'config.toml');
+const USER_PATH = join(HOME, '.codex', 'config.toml');
 const SECTION = `mcp_servers.${MCP_NAME}`;
 const TOML_BODY =
   `transport = "http"\n` +
@@ -23,7 +23,7 @@ export default {
   label: 'Codex',
 
   detect() {
-    return hasBinary('codex') || existsSync(join(homedir(), '.codex'));
+    return hasBinary('codex') || existsSync(join(HOME, '.codex'));
   },
 
   userConfig() {

@@ -1,12 +1,11 @@
 {
-  "name": "vibe-annotations-server",
+  "name": "pinvelto-server",
   "version": "0.5.1",
-  "description": "Global MCP server for Vibe Annotations browser extension",
+  "description": "Local MCP service for Pinvelto webpage Feedback",
   "main": "lib/server.js",
   "type": "module",
   "bin": {
-    "vibe-annotations": "./bin/cli.js",
-    "vibe-annotations-server": "./bin/cli.js"
+    "pinvelto": "./bin/cli.js"
   },
   "files": [
     "bin/",
@@ -16,20 +15,15 @@
   "scripts": {
     "start": "node lib/server.js",
     "dev": "node --watch lib/server.js",
-    "prepublishOnly": "npm test",
     "test": "node --test"
   },
   "keywords": [
+    "pinvelto",
     "mcp",
-    "vibe",
-    "annotations",
-    "sse",
-    "http",
-    "claude-code",
-    "localhost",
-    "development"
+    "feedback",
+    "localhost"
   ],
-  "author": "Raphaël Régnier",
+  "author": "Rapha\u00ebl R\u00e9gnier",
   "license": "LicenseRef-PolyForm-Shield-1.0.0",
   "engines": {
     "node": ">=18.0.0"
@@ -45,14 +39,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RaphaelRegnier/vibe-annotations.git",
-    "directory": "annotations-server"
+    "url": "git+https://github.com/luxi78/vibe-annotations.git",
+    "directory": "packages/server"
   },
-  "homepage": "https://github.com/RaphaelRegnier/vibe-annotations#readme",
+  "homepage": "https://github.com/luxi78/vibe-annotations#readme",
   "bugs": {
-    "url": "https://github.com/RaphaelRegnier/vibe-annotations/issues"
+    "url": "https://github.com/luxi78/vibe-annotations/issues"
   },
-  "publishConfig": {
-    "access": "public"
-  }
+  "private": true
 }

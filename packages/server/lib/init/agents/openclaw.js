@@ -1,16 +1,16 @@
 import { join } from 'path';
-import { homedir } from 'os';
+import { HOME } from '../../config.js';
 import { existsSync } from 'fs';
 import { hasBinary, MCP_URL, MCP_NAME } from './shared.js';
 
-const USER_PATH = join(homedir(), '.openclaw', 'openclaw.json');
+const USER_PATH = join(HOME, '.openclaw', 'openclaw.json');
 
 export default {
   id: 'openclaw',
   label: 'OpenClaw',
 
   detect() {
-    return hasBinary('openclaw') || existsSync(join(homedir(), '.openclaw'));
+    return hasBinary('openclaw') || existsSync(join(HOME, '.openclaw'));
   },
 
   userConfig() {

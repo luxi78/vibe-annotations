@@ -1,9 +1,9 @@
 import { join } from 'path';
-import { homedir } from 'os';
+import { HOME } from '../../config.js';
 import { existsSync } from 'fs';
 import { hasBinary, MCP_URL, MCP_NAME } from './shared.js';
 
-const USER_PATH = join(homedir(), '.claude.json');
+const USER_PATH = join(HOME, '.claude.json');
 const PROJECT_PATH = (cwd) => join(cwd, '.mcp.json');
 
 export default {

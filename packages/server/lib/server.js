@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-// Test simplified workflow using NPM as version source
+// Pinvelto local Feedback service and MCP interface.
 import express from 'express';
+import { PORT, DATA_DIR } from './config.js';
 import cors from 'cors';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -26,8 +27,6 @@ const __dirname = path.dirname(__filename);
 const packageJson = JSON.parse(readFileSync(path.join(__dirname, '../package.json'), 'utf8'));
 
 // Configuration
-const PORT = 3846;
-const DATA_DIR = path.join(process.env.HOME || process.env.USERPROFILE, '.vibe-annotations');
 const DATA_FILE = path.join(DATA_DIR, 'annotations.json');
 // Image attachments (auto element captures + user paste/upload) are stored as
 // files here, one per attachment, named by annotation id + attachment id. The
@@ -47,8 +46,8 @@ class LocalAnnotationsServer {
     this.loggedProtocolRewrites = new Set();
     this.mcpServer = new Server(
       {
-        name: 'claude-annotations',
-        version: '0.1.0',
+        name: 'pinvelto',
+        version: packageJson.version,
       },
       {
         capabilities: {
@@ -56,6 +55,7 @@ class LocalAnnotationsServer {
         },
       }
     );
+    this.instanceId = process.env.PINVELTO_INSTANCE_ID || randomUUID();
     this.isShuttingDown = false;
     this.handlersSetup = false;
     this.transports = {}; // Track transport sessions
@@ -147,10 +147,20 @@ class LocalAnnotationsServer {
     this.app.get('/health', (req, res) => {
       res.json({ 
         status: 'ok', 
+        product: 'pinvelto',
+        pid: process.pid,
+        instanceId: this.instanceId,
         version: packageJson.version,
         minExtensionVersion: '1.0.0', // Minimum compatible extension version
         timestamp: new Date().toISOString() 
       });
+    });
+
+    this.app.post('/internal/shutdown', (req, res) => {
+      const token = process.env.PINVELTO_CONTROL_TOKEN;
+      if (!token || req.headers.authorization !== `Bearer ${token}`) return res.status(403).json({error:'Ownership verification failed'});
+      res.json({success:true});
+      setTimeout(() => this.shutdown('owned CLI request'), 20);
     });
 
     // The global destructive action supplies the exact user-confirmed ID set.
@@ -597,8 +607,8 @@ class LocalAnnotationsServer {
   createMCPServer() {
     const server = new Server(
       {
-        name: 'claude-annotations',
-        version: '0.1.0',
+        name: 'pinvelto',
+        version: packageJson.version,
       },
       {
         capabilities: {
@@ -621,8 +631,8 @@ class LocalAnnotationsServer {
       return {
         tools: [
           {
-            name: 'read_annotations',
-            description: 'Retrieves user-created visual annotations with pagination support. Returns annotation data with has_screenshot flag instead of full screenshot data for token efficiency. Use url parameter to filter by project. MULTI-PROJECT SAFETY: This tool detects when annotations exist across multiple localhost projects and provides warnings with specific URL filtering guidance. CRITICAL WORKFLOW: (1) First call WITHOUT url parameter to see all projects, (2) Use get_project_context tool to determine current project, (3) Call again WITH url parameter (e.g., "http://localhost:3000/*") to filter for current project only. This prevents cross-project contamination where you might implement changes in wrong codebase. DESIGN CHANGES: Annotations may include pending_changes with original→new values for CSS properties. When implementing these changes, map values to the project design system (Tailwind classes, CSS variables, or design tokens) rather than using raw values. Use limit and offset parameters for pagination when handling large annotation sets. Use this tool when users mention: annotations, comments, feedback, suggestions, notes, marked changes, or visual issues they\'ve identified. IMAGE ATTACHMENTS: an annotation may include an attachments array, each { kind, mime, path } where path is an absolute local image file you can open/read directly (no extra tool needed). kind="capture" is an auto screenshot of the annotated element = its CURRENT visual state; kind="user" is an image the user attached = usually a DESIGN REFERENCE/TARGET ("make it look like this") — treat the two differently. Only attachments whose file exists locally are included; a shared/imported annotation may legitimately have none (its images live on another machine). Attachment files are deleted automatically when the annotation is deleted. VARIANTS: an annotation with mode="variants" carries a self-contained variant_instructions field — a complete contract for generating (status pending) or finalizing (variant-chosen / variants-discarded) several coexisting, previewable design variants in the codebase. When present, follow variant_instructions EXACTLY and write back with update_annotation; do not implement a single design. VARIANT INTENT FROM A PLAIN COMMENT: a normal comment annotation whose text asks for several design options (e.g. "make variants of this", "show me a few versions", "try some different layouts") is flagged with variant_intent_detected:true and also carries variant_instructions — telling you to promote it into the variants lifecycle (update_annotation with mode:"variants") and generate variants rather than implementing one design, so the user gets the same preview-and-pick UI as the UI button. DELETION DISCIPLINE (IMPORTANT): after you implement a normal annotation in source, you MUST delete it with delete_annotation — never leave finished annotations behind. This matters most for design edits (annotations with pending_changes, also flagged cleanup_required): the extension applies pending_changes as a LIVE inline-style overlay, so a design-edit annotation left undeleted is re-applied on top of your already-implemented source change on the next page reload (doubling it), and reverting it later snaps the page to a stale state. The ONLY annotations you keep are variants annotations — they persist through their own lifecycle until finalized (status resolved). Never generalize a variant\'s "don\'t delete yet" to the other annotations in the same batch: keep deleting every non-variant annotation as you finish it.',
+            name: 'pinvelto_list_feedback',
+            description: 'Pinvelto webpage Feedback: Retrieves user-created visual Feedback with pagination support. Returns Feedback data with has_screenshot flag instead of full screenshot data for token efficiency. Use url parameter to filter by project. MULTI-PROJECT SAFETY: This tool detects when Feedback exist across multiple localhost projects and provides warnings with specific URL filtering guidance. CRITICAL WORKFLOW: (1) First call WITHOUT url parameter to see all projects, (2) Use pinvelto_get_project_context tool to determine current project, (3) Call again WITH url parameter (e.g., "http://localhost:3000/*") to filter for current project only. This prevents cross-project contamination where you might implement changes in wrong codebase. DESIGN CHANGES: Feedback may include pending_changes with original→new values for CSS properties. When implementing these changes, map values to the project design system (Tailwind classes, CSS variables, or design tokens) rather than using raw values. Use limit and offset parameters for pagination when handling large Feedback sets. Use this tool when users mention: Feedback, comments, feedback, suggestions, notes, marked changes, or visual issues they\'ve identified. IMAGE ATTACHMENTS: an Feedback may include an attachments array, each { kind, mime, path } where path is an absolute local image file you can open/read directly (no extra tool needed). kind="capture" is an auto screenshot of the annotated element = its CURRENT visual state; kind="user" is an image the user attached = usually a DESIGN REFERENCE/TARGET ("make it look like this") — treat the two differently. Only attachments whose file exists locally are included; a shared/imported Feedback may legitimately have none (its images live on another machine). Attachment files are deleted automatically when the Feedback is deleted. VARIANTS: an Feedback with mode="variants" carries a self-contained variant_instructions field — a complete contract for generating (status pending) or finalizing (variant-chosen / variants-discarded) several coexisting, previewable design variants in the codebase. When present, follow variant_instructions EXACTLY and write back with pinvelto_update_feedback; do not implement a single design. VARIANT INTENT FROM A PLAIN COMMENT: a normal comment Feedback whose text asks for several design options (e.g. "make variants of this", "show me a few versions", "try some different layouts") is flagged with variant_intent_detected:true and also carries variant_instructions — telling you to promote it into the variants lifecycle (pinvelto_update_feedback with mode:"variants") and generate variants rather than implementing one design, so the user gets the same preview-and-pick UI as the UI button. DELETION DISCIPLINE (IMPORTANT): after you implement a normal Feedback in source, you MUST delete it with pinvelto_delete_feedback — never leave finished Feedback behind. This matters most for design edits (Feedback with pending_changes, also flagged cleanup_required): the extension applies pending_changes as a LIVE inline-style overlay, so a design-edit Feedback left undeleted is re-applied on top of your already-implemented source change on the next page reload (doubling it), and reverting it later snaps the page to a stale state. The ONLY Feedback you keep are variants Feedback — they persist through their own lifecycle until finalized (status resolved). Never generalize a variant\'s "don\'t delete yet" to the other Feedback in the same batch: keep deleting every non-variant Feedback as you finish it.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -630,43 +640,43 @@ class LocalAnnotationsServer {
                   type: 'string',
                   enum: ['pending', 'completed', 'archived', 'all'],
                   default: 'pending',
-                  description: 'Filter annotations by status'
+                  description: 'Filter Feedback by status'
                 },
                 limit: {
                   type: 'number',
                   default: 50,
                   minimum: 1,
                   maximum: 200,
-                  description: 'Maximum number of annotations to return'
+                  description: 'Maximum number of Feedback to return'
                 },
                 offset: {
                   type: 'number',
                   default: 0,
                   minimum: 0,
-                  description: 'Number of annotations to skip for pagination'
+                  description: 'Number of Feedback to skip for pagination'
                 },
                 url: {
                   type: 'string',
-                  description: 'Filter by specific localhost URL. Supports exact match (e.g., "http://localhost:3000/dashboard") or pattern match with base URL (e.g., "http://localhost:3000/" or "http://localhost:3000/*" to get all annotations from that project)'
+                  description: 'Filter by specific localhost URL. Supports exact match (e.g., "http://localhost:3000/dashboard") or pattern match with base URL (e.g., "http://localhost:3000/" or "http://localhost:3000/*" to get all Feedback from that project)'
                 },
                 include_variants: {
                   type: 'boolean',
                   default: false,
-                  description: 'Set true ONLY when the user asks to FINALIZE variants — includes annotations awaiting finalization (status variant-chosen / variants-discarded), each carrying variant_instructions for cleanup. Normal reads exclude these so a routine "implement my annotations" never re-triggers or prematurely finalizes a variants cycle.'
+                  description: 'Set true ONLY when the user asks to FINALIZE variants — includes Feedback awaiting finalization (status variant-chosen / variants-discarded), each carrying variant_instructions for cleanup. Normal reads exclude these so a routine "implement my Feedback" never re-triggers or prematurely finalizes a variants cycle.'
                 }
               },
               additionalProperties: false
             }
           },
           {
-            name: 'delete_annotation',
-            description: 'Permanently removes a specific annotation after successfully implementing the requested change or fix. IMPORTANT: Consider using delete_project_annotations for batch deletion when implementing multiple fixes. Use this individual deletion tool when: (1) You have successfully implemented a single annotation fix, (2) You prefer to delete annotations one-by-one as you implement them, (3) You are working on just one annotation. For efficiency when handling multiple annotations, use delete_project_annotations instead. The deletion is irreversible and removes the annotation from both extension storage and MCP data — and also deletes the annotation\'s image attachment files from disk, so do not delete until you no longer need its screenshot. NEVER delete annotations that still need work, contain unaddressed feedback, or serve as ongoing reminders.',
+            name: 'pinvelto_delete_feedback',
+            description: 'Pinvelto webpage Feedback: Permanently removes a specific Feedback after successfully implementing the requested change or fix. IMPORTANT: Consider using pinvelto_delete_project_feedback for batch deletion when implementing multiple fixes. Use this individual deletion tool when: (1) You have successfully implemented a single Feedback fix, (2) You prefer to delete Feedback one-by-one as you implement them, (3) You are working on just one Feedback. For efficiency when handling multiple Feedback, use pinvelto_delete_project_feedback instead. The deletion is irreversible and removes the Feedback from both extension storage and MCP data — and also deletes the Feedback\'s image attachment files from disk, so do not delete until you no longer need its screenshot. NEVER delete Feedback that still need work, contain unaddressed feedback, or serve as ongoing reminders.',
             inputSchema: {
               type: 'object',
               properties: {
                 id: {
                   type: 'string',
-                  description: 'Annotation ID to delete'
+                  description: 'Feedback ID to delete'
                 }
               },
               required: ['id'],
@@ -674,8 +684,8 @@ class LocalAnnotationsServer {
             }
           },
           {
-            name: 'get_project_context',
-            description: 'Analyzes a localhost development URL to infer project framework and technology stack context. This tool helps understand the development environment when implementing annotation fixes by identifying likely frameworks (React, Vue, Angular, etc.) based on common port conventions. Use this tool when you need to understand what type of project you\'re working with before making code changes or when annotations reference framework-specific concerns. The tool maps common development server ports to their typical frameworks: port 3000 suggests React/Next.js, 5173 indicates Vite, 8080 points to Vue/Webpack, 4200 suggests Angular, and 3001 typically indicates Express/Node.js. This context helps you choose appropriate implementation approaches and understand the likely project structure. ENHANCED: Now includes working directory detection, package.json analysis, and recommended URL filtering patterns for multi-project environments.',
+            name: 'pinvelto_get_project_context',
+            description: 'Pinvelto webpage Feedback: Analyzes a localhost development URL to infer project framework and technology stack context. This tool helps understand the development environment when implementing Feedback fixes by identifying likely frameworks (React, Vue, Angular, etc.) based on common port conventions. Use this tool when you need to understand what type of project you\'re working with before making code changes or when Feedback reference framework-specific concerns. The tool maps common development server ports to their typical frameworks: port 3000 suggests React/Next.js, 5173 indicates Vite, 8080 points to Vue/Webpack, 4200 suggests Angular, and 3001 typically indicates Express/Node.js. This context helps you choose appropriate implementation approaches and understand the likely project structure. ENHANCED: Now includes working directory detection, package.json analysis, and recommended URL filtering patterns for multi-project environments.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -689,19 +699,19 @@ class LocalAnnotationsServer {
             }
           },
           {
-            name: 'delete_project_annotations',
-            description: 'Batch delete ALL annotations for a specific project after successfully implementing all requested changes. CRITICAL WORKFLOW: Use this tool instead of individual delete_annotation calls when you have completed ALL annotation fixes for a project. This implements the efficient "read all → implement all → delete all" workflow. SAFETY: Requires URL pattern (like "http://localhost:3000/*") to prevent accidental deletion across projects. Always confirm the count of annotations to be deleted before proceeding. Use this tool when: (1) You have successfully implemented ALL annotation fixes for a project, (2) All code changes are complete and working, (3) You want to clean up all annotations for the project at once. This is more efficient than deleting annotations one-by-one. Also deletes each annotation\'s image attachment files from disk.',
+            name: 'pinvelto_delete_project_feedback',
+            description: 'Pinvelto webpage Feedback: Batch delete ALL Feedback for a specific project after successfully implementing all requested changes. CRITICAL WORKFLOW: Use this tool instead of individual pinvelto_delete_feedback calls when you have completed ALL Feedback fixes for a project. This implements the efficient "read all → implement all → delete all" workflow. SAFETY: Requires URL pattern (like "http://localhost:3000/*") to prevent accidental deletion across projects. Always confirm the count of Feedback to be deleted before proceeding. Use this tool when: (1) You have successfully implemented ALL Feedback fixes for a project, (2) All code changes are complete and working, (3) You want to clean up all Feedback for the project at once. This is more efficient than deleting Feedback one-by-one. Also deletes each Feedback\'s image attachment files from disk.',
             inputSchema: {
               type: 'object',
               properties: {
                 url_pattern: {
                   type: 'string',
-                  description: 'URL pattern to match annotations for deletion (e.g., "http://localhost:3000/*" or "http://localhost:3000/" for all annotations from that project)'
+                  description: 'URL pattern to match Feedback for deletion (e.g., "http://localhost:3000/*" or "http://localhost:3000/" for all Feedback from that project)'
                 },
                 confirm: {
                   type: 'boolean',
                   default: false,
-                  description: 'Set to true to confirm batch deletion. First call without confirm=true to see how many annotations would be deleted.'
+                  description: 'Set to true to confirm batch deletion. First call without confirm=true to see how many Feedback would be deleted.'
                 }
               },
               required: ['url_pattern'],
@@ -709,14 +719,14 @@ class LocalAnnotationsServer {
             }
           },
           {
-            name: 'get_annotation_screenshot',
-            description: 'Retrieves screenshot data for a specific annotation when visual context is needed to understand and implement the user\'s feedback. The read_annotations tool returns a has_screenshot flag to indicate availability. WHEN TO USE THIS TOOL: (1) Annotation mentions visual/layout/styling/positioning issues (e.g., "make it look better", "spacing is off", "layout is broken"), (2) You need to see exact element positioning, colors, or visual hierarchy, (3) The element_context text data seems insufficient to implement the fix accurately. WHEN TO SKIP: (1) Simple text content changes, (2) Clear functional bugs with sufficient text description, (3) Cases where element_context (tag, classes, styles, position) provides enough implementation detail. The screenshot includes viewport dimensions, element bounds, and visual context that complements the text-based element_context data.',
+            name: 'pinvelto_get_screenshot',
+            description: 'Pinvelto webpage Feedback: Retrieves screenshot data for a specific Feedback when visual context is needed to understand and implement the user\'s feedback. The pinvelto_list_feedback tool returns a has_screenshot flag to indicate availability. WHEN TO USE THIS TOOL: (1) Feedback mentions visual/layout/styling/positioning issues (e.g., "make it look better", "spacing is off", "layout is broken"), (2) You need to see exact element positioning, colors, or visual hierarchy, (3) The element_context text data seems insufficient to implement the fix accurately. WHEN TO SKIP: (1) Simple text content changes, (2) Clear functional bugs with sufficient text description, (3) Cases where element_context (tag, classes, styles, position) provides enough implementation detail. The screenshot includes viewport dimensions, element bounds, and visual context that complements the text-based element_context data.',
             inputSchema: {
               type: 'object',
               properties: {
                 id: {
                   type: 'string',
-                  description: 'Annotation ID to get screenshot for'
+                  description: 'Feedback ID to get screenshot for'
                 }
               },
               required: ['id'],
@@ -724,8 +734,8 @@ class LocalAnnotationsServer {
             }
           },
           {
-            name: 'watch_annotations',
-            description: 'Watch for new annotations on a localhost project. This tool blocks until pending annotations appear, then returns them. Use this in a loop for hands-free mode: call watch_annotations → implement each annotation → call delete_annotation → call watch_annotations again. DELETE EACH annotation right after you implement it — especially design edits (annotations with pending_changes, flagged cleanup_required), which the extension re-applies as a live inline-style overlay on the next reload if left behind. EXCEPTIONS: (1) a variants annotation (mode:"variants") is NOT deleted in this loop — follow its variant_instructions and let it run through its own pick/finalize lifecycle; do not let its "don\'t delete yet" rule stop you deleting the other annotations in the batch. (2) a plain comment that reads as a request for several versions is flagged variant_intent_detected and carries variant_instructions — route it through the variants lifecycle (update_annotation mode:"variants") instead of implementing one design. The tool polls every 10 seconds and automatically stops after the timeout period (default 5 minutes) of no new annotations appearing. IMPORTANT: You must know the localhost URL of the project you are watching. If you do not know it, ask the user before calling this tool. Example: "http://localhost:3000/*" watches all pages on port 3000.',
+            name: 'pinvelto_watch_feedback',
+            description: 'Pinvelto webpage Feedback: Watch for new Feedback on a localhost project. This tool blocks until pending Feedback appear, then returns them. Use this in a loop for hands-free mode: call pinvelto_watch_feedback → implement each Feedback → call pinvelto_delete_feedback → call pinvelto_watch_feedback again. DELETE EACH Feedback right after you implement it — especially design edits (Feedback with pending_changes, flagged cleanup_required), which the extension re-applies as a live inline-style overlay on the next reload if left behind. EXCEPTIONS: (1) a variants Feedback (mode:"variants") is NOT deleted in this loop — follow its variant_instructions and let it run through its own pick/finalize lifecycle; do not let its "don\'t delete yet" rule stop you deleting the other Feedback in the batch. (2) a plain comment that reads as a request for several versions is flagged variant_intent_detected and carries variant_instructions — route it through the variants lifecycle (pinvelto_update_feedback mode:"variants") instead of implementing one design. The tool polls every 10 seconds and automatically stops after the timeout period (default 5 minutes) of no new Feedback appearing. IMPORTANT: You must know the localhost URL of the project you are watching. If you do not know it, ask the user before calling this tool. Example: "http://localhost:3000/*" watches all pages on port 3000.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -746,13 +756,13 @@ class LocalAnnotationsServer {
             }
           },
           {
-            name: 'update_annotation',
-            description: 'Write generated variant scaffolding back to a VARIANTS annotation, or transition its lifecycle. After you code the variants for a mode="variants" annotation (per its variant_instructions), call this with variantsPayload — it is validated and moves the annotation pending → variants-ready so the user can preview and pick one in the extension. On FINALIZATION (after removing all scaffolding), call it with status "resolved". PROMOTING A COMMENT: when read_annotations flags a plain comment with variant_intent_detected, pass mode:"variants" (on its own to convert up front, or together with variantsPayload) to promote it into the variants lifecycle so it gets the same pick UI. Only for variants annotations (or promoting a comment into one); not a general editor.',
+            name: 'pinvelto_update_feedback',
+            description: 'Pinvelto webpage Feedback: Write generated variant scaffolding back to a VARIANTS Feedback, or transition its lifecycle. After you code the variants for a mode="variants" Feedback (per its variant_instructions), call this with variantsPayload — it is validated and moves the Feedback pending → variants-ready so the user can preview and pick one in the extension. On FINALIZATION (after removing all scaffolding), call it with status "resolved". PROMOTING A COMMENT: when pinvelto_list_feedback flags a plain comment with variant_intent_detected, pass mode:"variants" (on its own to convert up front, or together with variantsPayload) to promote it into the variants lifecycle so it gets the same pick UI. Only for variants Feedback (or promoting a comment into one); not a general editor.',
             inputSchema: {
               type: 'object',
               properties: {
-                id: { type: 'string', description: 'Annotation ID' },
-                mode: { type: 'string', enum: ['variants'], description: 'Set to "variants" to promote a plain comment annotation (whose text asked for several design options; flagged variant_intent_detected on read) into the variants lifecycle. Also applied automatically whenever you pass variantsPayload.' },
+                id: { type: 'string', description: 'Feedback ID' },
+                mode: { type: 'string', enum: ['variants'], description: 'Set to "variants" to promote a plain comment Feedback (whose text asked for several design options; flagged variant_intent_detected on read) into the variants lifecycle. Also applied automatically whenever you pass variantsPayload.' },
                 variantsPayload: {
                   type: 'object',
                   description: 'The scaffolding map the extension and finalization pass rely on.',
@@ -788,7 +798,7 @@ class LocalAnnotationsServer {
 
       try {
         switch (name) {
-          case 'read_annotations': {
+          case 'pinvelto_list_feedback': {
             const result = await this.readAnnotations(args || {});
             const { annotations, projectInfo, multiProjectWarning } = result;
 
@@ -797,7 +807,7 @@ class LocalAnnotationsServer {
                 {
                   type: 'text',
                   text: JSON.stringify({
-                    tool: 'read_annotations',
+                    tool: 'pinvelto_list_feedback',
                     status: 'success',
                     data: annotations,
                     count: annotations.length,
@@ -811,14 +821,14 @@ class LocalAnnotationsServer {
             };
           }
 
-          case 'delete_annotation': {
+          case 'pinvelto_delete_feedback': {
             const result = await this.deleteAnnotation(args);
             return {
               content: [
                 {
                   type: 'text',
                   text: JSON.stringify({
-                    tool: 'delete_annotation',
+                    tool: 'pinvelto_delete_feedback',
                     status: 'success',
                     data: result,
                     timestamp: new Date().toISOString()
@@ -828,14 +838,14 @@ class LocalAnnotationsServer {
             };
           }
 
-          case 'get_project_context': {
+          case 'pinvelto_get_project_context': {
             const context = await this.getProjectContext(args);
             return {
               content: [
                 {
                   type: 'text',
                   text: JSON.stringify({
-                    tool: 'get_project_context',
+                    tool: 'pinvelto_get_project_context',
                     status: 'success',
                     data: context,
                     timestamp: new Date().toISOString()
@@ -845,14 +855,14 @@ class LocalAnnotationsServer {
             };
           }
 
-          case 'delete_project_annotations': {
+          case 'pinvelto_delete_project_feedback': {
             const result = await this.deleteProjectAnnotations(args);
             return {
               content: [
                 {
                   type: 'text',
                   text: JSON.stringify({
-                    tool: 'delete_project_annotations',
+                    tool: 'pinvelto_delete_project_feedback',
                     status: 'success',
                     data: result,
                     timestamp: new Date().toISOString()
@@ -862,14 +872,14 @@ class LocalAnnotationsServer {
             };
           }
 
-          case 'get_annotation_screenshot': {
+          case 'pinvelto_get_screenshot': {
             const result = await this.getAnnotationScreenshot(args);
             return {
               content: [
                 {
                   type: 'text',
                   text: JSON.stringify({
-                    tool: 'get_annotation_screenshot',
+                    tool: 'pinvelto_get_screenshot',
                     status: 'success',
                     data: result,
                     timestamp: new Date().toISOString()
@@ -879,14 +889,14 @@ class LocalAnnotationsServer {
             };
           }
 
-          case 'watch_annotations': {
+          case 'pinvelto_watch_feedback': {
             const result = await this.watchAnnotations(args || {});
             return {
               content: [
                 {
                   type: 'text',
                   text: JSON.stringify({
-                    tool: 'watch_annotations',
+                    tool: 'pinvelto_watch_feedback',
                     status: result.timeout ? 'timeout' : 'success',
                     data: result.annotations || [],
                     count: result.annotations?.length || 0,
@@ -898,14 +908,14 @@ class LocalAnnotationsServer {
             };
           }
 
-          case 'update_annotation': {
+          case 'pinvelto_update_feedback': {
             const result = await this.updateAnnotation(args || {});
             return {
               content: [
                 {
                   type: 'text',
                   text: JSON.stringify({
-                    tool: 'update_annotation',
+                    tool: 'pinvelto_update_feedback',
                     status: 'success',
                     data: result,
                     timestamp: new Date().toISOString()
@@ -1319,7 +1329,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
   }
 
   // --- Variant generation (Feature 1) ---
-  // The full agent contract travels IN the read_annotations response (per the PRD),
+  // The full agent contract travels IN the pinvelto_list_feedback response (per the PRD),
   // so the agent needs no external docs to generate/finalize variants.
 
   variantGenerateInstructions(id) {
@@ -1339,7 +1349,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
       `   .vibe-var-${id}[data-vibe-active="1"] > [data-variant="1"] { display: block; }  /* … one rule per variant … */`,
       `3. Hardcode data-vibe-active="1" in the code so the preview survives reloads/HMR/re-renders. The extension only ever flips this one attribute.`,
       `4. Mark EVERY file you touch with a greppable sentinel comment \`vibe-annotations:scaffold ${id}\` (JSX {/* … */}, CSS /* … */, Vue <!-- … -->) — this is the finalization cleanup map.`,
-      `5. Then call update_annotation with variantsPayload { container: ".vibe-var-${id}", attribute: "data-vibe-active", variants: [{ value: "1", name: "…" }, …], files: [every file you touched] }. This moves it to "variants-ready". Tell the user in chat to reopen the extension to preview and choose.`,
+      `5. Then call pinvelto_update_feedback with variantsPayload { container: ".vibe-var-${id}", attribute: "data-vibe-active", variants: [{ value: "1", name: "…" }, …], files: [every file you touched] }. This moves it to "variants-ready". Tell the user in chat to reopen the extension to preview and choose.`,
     ].join('\n');
   }
 
@@ -1349,7 +1359,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
       `1. Grep the codebase for \`vibe-annotations:scaffold ${id}\` to locate all scaffolding.`,
       `2. Replace the wrapper with the chosen variant's content, idiomatically — no wrapper, no data-vibe-* attributes, no vibe-* classes.`,
       `3. Remove the scaffold CSS rules and every sentinel comment for this id.`,
-      `4. Call update_annotation with status "resolved". The final diff must contain zero \`vibe-*\` traces.`,
+      `4. Call pinvelto_update_feedback with status "resolved". The final diff must contain zero \`vibe-*\` traces.`,
     ].join('\n');
   }
 
@@ -1359,7 +1369,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
       `1. Grep for \`vibe-annotations:scaffold ${id}\`.`,
       `2. Restore the ORIGINAL element (variant "1") in place, removing the wrapper, data-vibe-* attributes and vibe-* classes.`,
       `3. Remove the scaffold CSS rules and every sentinel comment for this id.`,
-      `4. Call update_annotation with status "resolved".`,
+      `4. Call pinvelto_update_feedback with status "resolved".`,
     ].join('\n');
   }
 
@@ -1394,9 +1404,9 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
     return [
       `HEADS UP: this is a normal comment annotation, but its text reads like a request for SEVERAL design options ("make variants", "a few versions", …). If that is what the user means, treat it EXACTLY like a variants annotation created from the UI — generate multiple coexisting, previewable variants; do NOT just implement one design. (If the wording is only a passing mention and no options are wanted, ignore this and handle it as a normal comment.)`,
       ``,
-      `Follow the standard variants generate contract below. The one difference: because this started as a plain comment, pass mode:"variants" in your update_annotation call so it converts into the variants lifecycle and the extension shows the pick UI:`,
+      `Follow the standard variants generate contract below. The one difference: because this started as a plain comment, pass mode:"variants" in your pinvelto_update_feedback call so it converts into the variants lifecycle and the extension shows the pick UI:`,
       ``,
-      `   update_annotation { id: "${id}", mode: "variants", variantsPayload: { … } }`,
+      `   pinvelto_update_feedback { id: "${id}", mode: "variants", variantsPayload: { … } }`,
       ``,
       this.variantGenerateInstructions(id),
     ].join('\n');
@@ -1421,7 +1431,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
   maybeFlagCleanup(optimized, annotation) {
     if (annotation.mode === 'variants') return;
     if (optimized.pending_changes) {
-      optimized.cleanup_required = 'DESIGN EDIT: after implementing this in source, call delete_annotation for this id. If left undeleted, the extension re-applies these inline styles over your source change on the next reload (doubling it), and a later revert snaps the page to a stale state.';
+      optimized.cleanup_required = 'DESIGN EDIT: after implementing this in source, call pinvelto_delete_feedback for this id. If left undeleted, the extension re-applies these inline styles over your source change on the next reload (doubling it), and a later revert snaps the page to a stale state.';
     }
   }
 
@@ -1444,7 +1454,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
   // and/or transition status (→ resolved on finalization).
   async updateAnnotation(args) {
     const { id, variantsPayload, status, mode } = args || {};
-    if (!id || typeof id !== 'string') throw new Error('update_annotation requires "id" (string annotation id)');
+    if (!id || typeof id !== 'string') throw new Error('pinvelto_update_feedback requires "id" (string annotation id)');
     const annotations = await this.loadAnnotations();
     const idx = annotations.findIndex(a => a.id === id);
     if (idx === -1) throw new Error(`Annotation ${id} not found`);
@@ -1546,7 +1556,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
 
   async watchAnnotations(args) {
     const { url, timeout = 300 } = args || {};
-    if (!url || typeof url !== 'string') throw new Error('watch_annotations requires "url" (e.g. "http://localhost:3000/*")');
+    if (!url || typeof url !== 'string') throw new Error('pinvelto_watch_feedback requires "url" (e.g. "http://localhost:3000/*")');
 
     if (this.watchers.size >= 100) {
       throw new Error('Too many active watchers (limit: 100). Stop existing watchers before creating new ones.');
@@ -1613,7 +1623,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
       // Timeout — no annotations found, fully remove watcher
       this.watchers.delete(watcherId);
       console.log(`Watcher ${watcherId}: timed out after ${timeout}s`);
-      return { timeout: true, annotations: [], message: `No new annotations for ${timeout} seconds, watch stopped. Call watch_annotations again to resume.` };
+      return { timeout: true, annotations: [], message: `No new annotations for ${timeout} seconds, watch stopped. Call pinvelto_watch_feedback again to resume.` };
     } catch (error) {
       this.watchers.delete(watcherId);  // Fully remove on error
       if (error.message === 'aborted') {
@@ -1629,7 +1639,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
     // The MCP SDK does not enforce inputSchema server-side; without this check a
     // missing id fell through to the idempotent "already deleted" branch below —
     // a silent no-op that reported deleted:true for malformed calls.
-    if (!id || typeof id !== 'string') throw new Error('delete_annotation requires "id" (string annotation id)');
+    if (!id || typeof id !== 'string') throw new Error('pinvelto_delete_feedback requires "id" (string annotation id)');
 
     const annotations = await this.loadAnnotations();
     const index = annotations.findIndex(a => a.id === id);
@@ -1681,7 +1691,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
    */
   async getAnnotationScreenshot(args) {
     const { id } = args || {};
-    if (!id || typeof id !== 'string') throw new Error('get_annotation_screenshot requires "id" (string annotation id)');
+    if (!id || typeof id !== 'string') throw new Error('pinvelto_get_screenshot requires "id" (string annotation id)');
 
     try {
       // Load annotations - we only need to find the specific one
@@ -1748,7 +1758,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
 
   async deleteProjectAnnotations(args) {
     const { url_pattern, confirm = false } = args || {};
-    if (!url_pattern || typeof url_pattern !== 'string') throw new Error('delete_project_annotations requires "url_pattern" (e.g. "http://localhost:3000/*")');
+    if (!url_pattern || typeof url_pattern !== 'string') throw new Error('pinvelto_delete_project_feedback requires "url_pattern" (e.g. "http://localhost:3000/*")');
 
     const annotations = await this.loadAnnotations();
     
@@ -1821,7 +1831,7 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
 
   async getProjectContext(args) {
     const { url } = args || {};
-    if (!url || typeof url !== 'string') throw new Error('get_project_context requires "url" (a localhost URL, e.g. "http://localhost:3000/")');
+    if (!url || typeof url !== 'string') throw new Error('pinvelto_get_project_context requires "url" (a localhost URL, e.g. "http://localhost:3000/")');
 
     // Parse localhost URL to infer project structure
     const urlObj = new URL(url);
@@ -1969,6 +1979,8 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
       }
     };
 
+    this.shutdown = gracefulShutdown;
+
     // Handle shutdown signals
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -1985,78 +1997,6 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
     });
   }
 
-  async checkForUpdates() {
-    try {
-      // Check cache first (24hr TTL)
-      const updateCacheFile = path.join(DATA_DIR, '.update-check');
-      let lastCheck = 0;
-      
-      try {
-        if (existsSync(updateCacheFile)) {
-          const cacheData = await readFile(updateCacheFile, 'utf8');
-          lastCheck = parseInt(cacheData, 10) || 0;
-        }
-      } catch {
-        // Ignore cache read errors
-      }
-      
-      // Only check once per day
-      if (Date.now() - lastCheck < 86400000) return;
-      
-      // Fetch latest version from NPM registry
-      const response = await fetch('https://registry.npmjs.org/vibe-annotations-server/latest', {
-        headers: {
-          'User-Agent': 'vibe-annotations-server'
-        }
-      });
-      
-      // If package not found (404), skip update check
-      if (response.status === 404) {
-        console.log('[Update Check] Package not found in NPM registry yet');
-        await writeFile(updateCacheFile, Date.now().toString());
-        return;
-      }
-      
-      if (!response.ok) {
-        console.log(`[Update Check] NPM Registry error: ${response.status}`);
-        return;
-      }
-      
-      const data = await response.json();
-      const latestVersion = data.version || packageJson.version;
-      
-      // Simple version comparison (assuming semantic versioning)
-      const currentParts = packageJson.version.split('.').map(Number);
-      const latestParts = latestVersion.split('.').map(Number);
-      
-      let hasUpdate = false;
-      for (let i = 0; i < 3; i++) {
-        if ((latestParts[i] || 0) > (currentParts[i] || 0)) {
-          hasUpdate = true;
-          break;
-        }
-        if ((latestParts[i] || 0) < (currentParts[i] || 0)) {
-          break;
-        }
-      }
-      
-      if (hasUpdate) {
-        console.log(chalk.yellow(`
-╔════════════════════════════════════════════════════════════════╗
-║  Update available: ${packageJson.version} → ${latestVersion}                          ║
-║  Run: npm update -g vibe-annotations-server                    ║
-╚════════════════════════════════════════════════════════════════╝
-        `));
-      }
-      
-      // Save last check timestamp
-      await writeFile(updateCacheFile, Date.now().toString());
-    } catch (error) {
-      // Log error for debugging but don't disrupt user experience
-      console.log(`[Update Check] Failed: ${error.message}`);
-    }
-  }
-
   async start() {
     await this.ensureDataFile();
 
@@ -2066,15 +2006,13 @@ figcaption{padding:4px 8px;font-size:11px;color:#6b7280;background:#fafafa}
     // Set up process handlers only once
     this.setupProcessHandlers();
     
-    // Check for updates (non-blocking)
-    this.checkForUpdates().catch(() => {});
     
     // Bind explicitly to 0.0.0.0 (IPv4 wildcard). Without a host argument
     // Node defaults to the IPv6 wildcard, which WSL2 NAT-mode localhost
     // forwarding doesn't relay back to Windows — Chrome extensions then
-    // see "Failed to fetch" against 127.0.0.1:3846.
+    // see "Failed to fetch" against 127.0.0.1:${PORT}.
     this.server = this.app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Vibe Annotations server running on http://127.0.0.1:${PORT}`);
+      console.log(`Pinvelto service running on http://127.0.0.1:${PORT}`);
       console.log(`SSE Endpoint: http://127.0.0.1:${PORT}/sse`);
       console.log(`HTTP API: http://127.0.0.1:${PORT}/api/annotations`);
       console.log(`MCP Endpoint: http://127.0.0.1:${PORT}/mcp`);
