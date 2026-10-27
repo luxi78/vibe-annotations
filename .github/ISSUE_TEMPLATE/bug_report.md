@@ -37,4 +37,4 @@ Add any other context about the problem here.
 **Logs**
 If applicable, please include:
 - Browser console logs
-- Server logs (run `vibe-annotations-server logs`)
+- Server logs (run `pinvelto logs --lines 50`)

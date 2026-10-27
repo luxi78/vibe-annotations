@@ -1,43 +1,9 @@
-# Website — vibeannotations.com
+# Pinvelto internal documentation
 
-Next.js 15 marketing site with Tailwind CSS. Deployed on Vercel from `packages/website/`.
+Next.js 15 App Router with MDX, Tailwind, and locally bundled fonts. It runs locally; no public domain, analytics, deployment, store, or release-feed integration is required.
 
-## Commands
+From the root: pnpm dev:web, pnpm build:web, pnpm --filter pinvelto-docs typecheck. Use Node24/pnpm11. Root / redirects to /docs. src/app/docs contains installation, MCP, Feedback/review, exports, Variants, troubleshooting, local-update, and provenance guides. Navbar/Footer and docs/layout.tsx provide shared navigation; assets use approved Pinvelto Feedback Window branding.
 
-```bash
-pnpm dev:web        # from repo root
-pnpm build:web      # production build
-# or from this directory:
-pnpm dev
-pnpm build
-```
+Keep docs commands aligned with ../../README.md and ../server/README.md. Installation must select a maintainer-reviewed Pinvelto ref, build .output/chrome-mv3, and install the local server directory. Do not assume main contains an integration-branch implementation. Public npm/store distribution and automatic upstream updates are outside scope.
 
-## Structure
-
-```
-src/
-  app/          Next.js App Router pages
-    page.tsx    Landing page
-    terms/      Terms of service
-  components/   React components
-  data/         Static data / content
-  fonts/        Local font files
-  styles/       Global CSS
-public/         Static assets
-```
-
-## Stack
-
-- **Framework**: Next.js 15 (App Router)
-- **Styling**: Tailwind CSS 3
-- **Animations**: Framer Motion
-- **Icons**: @iconify/react
-- **Analytics**: @vercel/analytics
-- **Deploy**: Vercel — root directory set to `packages/website`
-
-## Vercel config
-
-`vercel.json` lives in this directory. Ignored Build Step should skip deploys when only the extension changes:
-```bash
-git diff HEAD^ HEAD --quiet -- packages/website/ || exit 1
-```
+For UI changes preserve the existing documentation reading layout and blue brand, inspect actual rendered pages at desktop/mobile widths, and run the extension Playwright internal-docs spec against the local docs server. Source builds alone do not prove usable docs or links. Never fetch upstream releases during build. Use ../../GLOSSARY.md terms, and preserve inherited LICENSE/NOTICE rather than repeat the inherited TERMS MIT inconsistency as active guidance.

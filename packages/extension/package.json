@@ -1,5 +1,5 @@
 {
-  "name": "vibe-annotations-extension",
+  "name": "pinvelto-extension",
   "private": true,
   "version": "2.1.0",
   "type": "module",
@@ -14,7 +14,8 @@
     "test:unit": "node --test tests/**/*.test.js",
     "test:e2e": "node tests/run-e2e.js",
     "test:baseline": "node tests/run-e2e.js tests/e2e/keyboard-baseline.spec.js",
-    "test": "node --test tests/**/*.test.js"
+    "test": "node --test tests/**/*.test.js",
+    "prepublishOnly": "node -e \"throw new Error('Pinvelto packages are internal-only; public publishing is disabled')\""
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

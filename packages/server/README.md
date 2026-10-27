@@ -4,7 +4,7 @@ Pinvelto is an internal-use visual Feedback product derived from Vibe Annotation
 
 ## Local installation
 
-From the repository root with Node.js 18+ and pnpm installed:
+Use a maintainer-reviewed Pinvelto revision (the implementation is delivered on issue/23 until separately merged). From that repository root, use Node.js 24 and pnpm 11 for the full workspace:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -56,7 +56,7 @@ The confirmed global deletion endpoint `POST /api/annotations/purge` accepts `{ 
 
 ## Deliberate updates and tests
 
-Stop Pinvelto, check out the intended project revision, run `pnpm install --frozen-lockfile`, repeat the local installation command, rebuild/reload the extension, then run `pinvelto start --daemon` and inspect `pinvelto status`. Agent HTTP URLs remain stable. Updates are deliberate; the service does not poll public package versions or display registry upgrade prompts.
+Stop Pinvelto, check out the maintainer-reviewed project revision, not an unverified default branch, run `pnpm install --frozen-lockfile`, repeat the local installation command, rebuild/reload the extension, then run `pinvelto start --daemon` and inspect `pinvelto status`. Agent HTTP URLs remain stable. Updates are deliberate; the service does not poll public package versions or display registry upgrade prompts.
 
 ```sh
 pnpm --filter pinvelto-server test

@@ -1,7 +1,6 @@
 import { defineConfig } from 'wxt';
 
-// Keep the same manifest shape the Chrome Web Store listing expects. WXT generates
-// the actual manifest.json from this config plus discovered entrypoints.
+// WXT generates the unpacked Pinvelto manifest from this configuration and entrypoints.
 export default defineConfig({
   srcDir: '.',
   outDir: process.env.PINVELTO_E2E_BUILD === '1' ? '.output-e2e' : '.output',

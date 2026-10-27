@@ -1,30 +1,5 @@
-export const metadata = { title: 'Collaboration' }
+# Sharing a review
 
-# Collaborating with Annotations
+Share Pinvelto HTML for a readable review with embedded available images. Use JSON to move supported Feedback metadata to another Pinvelto extension and verify image availability. Use Markdown for an agent handoff.
 
-Share annotations with teammates who don't have the same dev setup.
-
-[See demo video](https://github.com/RaphaelRegnier/vibe-annotations/releases/tag/v1.6.2)
-
-## Send a review to anyone
-
-For a reviewer handing feedback to a developer, the simplest path is a self-contained export:
-
-1. A reviewer annotates the site (staging, production, or localhost)
-2. They open **View All → Share / Export** and choose **`.html`** — a single file with every screenshot and reference image embedded
-3. They send it (Slack, email, etc.); the recipient opens it in any browser, no extension required
-4. The developer works through it and passes the changes to their coding agent
-
-See [Sharing exports](/docs/workflows/sharing) for the difference between `.md` and `.html`.
-
-## Round-trip onto a teammate's localhost
-
-To rehydrate live annotations — badges, style previews, and all — onto another machine:
-
-1. The reviewer opens **View All → Share / Export** and chooses **`.json`**
-2. They send the file
-3. The developer opens **Import** from the settings menu and selects it — the annotations reappear on their localhost
-
-When importing annotations captured on a public URL into localhost, the extension offers to **remap URLs** automatically so they anchor to your local dev server.
-
-**Important:** Annotations might not perfectly anchor if the DOM structure differs between environments. For best results, import into an environment with the same markup.
+These are deliberate file-sharing paths, not a hosted collaboration service. Supply repository context, source access, and attachment files separately where needed. See [Exports and import](/docs/workflows/sharing).

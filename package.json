@@ -1,11 +1,16 @@
 {
-  "name": "vibe-annotations",
+  "name": "pinvelto",
   "private": true,
   "scripts": {
-    "dev:web": "pnpm --filter website dev",
-    "build:web": "pnpm --filter website build",
-    "lint": "pnpm --filter website lint",
-    "test:extension": "pnpm --filter vibe-annotations-extension test:unit",
-    "test:extension:e2e": "pnpm --filter vibe-annotations-extension test:e2e"
+    "dev:web": "pnpm --filter pinvelto-docs dev",
+    "build:web": "pnpm --filter pinvelto-docs build",
+    "lint": "pnpm --filter pinvelto-docs typecheck",
+    "test:extension": "pnpm --filter pinvelto-extension test:unit",
+    "test:extension:e2e": "pnpm --filter pinvelto-extension test:e2e",
+    "prepublishOnly": "node -e \"throw new Error('Pinvelto packages are internal-only; public publishing is disabled')\""
+  },
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=24"
   }
 }

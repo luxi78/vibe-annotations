@@ -1195,7 +1195,7 @@ import { getAvailableSiteOrigins, formatSiteLabel, formatSiteOptionText } from '
     header.innerHTML = `
       <div>
         <span class="pinvelto-settings-title">${escapeHTML(route)}</span>
-        <a href="https://github.com/luxi78/vibe-annotations/releases/tag/v${escapeHTML(version)}" target="_blank" rel="noopener" class="pinvelto-settings-version">v${escapeHTML(version)}</a>
+        <span class="pinvelto-settings-version" title="Installed Pinvelto extension version">v${escapeHTML(version)}</span>
       </div>
     `;
 

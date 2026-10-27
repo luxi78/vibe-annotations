@@ -1,15 +1,17 @@
-export const metadata = { title: 'Workflows' }
+# Feedback and review
 
-# Workflows
+Open a local webpage with the extension enabled. Click the pencil or configured inspection shortcut, select an element, and write Feedback. Use Design controls for a visual preview or attach image context. Save, then Copy or ask a connected coding agent to read it through MCP.
 
-Choose the workflow that fits your use case:
+## Review scope
 
-- [**Copy & paste**](/docs/workflows/copy-paste) — Quick edits on a single page. No server needed.
-- [**Multi-page (MCP)**](/docs/workflows/mcp) — Annotate across routes, let your agent read them all via MCP.
-- [**Watch mode**](/docs/workflows/watch-mode) — Hands-free loop: drop annotations, agent implements them live.
-- [**Design edits**](/docs/workflows/design-edits) — Tweak size, spacing, color and text with live preview.
-- [**Variant generation**](/docs/workflows/variants) — Ask your agent for component variants, preview and pick the winner.
-- [**Screenshots & images**](/docs/workflows/screenshots) — Auto-capture the element and attach your own reference images.
-- [**Sharing exports**](/docs/workflows/sharing) — Package a batch as one `.md` or self-contained `.html` file.
-- [**Collaboration**](/docs/workflows/collaboration) — Round-trip annotations to a teammate's localhost.
-- [**Agent annotation**](/docs/workflows/agents) — Let browser-capable AI agents annotate for you.
+**Current site** is the tab's website. **Selected site** is the website you choose in View all and may differ from the current site. **All** shows unresolved Feedback across the selected site's pages. **This page** filters to the current tab's full URL; selecting another site can therefore show no matches.
+
+The toolbar count covers unresolved Feedback across **all sites**, independently of the visible list. A refresh keeps the selected site, filter, scroll position, and relevant focus while that View all session remains open.
+
+## Completion and deletion
+
+Agents apply source changes, verify them, and delete completed ordinary Feedback through MCP. Reopening the extension shows the result. Individual and selected-site deletion have their respective scopes. Discarded Variants can retain metadata so the agent can clean generated code.
+
+The separate **global deletion** asks for confirmation and removes only the confirmed Feedback records and attachments, including resolved records. It never removes generated project code. New records added after confirmation are preserved. Use the [Variants lifecycle](/docs/workflows/variants) when code needs finalizing or cleanup.
+
+[Copy and paste](/docs/workflows/copy-paste) · [MCP workflow](/docs/workflows/mcp) · [Exports](/docs/workflows/sharing)

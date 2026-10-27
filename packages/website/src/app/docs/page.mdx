@@ -1,29 +1,22 @@
-export const metadata = { title: 'Overview' }
+# Pinvelto documentation
 
-# Documentation
+Pinvelto lets you place Feedback on a webpage and pass relevant context to a coding agent. Install the extension and local service from a reviewed revision of this repository. Distribution is internal; there is no browser-store or public package installation step.
 
-Vibe Annotations is a visual feedback tool for web development. Annotate elements on your localhost pages, make design tweaks, and share structured feedback with AI coding agents or teammates.
+## Start here
 
-## How it works
+1. [Build and load the extension, then install the service](/docs/installation).
+2. [Connect an agent using the pinvelto MCP entry](/docs/mcp-setup).
+3. [Create Feedback and review its progress](/docs/workflows).
 
-1. **Install** the [browser extension](https://chromewebstore.google.com/detail/gkofobaeeepjopdpahbicefmljcmpeof) and optionally the [MCP server](https://www.npmjs.com/package/vibe-annotations-server).
-2. **Annotate** elements on any localhost page — add comments, tweak CSS, edit text.
-3. **Share** via copy/paste, export, or MCP. AI agents read your annotations and implement the changes.
+The extension supports comments, design previews, screenshots, reference images, and Variants. Copy Feedback without a service, or use MCP to let an agent read and act on it.
 
-## Quick start
+## Find the right guide
 
-The extension works standalone with copy/paste. For MCP integration (auto-sync, watch mode), run the setup wizard:
+- [Design previews](/docs/workflows/design-edits) change the visible page before an agent changes project code.
+- [Screenshots and images](/docs/workflows/screenshots) cover capture permissions and attachment availability.
+- [Exports and import](/docs/workflows/sharing) explain which formats carry images.
+- [Variants](/docs/workflows/variants) cover generation, choosing, finalization, and discarded-code cleanup.
+- [Troubleshooting](/docs/troubleshooting) covers connection and installation failures.
+- [Local updates](/docs/releases) use an explicitly reviewed revision.
 
-```bash
-npx vibe-annotations-server init
-```
-
-Installs the server, starts it, and configures your AI agent in one step. Prefer manual? See [Installation](/docs/installation) or [MCP Setup](/docs/mcp-setup).
-
-## Next steps
-
-- [Installation](/docs/installation) — Browser extension + server setup
-- [MCP Setup](/docs/mcp-setup) — Connect Claude Code, Cursor, Windsurf, and more
-- [Workflows](/docs/workflows) — Single page, multi-page, collaboration, watch mode
-- [Architecture](/docs/architecture) — How the extension and server communicate
-- [Troubleshooting](/docs/troubleshooting) — Common issues and fixes
+Run pnpm dev:web and open http://localhost:3000/docs. No hosted deployment is required. Project changes and reports belong in [this repository](https://github.com/luxi78/vibe-annotations).

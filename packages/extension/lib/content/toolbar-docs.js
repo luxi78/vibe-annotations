@@ -107,9 +107,9 @@
         ${ICONS.github}
         <span>Contribute to Pinvelto</span>
       </a>
-      <a href="https://github.com/luxi78/vibe-annotations/releases/tag/v${escapeHTML(version)}" target="_blank" rel="noopener" class="pinvelto-settings-link">
+      <a href="https://github.com/luxi78/vibe-annotations/blob/issue/23/README.md" target="_blank" rel="noopener" class="pinvelto-settings-link">
         ${ICONS.newspaper}
-        <span>Release notes</span>
+        <span>Installation and local updates</span>
       </a>
     `;
 
@@ -161,19 +161,24 @@
 
         <div class="pinvelto-guide-section">
           <div class="pinvelto-guide-label">3. Install MCP server <span style="font-weight:400;color:var(--v-text-secondary);">(optional)</span></div>
-          <p class="pinvelto-guide-text">Let your coding agent fetch and resolve Feedback automatically. One command does it all:</p>
+          <p class="pinvelto-guide-text">Start from the reviewed Pinvelto revision of this repository with Node 24 and pnpm 11. Install dependencies and build the extension first:</p>
+          <div class="pinvelto-guide-cmd" data-cmd="pnpm install --frozen-lockfile &amp;&amp; pnpm --filter pinvelto-extension build">
+            <code>pnpm install --frozen-lockfile &amp;&amp; pnpm --filter pinvelto-extension build</code>
+            <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
+          </div>
+          <p class="pinvelto-guide-text">Load packages/extension/.output/chrome-mv3, then configure the local service:</p>
           <div class="pinvelto-guide-cmd" data-cmd="node packages/server/bin/cli.js init">
             <code>node packages/server/bin/cli.js init</code>
             <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
           </div>
-          <p class="pinvelto-guide-text" style="margin-top:6px;">Installs the server, starts it, and configures your AI agent interactively.</p>
+          <p class="pinvelto-guide-text" style="margin-top:6px;">Runs the local service and configures your agent. It does not install a registry package. Keep the checkout and dependencies.</p>
           <p class="pinvelto-guide-text" style="margin-top:12px;">Or set it up manually:</p>
           <div class="pinvelto-guide-cmd" data-cmd="npm install --global ./packages/server">
             <code>npm install --global ./packages/server</code>
             <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
           </div>
-          <div class="pinvelto-guide-cmd" data-cmd="pinvelto start">
-            <code>pinvelto start</code>
+          <div class="pinvelto-guide-cmd" data-cmd="pinvelto start --daemon">
+            <code>pinvelto start --daemon</code>
             <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
           </div>
           <p class="pinvelto-guide-text" style="margin-top:8px;">Then connect your agent:</p>
@@ -242,7 +247,7 @@
         content: `
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">1. Install and start the server</div>
-            <p class="pinvelto-guide-text">One command installs, starts, and configures your agent:</p>
+            <p class="pinvelto-guide-text">From the reviewed repository revision, first run pnpm install --frozen-lockfile. Then start the local service and configure your agent:</p>
             <div class="pinvelto-guide-cmd" data-cmd="node packages/server/bin/cli.js init">
               <code>node packages/server/bin/cli.js init</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
@@ -252,8 +257,8 @@
               <code>npm install --global ./packages/server</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
             </div>
-            <div class="pinvelto-guide-cmd" data-cmd="pinvelto start">
-              <code>pinvelto start</code>
+            <div class="pinvelto-guide-cmd" data-cmd="pinvelto start --daemon">
+              <code>pinvelto start --daemon</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
             </div>
           </div>
@@ -341,7 +346,7 @@
           </div>
           <div class="pinvelto-guide-section">
             <div class="pinvelto-guide-label">Setup</div>
-            <p class="pinvelto-guide-text">One command installs, starts, and configures your agent:</p>
+            <p class="pinvelto-guide-text">From the reviewed repository revision, first run pnpm install --frozen-lockfile. Then start the local service and configure your agent:</p>
             <div class="pinvelto-guide-cmd" data-cmd="node packages/server/bin/cli.js init">
               <code>node packages/server/bin/cli.js init</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
@@ -351,8 +356,8 @@
               <code>npm install --global ./packages/server</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
             </div>
-            <div class="pinvelto-guide-cmd" data-cmd="pinvelto start">
-              <code>pinvelto start</code>
+            <div class="pinvelto-guide-cmd" data-cmd="pinvelto start --daemon">
+              <code>pinvelto start --daemon</code>
               <button class="pinvelto-guide-copy" type="button">${ICONS.clipboard}</button>
             </div>
             <p class="pinvelto-guide-text" style="margin-top:8px;">Then connect your agent (e.g. Claude Code):</p>
