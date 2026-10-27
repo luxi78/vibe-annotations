@@ -1,5 +1,4 @@
 import { test, expect, FIXTURE_ORIGIN } from './fixtures.js';
-import { fileURLToPath } from 'node:url';
 
 test('built-in help installs reviewed local artifacts and links project-owned guidance', async ({ page }, testInfo) => {
   await page.goto(`${FIXTURE_ORIGIN}/selected-rectangle.html`);
@@ -16,6 +15,6 @@ test('built-in help installs reviewed local artifacts and links project-owned gu
   await expect(dropdown).toContainText('pnpm --filter pinvelto-extension build');
   await expect(dropdown).toContainText('npm install --global ./packages/server');
   await expect(dropdown).not.toContainText('One command does it all');
-  await page.screenshot({ path: fileURLToPath(new URL('../../../../docs/verification/issue-28-extension-help.png', import.meta.url)) });
+  await page.screenshot({ path: testInfo.outputPath('extension-help.png') });
   await testInfo.attach('extension-help', { body: await page.screenshot(), contentType: 'image/png' });
 });

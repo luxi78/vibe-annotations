@@ -197,7 +197,7 @@ class LocalAnnotationsServer {
         });
       } catch (error) {
         console.error('Error loading annotations:', error);
-        res.status(500).json({ error: 'Failed to load annotations' });
+        res.status(500).json({ error: 'Failed to load Feedback' });
       }
     });
 
@@ -230,7 +230,7 @@ class LocalAnnotationsServer {
         res.json({ success: true, annotation });
       } catch (error) {
         console.error('Error saving annotation:', error);
-        res.status(500).json({ error: 'Failed to save annotation' });
+        res.status(500).json({ error: 'Failed to save Feedback' });
       }
     });
 
@@ -275,7 +275,7 @@ class LocalAnnotationsServer {
         res.json({ success: true, count: annotations.length });
       } catch (error) {
         console.error('Error syncing annotations:', error);
-        res.status(500).json({ error: 'Failed to sync annotations' });
+        res.status(500).json({ error: 'Failed to sync Feedback' });
       }
     });
 
@@ -427,7 +427,7 @@ class LocalAnnotationsServer {
         res.json({ success: true, annotation: annotations[index] });
       } catch (error) {
         console.error('Error updating annotation:', error);
-        res.status(500).json({ error: 'Failed to update annotation' });
+        res.status(500).json({ error: 'Failed to update Feedback' });
       }
     });
 
@@ -463,7 +463,7 @@ class LocalAnnotationsServer {
         });
       } catch (error) {
         console.error('Error deleting annotation:', error);
-        res.status(500).json({ error: 'Failed to delete annotation' });
+        res.status(500).json({ error: 'Failed to delete Feedback' });
       }
     });
 

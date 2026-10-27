@@ -156,7 +156,7 @@
 
         <div class="pinvelto-guide-section">
           <div class="pinvelto-guide-label">2. Send to your agent</div>
-          <p class="pinvelto-guide-text">Hit <strong>Copy</strong> in the toolbar and paste into any AI chat, or <strong>Export</strong> to share a file. No server needed.</p>
+          <p class="pinvelto-guide-text">Hit <strong>Copy</strong> and paste into your agent, or <strong>Export</strong> a file. Copy, Markdown and JSON work offline; HTML needs the local service.</p>
         </div>
 
         <div class="pinvelto-guide-section">

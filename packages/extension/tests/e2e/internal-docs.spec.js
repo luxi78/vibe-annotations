@@ -38,7 +38,7 @@ test('internal documentation leads from a reviewed local installation to daily u
   page.on('request', request => requests.push(request.url()));
   await page.goto(origin);
   await expect(page.getByRole('heading', { name: 'Pinvelto documentation', exact: true })).toBeVisible();
-  await page.screenshot({ path: fileURLToPath(new URL('../../../../docs/verification/issue-28-docs-desktop.png', import.meta.url)), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('docs-desktop.png'), fullPage: true });
   await page.getByRole('link', { name: 'Installation', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: 'Install from a reviewed revision', exact: true })).toBeVisible();
   await expect(page.locator('article')).toContainText('PINVELTO_REF');
@@ -50,9 +50,9 @@ test('internal documentation leads from a reviewed local installation to daily u
   const copyBounds = await copy.boundingBox();
   expect(copyBounds.y).toBeGreaterThanOrEqual(blockBounds.y);
   expect(copyBounds.y + copyBounds.height).toBeLessThanOrEqual(blockBounds.y + blockBounds.height);
-  await page.screenshot({ path: fileURLToPath(new URL('../../../../docs/verification/issue-28-installation.png', import.meta.url)), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('installation.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: fileURLToPath(new URL('../../../../docs/verification/issue-28-docs-mobile.png', import.meta.url)), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('docs-mobile.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByRole('link', { name: 'MCP setup', exact: true }).first().click();
@@ -72,5 +72,5 @@ test('internal documentation leads from a reviewed local installation to daily u
   expect((await page.request.get(`${origin}/docs/benchmark`)).status()).toBe(404);
   expect(requests.filter(url => /chromewebstore|registry\.npmjs\.org\/vibe-annotations|api\.github\.com\/repos\/RaphaelRegnier|vibe-annotations\.com/i.test(url))).toEqual([]);
   await testInfo.attach('documentation-network', { body: JSON.stringify(requests, null, 2), contentType: 'application/json' });
-  writeFileSync(fileURLToPath(new URL('../../../../docs/verification/issue-28-docs-network.json', import.meta.url)), JSON.stringify(requests, null, 2) + '\n');
+  writeFileSync(testInfo.outputPath('docs-network.json'), JSON.stringify(requests, null, 2) + '\n');
 });
